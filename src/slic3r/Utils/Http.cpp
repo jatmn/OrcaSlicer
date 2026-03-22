@@ -580,6 +580,14 @@ Http& Http::remove_header(std::string name)
 	return *this;
 }
 
+Http& Http::set_user_agent(const std::string &user_agent)
+{
+	if (p) {
+		::curl_easy_setopt(p->curl, CURLOPT_USERAGENT, user_agent.c_str());
+	}
+	return *this;
+}
+
 // Authorization by HTTP digest, based on RFC2617.
 Http& Http::auth_digest(const std::string &user, const std::string &password)
 {

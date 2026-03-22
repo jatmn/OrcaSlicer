@@ -691,6 +691,12 @@ if (UNIX AND NOT APPLE)
     )
 endif ()
 
+# UltiMaker Digital Factory support
+list(APPEND SLIC3R_GUI_SOURCES
+    Utils/UltiMaker.cpp
+    Utils/UltiMaker.hpp
+)
+
 set(ORCA_UPDATER_SIG_KEY_B64 "${ORCA_UPDATER_SIG_KEY}")
 string(STRIP "${ORCA_UPDATER_SIG_KEY_B64}" ORCA_UPDATER_SIG_KEY_B64)
 string(REPLACE "\n" "" ORCA_UPDATER_SIG_KEY_B64 "${ORCA_UPDATER_SIG_KEY_B64}")

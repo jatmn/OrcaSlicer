@@ -1,0 +1,17 @@
+{
+  "format_name": "MakerBot Format",
+  "format_version": "1.0",
+  "file_extension": ".makerbot",
+  "printers": [
+    {
+      "id": "sketch_small",
+      "name": "MakerBot Sketch Small",
+      "config_file": "sketch_small.json"
+    },
+    {
+      "id": "sketch_sprint", 
+      "name": "MakerBot Sketch Sprint",
+      "config_file": "sketch_sprint.json"
+    }
+  ]
+}

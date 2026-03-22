@@ -16,6 +16,7 @@ struct OAuthParams
 {
     std::string login_url;
     std::string client_id;
+    std::string client_secret;
     boost::asio::ip::port_type callback_port;
     std::string callback_url;
     std::string scope;

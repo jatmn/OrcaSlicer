@@ -1,0 +1,13 @@
+{
+  "format_name": "UltiMaker Format Package",
+  "format_version": "1.0",
+  "file_extension": ".ufp",
+  "content_type": "application/x-ufp",
+  "printers": [
+    {
+      "id": "ultimaker_s6",
+      "name": "UltiMaker S6",
+      "config_file": "ultimaker_s6.json"
+    }
+  ]
+}

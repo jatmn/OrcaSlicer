@@ -1,0 +1,225 @@
+#include "FormatConfig.hpp"
+#include "../Utils.hpp"
+#include <boost/filesystem.hpp>
+#include <boost/nowide/fstream.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/log/trivial.hpp>
+
+namespace Slic3r {
+
+namespace fs = boost::filesystem;
+namespace pt = boost::property_tree;
+
+fs::path FormatConfig::get_formats_directory() {
+    return fs::path(resources_dir()) / "formats";
+}
+
+std::string FormatConfig::load_template_file(const fs::path& template_path) {
+    boost::nowide::ifstream file(template_path.string());
+    if (!file.is_open()) {
+        return "";
+    }
+    return std::string((std::istreambuf_iterator<char>(file)),
+                       std::istreambuf_iterator<char>());
+}
+
+bool FormatConfig::load_format(const std::string& format_type,
+                               std::vector<PrinterFormatConfig>& out_configs,
+                               std::string& out_format_name) {
+    fs::path manifest_path = get_formats_directory() / format_type / "manifest.json";
+    
+    if (!fs::exists(manifest_path)) {
+        return false;
+    }
+    
+    try {
+        pt::ptree manifest;
+        pt::read_json(manifest_path.string(), manifest);
+        
+        out_format_name = manifest.get<std::string>("format_name", "");
+        std::string file_extension = manifest.get<std::string>("file_extension", "");
+        std::string content_type = manifest.get<std::string>("content_type", "");
+        
+        for (const auto& printer : manifest.get_child("printers")) {
+            PrinterFormatConfig config;
+            config.id = printer.second.get<std::string>("id");
+            config.printer_name = printer.second.get<std::string>("name");
+            config.file_extension = file_extension;
+            
+            std::string config_file = printer.second.get<std::string>("config_file");
+            fs::path config_path = get_formats_directory() / format_type / config_file;
+            
+            if (!load_printer_config(format_type, config.id, config)) {
+                continue;
+            }
+            
+            out_configs.push_back(config);
+        }
+        
+        return !out_configs.empty();
+    } catch (const std::exception& e) {
+        return false;
+    }
+}
+
+bool FormatConfig::load_printer_config(const std::string& format_type,
+                                       const std::string& printer_id,
+                                       PrinterFormatConfig& out_config) {
+    fs::path formats_dir = get_formats_directory();
+    fs::path config_path = formats_dir / format_type / (printer_id + ".json");
+    
+    BOOST_LOG_TRIVIAL(info) << "FormatConfig: Looking for config at: " << config_path.string();
+    BOOST_LOG_TRIVIAL(info) << "FormatConfig: Resources dir is: " << formats_dir.string();
+    BOOST_LOG_TRIVIAL(info) << "FormatConfig: Format type: " << format_type << ", printer_id: " << printer_id;
+    
+    if (!fs::exists(config_path)) {
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: Config file not found: " << config_path.string();
+        return false;
+    }
+    
+    try {
+        pt::ptree config;
+        pt::read_json(config_path.string(), config);
+        
+        out_config.id = printer_id;
+        out_config.printer_name = config.get<std::string>("printer_name", "");
+        out_config.target_machine = config.get<std::string>("target_machine", "");
+        out_config.header_template = config.get<std::string>("header_template", "");
+        out_config.opc_structure = config.get<bool>("opc_structure", false);
+        
+        // G-code metadata
+        if (auto gcode_meta = config.get_child_optional("gcode_metadata")) {
+            out_config.gcode_metadata.flavor = gcode_meta->get<std::string>("flavor", "");
+            out_config.gcode_metadata.generator_name = gcode_meta->get<std::string>("generator_name", "");
+            out_config.gcode_metadata.generator_version = gcode_meta->get<std::string>("generator_version", "");
+            
+            if (auto fields = gcode_meta->get_child_optional("required_fields")) {
+                for (const auto& field : *fields) {
+                    out_config.gcode_metadata.required_fields.push_back(field.second.get_value<std::string>());
+                }
+            }
+        }
+        
+        // Content types (UFP)
+        if (auto content_types = config.get_child_optional("content_types")) {
+            for (const auto& ct : *content_types) {
+                out_config.content_types[ct.first] = ct.second.get_value<std::string>();
+            }
+        }
+        
+        // Thumbnails
+        if (auto thumbs = config.get_child_optional("thumbnails")) {
+            for (const auto& thumb : *thumbs) {
+                ThumbnailConfig tc;
+                tc.size = thumb.second.get<std::string>("size");
+                tc.filename = thumb.second.get<std::string>("name");
+                out_config.thumbnails.push_back(tc);
+            }
+        }
+        
+        // ZIP files
+        if (auto zip_files = config.get_child_optional("zip_files")) {
+            for (const auto& file : *zip_files) {
+                out_config.zip_files.push_back(file.second.get_value<std::string>());
+            }
+        }
+        
+        // MakerBot specific
+        out_config.bot_type = config.get<std::string>("bot_type", "");
+        out_config.tool_type = config.get<std::string>("tool_type", "");
+        out_config.version = config.get<std::string>("version", "");
+        out_config.build_plane_temperature = config.get<int>("build_plane_temperature", 28);
+        
+        if (auto bounds = config.get_child_optional("machine_bounds")) {
+            for (const auto& bound : *bounds) {
+                out_config.machine_bounds.push_back(bound.second.get_value<double>());
+            }
+        }
+        
+        // Miracle config
+        if (auto mc = config.get_child_optional("miracle_config")) {
+            out_config.miracle_config.curaengine_version = mc->get<std::string>("curaengine_version", "");
+            out_config.miracle_config.curaengine_commit_hash = mc->get<std::string>("curaengine_commit_hash", "");
+            out_config.miracle_config.dulcificum_version = mc->get<std::string>("dulcificum_version", "");
+            out_config.miracle_config.dulcificum_commit_hash = mc->get<std::string>("dulcificum_commit_hash", "");
+            out_config.miracle_config.makerbot_writer_version = mc->get<std::string>("makerbot_writer_version", "");
+            out_config.miracle_config.pyDulcificum_version = mc->get<std::string>("pyDulcificum_version", "");
+        }
+        
+        // Load header template content
+        if (!out_config.header_template.empty()) {
+            fs::path template_path = get_formats_directory() / format_type / "templates" / 
+                                    ("header_" + out_config.header_template + ".txt");
+            out_config.header_template_content = load_template_file(template_path);
+        }
+        
+        return true;
+    } catch (const std::exception& e) {
+        return false;
+    }
+}
+
+std::vector<std::string> FormatConfig::get_available_formats() {
+    std::vector<std::string> formats;
+    fs::path formats_dir = get_formats_directory();
+    
+    if (!fs::exists(formats_dir)) {
+        return formats;
+    }
+    
+    for (const auto& entry : fs::directory_iterator(formats_dir)) {
+        if (fs::is_directory(entry)) {
+            fs::path manifest = entry.path() / "manifest.json";
+            if (fs::exists(manifest)) {
+                formats.push_back(entry.path().filename().string());
+            }
+        }
+    }
+    
+    return formats;
+}
+
+bool FormatConfig::load_printer_config_with_fallback(const std::string& format_type,
+                                                      const std::string& printer_id,
+                                                      PrinterFormatConfig& out_config) {
+    // First try to load the specific config
+    if (load_printer_config(format_type, printer_id, out_config)) {
+        return true;
+    }
+    
+    // If that fails, load the manifest and use the first available printer config
+    std::vector<PrinterFormatConfig> configs;
+    std::string format_name;
+    if (load_format(format_type, configs, format_name) && !configs.empty()) {
+        out_config = configs[0];
+        BOOST_LOG_TRIVIAL(warning) << "FormatConfig: Using fallback config '" << out_config.id 
+                                   << "' for printer_id '" << printer_id << "'";
+        return true;
+    }
+    
+    return false;
+}
+
+std::string FormatConfig::parse_format_config_id(const std::string& printer_notes, const std::string& default_id) {
+    // Look for FORMAT_CONFIG_ID:xxx tag in printer notes
+    // This allows users to specify which format config to use even if they rename their printer preset
+    const std::string tag = "FORMAT_CONFIG_ID:";
+    size_t pos = printer_notes.find(tag);
+    if (pos != std::string::npos) {
+        // Extract the ID (everything after the tag until whitespace or end of line)
+        size_t start = pos + tag.length();
+        size_t end = printer_notes.find_first_of(" \t\n\r", start);
+        if (end == std::string::npos) {
+            end = printer_notes.length();
+        }
+        std::string config_id = printer_notes.substr(start, end - start);
+        if (!config_id.empty()) {
+            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Found FORMAT_CONFIG_ID tag: " << config_id;
+            return config_id;
+        }
+    }
+    return default_id;
+}
+
+} // namespace Slic3r

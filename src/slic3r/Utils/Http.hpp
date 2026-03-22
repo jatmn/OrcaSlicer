@@ -111,6 +111,8 @@ public:
 	Http& header(std::string name, const std::string &value);
 	// Removes a header field.
 	Http& remove_header(std::string name);
+	// Override the User-Agent header
+	Http& set_user_agent(const std::string &user_agent);
 	// Authorization by HTTP digest, based on RFC2617.
 	Http& auth_digest(const std::string &user, const std::string &password);
     // Basic HTTP authorization

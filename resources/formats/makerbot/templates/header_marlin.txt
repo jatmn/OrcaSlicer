@@ -1,0 +1,12 @@
+;FLAVOR:Marlin
+;TIME:{{print_time}}
+;Filament used: {{filament_m}}m
+;Layer height: {{layer_height}}
+;MINX:{{min_x}}
+;MINY:{{min_y}}
+;MINZ:{{min_z}}
+;MAXX:{{max_x}}
+;MAXY:{{max_y}}
+;MAXZ:{{max_z}}
+;TARGET_MACHINE.NAME:{{target_machine}}
+;Generated with {{generator_name}} {{generator_version}}

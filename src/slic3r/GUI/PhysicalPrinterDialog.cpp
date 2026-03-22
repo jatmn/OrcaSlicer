@@ -39,6 +39,7 @@
 #include "MsgDialog.hpp"
 #include "OAuthDialog.hpp"
 #include "SimplyPrint.hpp"
+#include "UltiMaker.hpp"
 
 namespace Slic3r {
 namespace GUI {
@@ -235,6 +236,17 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
 
                 if (!result && host->is_cloud()) {
                     if (const auto h = dynamic_cast<SimplyPrint*>(host.get()); h) {
+                        OAuthDialog dlg(this, h->get_oauth_params());
+                        dlg.ShowModal();
+
+                        const auto& r = dlg.get_result();
+                        result = r.success;
+                        if (r.success) {
+                            h->save_oauth_credential(r);
+                        } else {
+                            msg = r.error_message;
+                        }
+                    } else if (const auto h = dynamic_cast<UltiMaker*>(host.get()); h) {
                         OAuthDialog dlg(this, h->get_oauth_params());
                         dlg.ShowModal();
 

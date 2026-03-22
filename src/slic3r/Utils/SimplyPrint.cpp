@@ -127,6 +127,7 @@ GUI::OAuthParams SimplyPrint::get_oauth_params() const
     return GUI::OAuthParams{
         login_url,
         CLIENT_ID,
+        "",
         CALLBACK_PORT,
         CALLBACK_URL,
         CLIENT_SCOPES,
