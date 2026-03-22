@@ -70,8 +70,11 @@ static std::string sha512_base64url(const std::string& inputStr)
     std::string b64;
     b64.resize(boost::beast::detail::base64::encoded_size(SHA512_DIGEST_LENGTH));
     b64.resize(boost::beast::detail::base64::encode(&b64[0], hash, SHA512_DIGEST_LENGTH));
-    std::replace(b64.begin(), b64.end(), '+', '-');
-    std::replace(b64.begin(), b64.end(), '/', '_');
+    // Match Cura's altchars = b"_-": b64encode(encoded, altchars = b"_-")
+    // altchars[0] replaces '+', altchars[1] replaces '/'
+    // So: '+' -> '_', '/' -> '-'
+    std::replace(b64.begin(), b64.end(), '+', '_');
+    std::replace(b64.begin(), b64.end(), '/', '-');
     // Keep the padding (=) - UltiMaker's server expects it unlike RFC strict base64url
     return b64;
 }
@@ -217,14 +220,20 @@ bool UltiMaker::do_api_call(std::function<Http(bool)>                           
                                                   http_status % body;
                 BOOST_LOG_TRIVIAL(info) << "UltiMaker: Attempt to refresh access token";
 
+                // Build URL-encoded form body (matches Cura's getAccessTokenUsingRefreshToken)
+                std::string post_body;
+                post_body += "client_id=" + Http::url_encode(CLIENT_ID);
+                post_body += "&client_secret=" + Http::url_encode(CLIENT_SECRET);
+                post_body += "&redirect_uri=" + get_callback_url();
+                post_body += "&grant_type=" + Http::url_encode("refresh_token");
+                post_body += "&refresh_token=" + Http::url_encode(m_cred.at("refresh_token"));
+                post_body += "&scope=" + Http::url_encode(SCOPES);
+
                 auto http = Http::post(TOKEN_URL);
                 http.timeout_connect(5)
                     .timeout_max(5)
-                    .form_add("grant_type", "refresh_token")
-                    .form_add("client_id", CLIENT_ID)
-                    .form_add("client_secret", CLIENT_SECRET)
-                    .form_add("refresh_token", m_cred.at("refresh_token"))
-                    .form_add("scope", SCOPES)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .set_post_body(post_body)
                     .on_complete([this, &res, &on_error, &create_request](std::string body, unsigned http_status) {
                         GUI::OAuthResult r;
                         GUI::OAuthJob::parse_token_response(body, false, r);
