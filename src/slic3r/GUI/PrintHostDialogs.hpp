@@ -27,6 +27,8 @@ class PrintHostSendDialog : public GUI::MsgDialog
 {
 public:
     PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab);
+    PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
+                       const wxArrayString& project_names, const wxArrayString& project_ids);
     virtual ~PrintHostSendDialog() {}
     boost::filesystem::path filename() const;
     PrintHostPostUploadAction post_action() const;
@@ -36,12 +38,14 @@ public:
 
     virtual void EndModal(int ret) override;
     virtual void init();
-    virtual std::map<std::string, std::string> extendedInfo() const { return {}; }
+    virtual std::map<std::string, std::string> extendedInfo() const;
 
 protected:
     wxTextCtrl *txt_filename;
     wxComboBox *combo_groups;
     wxComboBox* combo_storage;
+    // UltiMaker Digital Factory project/folder selection
+    wxComboBox* combo_projects;
     PrintHostPostUploadAction post_upload_action;
     wxString    m_valid_suffix;
     wxString    m_preselected_storage;
@@ -51,6 +55,9 @@ protected:
     boost::filesystem::path m_path;
     PrintHostPostUploadActions m_post_actions;
     wxArrayString m_storage_names;
+    // UltiMaker Digital Factory project/folder data
+    wxArrayString m_project_names;
+    wxArrayString m_project_ids;
 };
 
 
