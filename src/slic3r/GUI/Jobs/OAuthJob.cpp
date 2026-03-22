@@ -114,7 +114,7 @@ void OAuthJob::process(Ctl& ctl)
             post_body += "client_id=" + Http::url_encode(_data.params.client_id);
             post_body += "&client_secret=" + Http::url_encode(_data.params.client_secret);
             post_body += "&redirect_uri=" + Http::url_encode(_data.params.callback_url);
-            post_body += "&grant_type=authorization_code";
+            post_body += "&grant_type=" + Http::url_encode("authorization_code");
             post_body += "&code=" + Http::url_encode(code);
             post_body += "&code_verifier=" + Http::url_encode(_data.params.verification_code);
             post_body += "&scope=" + Http::url_encode(_data.params.scope);
