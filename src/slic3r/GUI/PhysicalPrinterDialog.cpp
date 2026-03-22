@@ -521,7 +521,15 @@ void PhysicalPrinterDialog::update_printhost_buttons()
 {
     std::unique_ptr<PrintHost> host(PrintHost::get_print_host(m_config));
     if (host) {
-        m_printhost_test_btn->Enable(!m_config->opt_string("print_host").empty() && host->can_test());
+        // For UltiMaker, the print_host field is hidden but we still need the test/login button enabled
+        const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
+        bool is_ultimaker = opt && opt->value == htUltiMaker;
+        
+        // Enable test button if:
+        // - Not UltiMaker AND print_host is not empty AND can test, OR
+        // - UltiMaker (always enable since it uses OAuth and print_host is hidden)
+        m_printhost_test_btn->Enable((!is_ultimaker && !m_config->opt_string("print_host").empty()) || is_ultimaker);
+        
         m_printhost_browse_btn->Show(host->has_auto_discovery());
         m_printhost_logout_btn->Show(host->is_logged_in());
         m_printhost_test_btn->SetLabel(host->is_cloud() ? _L("Login/Test") : _L("Test"));
