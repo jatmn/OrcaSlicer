@@ -659,10 +659,15 @@ void ConfigOptionsGroup::on_change_OG(const t_config_option_key& opt_id, const b
 		auto 				itOption  = it->second;
 		const std::string  &opt_key   = itOption.first;
         int                 opt_index = itOption.second;
-		this->change_opt_value(opt_key, value, opt_index == -1 ? 0 : opt_index);
+        // Guard: only write back to m_config if the key actually exists there.
+        // Fake/virtual options (e.g. bbl_use_print_host_webui) are appended to the
+        // optgroup for UI purposes only and must not be written into the preset config.
+        if (m_config->has(opt_key))
+		    this->change_opt_value(opt_key, value, opt_index == -1 ? 0 : opt_index);
 	}
 
 	OptionsGroup::on_change_OG(opt_id, value);
+
 }
 
 void ConfigOptionsGroup::back_to_initial_value(const std::string& opt_key)
@@ -749,6 +754,9 @@ void ConfigOptionsGroup::reload_config()
 		// index in the vector option, zero for scalars
         int 			   opt_index = kvp.second.second;
 		const ConfigOptionDef &option = m_options.at(opt_id).opt;
+        // Skip fake/virtual options that exist only in the UI and not in the actual config.
+        if (!m_config->has(opt_key))
+            continue;
 		this->set_value(opt_id, config_value(opt_key, opt_index, option.gui_flags == "serialized"));
 	}
 }
