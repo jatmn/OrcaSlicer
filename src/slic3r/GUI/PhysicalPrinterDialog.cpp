@@ -377,15 +377,15 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
         Line cafile_hint{ "", "" };
         cafile_hint.full_width = 1;
         wxStaticText* hint_text = nullptr;
-        cafile_hint.widget = [ca_file_hint, &hint_text](wxWindow* parent) {
+        cafile_hint.widget = [ca_file_hint, &hint_text, this](wxWindow* parent) {
             auto txt = new wxStaticText(parent, wxID_ANY, from_u8(ca_file_hint));
             auto sizer = new wxBoxSizer(wxHORIZONTAL);
             sizer->Add(txt);
             hint_text = txt;
+            m_cafile_hint_widget = txt;
             return sizer;
         };
         m_optgroup->append_line(cafile_hint);
-        m_cafile_hint_widget = hint_text;
     }
     else {
         
@@ -393,7 +393,7 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
         line.full_width = 1;
         wxStaticText* hint_text = nullptr;
 
-        line.widget = [ca_file_hint, &hint_text](wxWindow* parent) {
+        line.widget = [ca_file_hint, &hint_text, this](wxWindow* parent) {
             std::string info = _u8L("HTTPS CA File") + ":\n\t" +
                 (boost::format(_u8L("On this system, %s uses HTTPS certificates from the system Certificate Store or Keychain.")) % SLIC3R_APP_NAME).str() +
                 "\n\t" + _u8L("To use a custom CA file, please import your CA file into Certificate Store / Keychain.");
@@ -404,10 +404,10 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
             auto sizer = new wxBoxSizer(wxHORIZONTAL);
             sizer->Add(txt, 1, wxEXPAND|wxALIGN_LEFT);
             hint_text = txt;
+            m_cafile_hint_widget = txt;
             return sizer;
         };
         m_optgroup->append_line(line);
-        m_cafile_hint_widget = hint_text;
     }
 
     for (const std::string& opt_key : std::vector<std::string>{ "printhost_user", "printhost_password" }) {        
@@ -646,12 +646,15 @@ void PhysicalPrinterDialog::update(bool printer_change)
         }
 
         // Show/hide the CA file hint widget based on host type
-        // The hint text at the bottom is a separate line without options, stored in m_cafile_hint_widget
-        // Get the sizer that contains this widget and hide its items
+        // The hint text at the bottom is a separate line added with full_width=1
+        // We need to find and show/hide this specific line's sizer
         if (m_cafile_hint_widget) {
-            wxSizer* containing_sizer = m_cafile_hint_widget->GetContainingSizer();
-            if (containing_sizer) {
-                containing_sizer->ShowItems(opt->value != htUltiMaker);
+            bool show_hint = (opt->value != htUltiMaker);
+            // Get the sizer that contains the hint (added as line.widget at activation time)
+            wxSizer* hint_sizer = m_cafile_hint_widget->GetContainingSizer();
+            if (hint_sizer) {
+                hint_sizer->ShowItems(show_hint);
+                m_optgroup->sizer->Layout();
             }
         }
 

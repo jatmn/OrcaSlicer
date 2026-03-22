@@ -40,6 +40,7 @@ class PhysicalPrinterDialog : public DPIDialog
     wxStaticText*       m_valid_label                       {nullptr};
     wxTextCtrl*         m_input_ctrl                        {nullptr};
     Button*             btnOK                               {nullptr};
+    wxStaticText*      m_cafile_hint_widget                {nullptr};
 
     void build_printhost_settings(ConfigOptionsGroup* optgroup);
     void OnOK(wxEvent& event);
