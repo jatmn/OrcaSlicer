@@ -300,9 +300,21 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
 
     const auto filename = upload_data.upload_path.filename().string();
 
+    // Check if a project folder is specified in extended_info
+    std::string project_id;
+    auto it = upload_data.extended_info.find("project_id");
+    if (it != upload_data.extended_info.end()) {
+        project_id = it->second;
+    }
+
     return do_api_call(
-        [&upload_data, &filename, &prorgess_fn](bool is_retry) {
-            auto http = Http::post(LIBRARY_API_BASE + "/files");
+        [&upload_data, &filename, &prorgess_fn, &project_id](bool is_retry) {
+            std::string url = LIBRARY_API_BASE + "/files";
+            // If project_id is specified, upload to that project
+            if (!project_id.empty()) {
+                url = LIBRARY_API_BASE + "/projects/" + project_id + "/files";
+            }
+            auto http = Http::post(url);
             http.form_add("name", filename)
                 .form_add_file("file", upload_data.source_path.string(), filename)
                 .on_progress([&prorgess_fn](Http::Progress progress, bool& cancel) { prorgess_fn(std::move(progress), cancel); });
@@ -318,6 +330,125 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
             error_fn(format_error(body, error, status));
             return false;
         });
+}
+
+bool UltiMaker::get_projects(std::vector<ProjectInfo>& projects) const
+{
+    if (m_cred.find("access_token") == m_cred.end()) {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: No access token found for get_projects";
+        return false;
+    }
+
+    bool result = false;
+    projects.clear();
+
+    return do_api_call(
+        [](bool is_retry) {
+            auto http = Http::get(LIBRARY_API_BASE + "/projects?shared=false&limit=100");
+            http.header("Accept", "application/json");
+            return http;
+        },
+        [&result, &projects](std::string body, unsigned http_status) {
+            try {
+                auto j = nlohmann::json::parse(body);
+                if (j.contains("data") && j["data"].is_array()) {
+                    for (const auto& proj : j["data"]) {
+                        ProjectInfo info;
+                        if (proj.contains("id")) {
+                            info.id = proj["id"];
+                        }
+                        if (proj.contains("display_name")) {
+                            info.display_name = proj["display_name"];
+                        }
+                        if (proj.contains("owner")) {
+                            if (proj["owner"].is_object() && proj["owner"].contains("username")) {
+                                info.owner = proj["owner"]["username"];
+                            }
+                        }
+                        if (!info.id.empty() && !info.display_name.empty()) {
+                            projects.push_back(info);
+                        }
+                    }
+                    result = true;
+                    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Successfully fetched " << projects.size() << " projects";
+                } else {
+                    BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Projects response missing 'data' array";
+                }
+            } catch (const std::exception& e) {
+                BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse projects response: " << e.what();
+            }
+            return result;
+        },
+        [&result](std::string body, std::string error, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << boost::format("UltiMaker: Error getting projects: %1%, HTTP %2%") % error % http_status;
+            result = false;
+            return false;
+        });
+}
+
+bool UltiMaker::get_projects(wxArrayString& project_names, wxArrayString& project_ids) const
+{
+    std::vector<ProjectInfo> projects;
+    bool result = get_projects(projects);
+    if (result) {
+        for (const auto& proj : projects) {
+            project_names.Add(wxString::FromUTF8(proj.display_name.c_str()));
+            project_ids.Add(wxString::FromUTF8(proj.id.c_str()));
+        }
+    }
+    return result;
+}
+
+bool UltiMaker::create_project(const std::string& name, ProjectInfo& project) const
+{
+    if (m_cred.find("access_token") == m_cred.end()) {
+        return false;
+    }
+
+    bool result = false;
+
+    const auto create_request = [this, &name](const std::string& access_token) {
+        auto http = Http::put(LIBRARY_API_BASE + "/projects");
+        http.header("Accept", "application/json");
+        http.header("Authorization", "Bearer " + access_token);
+        http.header("Content-Type", "application/json");
+        http.header("User-Agent", "UltiMaker OrcaSlicer Plugin");
+        
+        nlohmann::json body;
+        body["display_name"] = name;
+        http.set_post_body(body.dump());
+        return http;
+    };
+
+    create_request(m_cred.at("access_token"))
+        .on_complete([&result, &project](std::string body, unsigned http_status) {
+            try {
+                auto j = nlohmann::json::parse(body);
+                if (j.contains("data")) {
+                    const auto& proj = j["data"];
+                    if (proj.contains("id")) {
+                        project.id = proj["id"];
+                    }
+                    if (proj.contains("display_name")) {
+                        project.display_name = proj["display_name"];
+                    }
+                    if (proj.contains("owner")) {
+                        if (proj["owner"].is_object() && proj["owner"].contains("username")) {
+                            project.owner = proj["owner"]["username"];
+                        }
+                    }
+                    result = true;
+                }
+            } catch (const std::exception& e) {
+                BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse create project response: " << e.what();
+            }
+        })
+        .on_error([](std::string body, std::string error, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << boost::format("UltiMaker: Error creating project: %1%, HTTP %2%") % error % http_status;
+        })
+        .perform_sync();
+
+    return result;
 }
 
 } // namespace Slic3r
