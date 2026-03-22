@@ -1712,6 +1712,18 @@ bool MainFrame::can_send_gcode() const
     {
         auto cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
 
+        // Check if this is a cloud host type (UltiMaker, SimplyPrint, etc.)
+        // Cloud hosts use OAuth and don't require a print_host URL
+        const auto *host_type_opt = cfg.option<ConfigOptionEnum<PrintHostType>>("host_type");
+        bool is_cloud_host = host_type_opt && (host_type_opt->value == PrintHostType::htUltiMaker || 
+                                                host_type_opt->value == PrintHostType::htSimplyPrint);
+
+        // For cloud hosts, allow sending gcode even if print_host is empty
+        // (they use OAuth authentication instead of API keys)
+        if (is_cloud_host) {
+            return true;
+        }
+
         const auto *print_host_opt = cfg.option<ConfigOptionString>("print_host");
         if (! print_host_opt) return false;
         else return !print_host_opt->value.empty();
