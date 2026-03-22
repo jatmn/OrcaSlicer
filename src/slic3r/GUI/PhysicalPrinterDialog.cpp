@@ -79,6 +79,8 @@ PhysicalPrinterDialog::PhysicalPrinterDialog(wxWindow* parent) :
     m_input_ctrl->SetBackgroundColour(wxColour(255, 255, 255));
     m_input_ctrl->Bind(wxEVT_TEXT, [this](wxCommandEvent &) { update(); });
 
+    m_cafile_hint_widget = nullptr;
+
 
     input_sizer_v->Add(m_input_ctrl, 0, wxALIGN_CENTER | wxLEFT | wxRIGHT, 12);
     input_sizer_h->Add(input_sizer_v, 0, wxALIGN_CENTER, 0);
@@ -374,20 +376,24 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
 
         Line cafile_hint{ "", "" };
         cafile_hint.full_width = 1;
-        cafile_hint.widget = [ca_file_hint](wxWindow* parent) {
+        wxStaticText* hint_text = nullptr;
+        cafile_hint.widget = [ca_file_hint, &hint_text](wxWindow* parent) {
             auto txt = new wxStaticText(parent, wxID_ANY, from_u8(ca_file_hint));
             auto sizer = new wxBoxSizer(wxHORIZONTAL);
             sizer->Add(txt);
+            hint_text = txt;
             return sizer;
         };
         m_optgroup->append_line(cafile_hint);
+        m_cafile_hint_widget = hint_text;
     }
     else {
         
         Line line{ "", "" };
         line.full_width = 1;
+        wxStaticText* hint_text = nullptr;
 
-        line.widget = [ca_file_hint](wxWindow* parent) {
+        line.widget = [ca_file_hint, &hint_text](wxWindow* parent) {
             std::string info = _u8L("HTTPS CA File") + ":\n\t" +
                 (boost::format(_u8L("On this system, %s uses HTTPS certificates from the system Certificate Store or Keychain.")) % SLIC3R_APP_NAME).str() +
                 "\n\t" + _u8L("To use a custom CA file, please import your CA file into Certificate Store / Keychain.");
@@ -397,9 +403,11 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
             txt->SetFont(wxGetApp().normal_font());
             auto sizer = new wxBoxSizer(wxHORIZONTAL);
             sizer->Add(txt, 1, wxEXPAND|wxALIGN_LEFT);
+            hint_text = txt;
             return sizer;
         };
         m_optgroup->append_line(line);
+        m_cafile_hint_widget = hint_text;
     }
 
     for (const std::string& opt_key : std::vector<std::string>{ "printhost_user", "printhost_password" }) {        
@@ -624,12 +632,29 @@ void PhysicalPrinterDialog::update(bool printer_change)
                 const auto current_host = temp->GetValue();
                 if (current_host == L"https://connect.prusa3d.com" ||
                     current_host == L"https://app.obico.io" ||
-                    current_host == "https://simplyprint.io" || current_host == "https://simplyprint.io/panel") {
+                    current_host == "https://simplyprint.io" || current_host == "https://simplyprint.io/panel" ||
+                    current_host == "https://digitalfactory.ultimaker.com" || current_host == "https://digitalfactory.ultimaker.com/app") {
                     temp->SetValue(wxString());
                     m_config->opt_string("print_host") = "";
                 }
             }
         }
+
+        // Show printer_agent for non-UltiMaker host types (it was added in build_printhost_settings but needs explicit showing)
+        if (opt->value != htUltiMaker) {
+            m_optgroup->show_field("printer_agent");
+        }
+
+        // Show/hide the CA file hint widget based on host type
+        // The hint text at the bottom is a separate line without options, stored in m_cafile_hint_widget
+        // Get the sizer that contains this widget and hide its items
+        if (m_cafile_hint_widget) {
+            wxSizer* containing_sizer = m_cafile_hint_widget->GetContainingSizer();
+            if (containing_sizer) {
+                containing_sizer->ShowItems(opt->value != htUltiMaker);
+            }
+        }
+
         if (opt->value == htPrusaLink) { // PrusaConnect does NOT allow http digest
             m_optgroup->show_field("printhost_authorization_type");
             AuthorizationType auth_type = m_config->option<ConfigOptionEnum<AuthorizationType>>("printhost_authorization_type")->value;
@@ -694,6 +719,52 @@ void PhysicalPrinterDialog::update(bool printer_change)
                 m_optgroup->disable_field("printhost_ssl_ignore_revoke");
                 if (m_printhost_cafile_browse_btn)
                     m_printhost_cafile_browse_btn->Disable();
+            } else if (opt->value == htUltiMaker) {
+                // UltiMaker Digital Factory uses OAuth authentication
+                // Hide fields that are not needed for UltiMaker Cloud
+                m_optgroup->hide_field("printer_agent");
+                m_optgroup->hide_field("print_host");
+                m_optgroup->hide_field("print_host_webui");
+                m_optgroup->hide_field("bbl_use_print_host_webui");
+                m_optgroup->hide_field("printhost_authorization_type");
+                m_optgroup->hide_field("printhost_apikey");
+                m_optgroup->hide_field("printhost_port");
+                m_optgroup->hide_field("printhost_cafile");
+                m_optgroup->hide_field("printhost_ssl_ignore_revoke");
+                m_optgroup->hide_field("printhost_user");
+                m_optgroup->hide_field("printhost_password");
+
+                // For UltiMaker, we still need the Login/Test and Logout buttons visible
+                // Button IS a window, so use it directly
+                if (m_printhost_browse_btn) {
+                    m_printhost_browse_btn->Hide();
+                }
+                if (m_printhost_test_btn) {
+                    m_printhost_test_btn->Show();
+                    m_printhost_test_btn->Enable();
+                }
+                if (m_printhost_logout_btn) {
+                    m_printhost_logout_btn->Show();
+                }
+                if (m_printhost_cafile_browse_btn)
+                    m_printhost_cafile_browse_btn->Disable();
+            } else {
+                // For all other host types (OctoPrint, Duet, Repetier, etc.), ensure buttons are enabled
+                if (m_printhost_cafile_browse_btn) {
+                    m_printhost_cafile_browse_btn->Show();
+                    m_printhost_cafile_browse_btn->Enable();
+                }
+                if (m_printhost_browse_btn) {
+                    m_printhost_browse_btn->Show();
+                    m_printhost_browse_btn->Enable();
+                }
+                if (m_printhost_test_btn) {
+                    m_printhost_test_btn->Show();
+                    m_printhost_test_btn->Enable();
+                }
+                if (m_printhost_logout_btn) {
+                    m_printhost_logout_btn->Show();
+                }
             }
         }
         
