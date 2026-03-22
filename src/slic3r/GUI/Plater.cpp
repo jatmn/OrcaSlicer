@@ -15778,6 +15778,9 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
             // UltiMaker Digital Factory: fetch project list and show folder selection
             wxArrayString project_names;
             wxArrayString project_ids;
+            // Always add a "No project (root)" option first so the combo is always visible
+            project_names.Add(_L("No project (upload to root)"));
+            project_ids.Add(wxString());
             {
                 wxBusyCursor wait;
                 upload_job.printhost->get_projects(project_names, project_ids);
