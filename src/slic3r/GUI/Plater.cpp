@@ -15774,12 +15774,7 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         auto        config        = get_app_config();
 
         std::unique_ptr<PrintHostSendDialog> pDlg;
-        const bool is_ultimaker = std::string(upload_job.printhost->get_name()) == "UltiMaker";
-        if (host_type == htElegooLink && !is_ultimaker) {
-            pDlg = std::make_unique<ElegooPrintHostSendDialog>(default_output_file, upload_job.printhost->get_post_upload_actions(), groups,
-                                                               storage_paths, storage_names,
-                                                               config->get_bool("open_device_tab_post_upload"));
-        } else if (is_ultimaker) {
+        if (host_type == htUltiMaker) {
             // UltiMaker Digital Factory: fetch project list and show folder selection
             wxArrayString project_names;
             wxArrayString project_ids;
