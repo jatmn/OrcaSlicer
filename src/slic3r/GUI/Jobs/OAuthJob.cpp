@@ -65,6 +65,35 @@ void OAuthJob::process(Ctl& ctl)
     // Setup auth server to receive OAuth code from callback url
     local_authorization_server.set_request_handler([this, queue](const std::string& url) -> std::shared_ptr<HttpServer::Response> {
         BOOST_LOG_TRIVIAL(warning) << "===== UltiMaker OAuth: Raw callback URL received: " << url;
+
+        // Handle /success endpoint - user successfully authenticated
+        if (boost::contains(url, "/success")) {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker OAuth: Authentication successful, showing success page";
+            const std::string html =
+                "<html><head><meta charset=\"utf-8\">"
+                "<style>body{font-family:Arial,sans-serif;background:#f7f7f7;color:#222;margin:32px;}"
+                "</style></head><body><div class=\"container\">"
+                "<h2>Authentication Successful</h2>"
+                "<p>You can return to OrcaSlicer. This window will close automatically.</p>"
+                "<script>setTimeout(function(){try{window.close();}catch(e){}},1500);</script>"
+                "</div></body></html>";
+            return std::make_shared<HttpServer::ResponseHtml>(html);
+        }
+
+        // Handle /fail endpoint - authentication failed
+        if (boost::contains(url, "/fail")) {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker OAuth: Authentication failed, showing failure page";
+            const std::string html =
+                "<html><head><meta charset=\"utf-8\">"
+                "<style>body{font-family:Arial,sans-serif;background:#f7f7f7;color:#222;margin:32px;}"
+                "</style></head><body><div class=\"container\">"
+                "<h2>Authentication Failed</h2>"
+                "<p>Something went wrong. Please return to OrcaSlicer and try again.</p>"
+                "<script>setTimeout(function(){try{window.close();}catch(e){}},3000);</script>"
+                "</div></body></html>";
+            return std::make_shared<HttpServer::ResponseHtml>(html);
+        }
+
         if (boost::contains(url, "/callback")) {
             BOOST_LOG_TRIVIAL(warning) << "===== UltiMaker OAuth: Callback path detected";
             const auto code = url_get_param(url, "code");

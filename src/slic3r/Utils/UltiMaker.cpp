@@ -130,6 +130,11 @@ GUI::OAuthParams UltiMaker::get_oauth_params() const
     BOOST_LOG_TRIVIAL(warning) << "===== UltiMaker OAuth: Dynamic callback URL: " << callback_url;
     BOOST_LOG_TRIVIAL(warning) << "===== UltiMaker OAuth: Generated login URL (truncated): " << login_url.substr(0, 150) << "...";
 
+    // Use a separate success URL to avoid the browser re-requesting the callback URL
+    // which would cause the code to be missing and trigger an error
+    const std::string success_url = "http://localhost:" + std::to_string(DEFAULT_CALLBACK_PORT) + "/success";
+    const std::string fail_url = "http://localhost:" + std::to_string(DEFAULT_CALLBACK_PORT) + "/fail";
+
     return GUI::OAuthParams{
         login_url,
         CLIENT_ID,
@@ -138,8 +143,8 @@ GUI::OAuthParams UltiMaker::get_oauth_params() const
         callback_url,
         SCOPES,
         RESPONSE_TYPE,
-        callback_url,
-        callback_url,
+        success_url,
+        fail_url,
         TOKEN_URL,
         verification_code,
         state,
@@ -149,6 +154,7 @@ GUI::OAuthParams UltiMaker::get_oauth_params() const
 void UltiMaker::load_oauth_credential()
 {
     m_cred.clear();
+    BOOST_LOG_TRIVIAL(error) << "UltiMaker: Loading OAuth credentials from " << m_oauth_cred_file;
     if (boost::filesystem::exists(m_oauth_cred_file)) {
         nlohmann::json j;
         try {
@@ -167,6 +173,7 @@ void UltiMaker::load_oauth_credential()
 
 void UltiMaker::save_oauth_credential(const GUI::OAuthResult& cred) const
 {
+    BOOST_LOG_TRIVIAL(error) << "UltiMaker: Saving OAuth credentials to " << m_oauth_cred_file;
     nlohmann::json j;
     j["access_token"] = cred.access_token;
     j["refresh_token"] = cred.refresh_token;
@@ -175,6 +182,7 @@ void UltiMaker::save_oauth_credential(const GUI::OAuthResult& cred) const
     c.open(m_oauth_cred_file, std::ios::out | std::ios::trunc);
     c << std::setw(4) << j << std::endl;
     c.close();
+    BOOST_LOG_TRIVIAL(error) << "UltiMaker: OAuth credentials saved successfully";
 }
 
 wxString UltiMaker::get_test_ok_msg() const
@@ -334,11 +342,21 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
 
 bool UltiMaker::get_projects(std::vector<ProjectInfo>& projects) const
 {
+    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: get_projects() called - checking for access token";
+    
     if (m_cred.find("access_token") == m_cred.end()) {
-        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: No access token found for get_projects";
+        BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: No access token found in m_cred for get_projects";
+        // List all keys in m_cred for debugging
+        std::string cred_keys;
+        for (const auto& kv : m_cred) {
+            cred_keys += kv.first + ", ";
+        }
+        BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Available cred keys: " << cred_keys;
         return false;
     }
 
+    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Access token found, making API call to get projects";
+    
     bool result = false;
     projects.clear();
 
@@ -346,41 +364,62 @@ bool UltiMaker::get_projects(std::vector<ProjectInfo>& projects) const
         [](bool is_retry) {
             auto http = Http::get(LIBRARY_API_BASE + "/projects?shared=false&limit=100");
             http.header("Accept", "application/json");
+            BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: GET " << LIBRARY_API_BASE << "/projects?shared=false&limit=100";
             return http;
         },
         [&result, &projects](std::string body, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: get_projects response HTTP " << http_status << ", body length: " << body.size();
+            
+            // Log response body for debugging
+            std::string body_log = body.size() > 1000 ? body.substr(0, 1000) : body;
+            BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Response body: " << body_log;
+            
             try {
                 auto j = nlohmann::json::parse(body);
+                
                 if (j.contains("data") && j["data"].is_array()) {
+                    int count = 0;
                     for (const auto& proj : j["data"]) {
                         ProjectInfo info;
-                        if (proj.contains("id")) {
-                            info.id = proj["id"];
+                        // Use library_project_id as the id - the API returns this field, not "id"
+                        if (proj.contains("library_project_id")) {
+                            info.id = proj["library_project_id"];
                         }
                         if (proj.contains("display_name")) {
                             info.display_name = proj["display_name"];
                         }
-                        if (proj.contains("owner")) {
+                        // Owner can be in "username" field directly, or in "owner" object
+                        if (proj.contains("username")) {
+                            info.owner = proj["username"];
+                        } else if (proj.contains("owner")) {
                             if (proj["owner"].is_object() && proj["owner"].contains("username")) {
                                 info.owner = proj["owner"]["username"];
                             }
                         }
+                        BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Project #" << count << " - id: " << info.id << ", name: " << info.display_name << ", owner: " << info.owner;
                         if (!info.id.empty() && !info.display_name.empty()) {
                             projects.push_back(info);
+                            count++;
                         }
                     }
                     result = true;
-                    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Successfully fetched " << projects.size() << " projects";
+                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Total projects added: " << projects.size() << " out of " << j["data"].size() << " items in response";
                 } else {
-                    BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Projects response missing 'data' array";
+                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Projects response missing 'data' array or not an array";
+                    // Log what keys ARE present
+                    std::string keys;
+                    for (auto& el : j.items()) {
+                        keys += el.key() + ", ";
+                    }
+                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Available keys in response: " << keys;
                 }
             } catch (const std::exception& e) {
-                BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse projects response: " << e.what();
+                BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Failed to parse projects response: " << e.what();
             }
             return result;
         },
         [&result](std::string body, std::string error, unsigned http_status) {
-            BOOST_LOG_TRIVIAL(error) << boost::format("UltiMaker: Error getting projects: %1%, HTTP %2%") % error % http_status;
+            BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Error getting projects: " << error << ", HTTP " << http_status << ", body: " << body;
             result = false;
             return false;
         });

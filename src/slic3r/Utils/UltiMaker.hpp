@@ -42,6 +42,16 @@ public:
     bool                       upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, ErrorFn error_fn, InfoFn info_fn) const override;
     bool                       is_logged_in() const override { return !m_cred.empty(); }
     void                       log_out() const override;
+
+    // Digital Factory project/folder methods
+    struct ProjectInfo {
+        std::string id;
+        std::string display_name;
+        std::string owner;
+    };
+    bool get_projects(std::vector<ProjectInfo>& projects) const;
+    bool get_projects(wxArrayString& project_names, wxArrayString& project_ids) const override;
+    bool create_project(const std::string& name, ProjectInfo& project) const;
 };
 
 } // namespace Slic3r

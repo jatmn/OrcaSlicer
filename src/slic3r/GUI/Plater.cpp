@@ -15784,7 +15784,7 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
             }
             if (project_names.IsEmpty()) {
                 // Could not load projects — user is not logged in or has no projects
-                show_error(q, _L("Could not load UltiMaker Digital Factory projects.\n\nPlease make sure you are logged in via the Connect settings and that at least one project exists in your account."));
+                show_error(this, _L("Could not load UltiMaker Digital Factory projects.\n\nPlease make sure you are logged in via the Connect settings and that at least one project exists in your account."));
                 return;
             }
             pDlg = std::make_unique<PrintHostSendDialog>(default_output_file, upload_job.printhost->get_post_upload_actions(), groups,

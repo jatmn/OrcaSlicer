@@ -39,17 +39,26 @@ static const char *CONFIG_KEY_GROUP = "printhost_group";
 static const char* CONFIG_KEY_STORAGE = "printhost_storage";
 
 PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUploadActions post_actions, const wxArrayString &groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab)
+    : PrintHostSendDialog(path, post_actions, groups, storage_paths, storage_names, switch_to_device_tab, wxArrayString(), wxArrayString())
+{
+}
+
+PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUploadActions post_actions, const wxArrayString &groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
+                                       const wxArrayString& project_names, const wxArrayString& project_ids)
     : MsgDialog(static_cast<wxWindow*>(wxGetApp().mainframe), _L("Send G-code to printer host"), _L("Upload to Printer Host with the following filename:"), 0) // Set style = 0 to avoid default creation of the "OK" button. 
                                                                                                                                                                // All buttons will be added later in this constructor 
     , txt_filename(new wxTextCtrl(this, wxID_ANY))
     , combo_groups(!groups.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, groups, wxCB_READONLY) : nullptr)
     , combo_storage(storage_names.GetCount() > 1 ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, storage_names, wxCB_READONLY) : nullptr)
+    , combo_projects(!project_names.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, project_names, wxCB_READONLY) : nullptr)
     , post_upload_action(PrintHostPostUploadAction::None)
     , m_paths(storage_paths)
     , m_switch_to_device_tab(switch_to_device_tab)
     , m_path(path)
     , m_post_actions(post_actions)
     , m_storage_names(storage_names)
+    , m_project_names(project_names)
+    , m_project_ids(project_ids)
 {
 #ifdef __APPLE__
     txt_filename->OSXDisableAllSmartSubstitutions();
@@ -95,6 +104,17 @@ void PrintHostSendDialog::init()
         auto* label_group = new wxStaticText(this, wxID_ANY, _L("Upload to storage") + ": " + storage_names.front());
         content_sizer->Add(label_group);
         m_preselected_storage = storage_paths.front();
+    }
+
+    // UltiMaker Digital Factory project/folder selection
+    if (combo_projects != nullptr) {
+        auto* label_project = new wxStaticText(this, wxID_ANY, _L("Project Folder"));
+        content_sizer->Add(label_project);
+        content_sizer->Add(combo_projects, 0, wxBOTTOM, 2 * VERT_SPACING);
+        // Select first project by default if available
+        if (m_project_names.GetCount() > 0) {
+            combo_projects->SetSelection(0);
+        }
     }
 
 
@@ -255,6 +275,21 @@ void PrintHostSendDialog::EndModal(int ret)
     }
 
     MsgDialog::EndModal(ret);
+}
+
+std::map<std::string, std::string> PrintHostSendDialog::extendedInfo() const
+{
+    std::map<std::string, std::string> info;
+    
+    // Return the selected project ID for UltiMaker Digital Factory
+    if (combo_projects != nullptr && combo_projects->GetSelection() >= 0) {
+        int sel = combo_projects->GetSelection();
+        if (sel >= 0 && sel < (int)m_project_ids.GetCount()) {
+            info["project_id"] = into_u8(m_project_ids[sel]);
+        }
+    }
+    
+    return info;
 }
 
 wxDEFINE_EVENT(EVT_PRINTHOST_PROGRESS, PrintHostQueueDialog::Event);

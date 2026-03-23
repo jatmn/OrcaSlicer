@@ -71,6 +71,9 @@ public:
     // Support for PrusaLink uploading to different storage. Not supported by other print hosts.
     // Returns false if not supported or fail.
     virtual bool get_storage(wxArrayString& /*storage_path*/, wxArrayString& /*storage_name*/) const { return false; }
+    // Support for UltiMaker Digital Factory project/folder selection.
+    // Returns false if not supported or fail.
+    virtual bool get_projects(wxArrayString& /*project_names*/, wxArrayString& /*project_ids*/) const { return false; }
 
     static PrintHost* get_print_host(DynamicPrintConfig *config);
 
