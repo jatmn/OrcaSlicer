@@ -15800,6 +15800,18 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
             return;
         }
 
+        // UltiMaker: Handle new project creation
+        if (host_type == htUltiMaker) {
+            std::string new_project_name = pDlg->get_pending_new_project_name();
+            if (!new_project_name.empty()) {
+                std::string project_id;
+                std::string project_name;
+                if (upload_job.printhost->create_project(new_project_name, project_id, project_name)) {
+                    pDlg->add_project(project_name, project_id);
+                }
+            }
+        }
+
         config->set_bool("open_device_tab_post_upload", pDlg->switch_to_device_tab());
         // PrintHostUpload upload_data;
         upload_job.switch_to_device_tab    = pDlg->switch_to_device_tab();

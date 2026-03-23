@@ -534,7 +534,10 @@ bool UltiMaker::get_projects(wxArrayString& project_names, wxArrayString& projec
 
 bool UltiMaker::create_project(const std::string& name, std::string& project_id, std::string& project_name) const
 {
+    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project() called with name: " << name;
+    
     if (m_cred.find("access_token") == m_cred.end()) {
+        BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project() - no access token";
         return false;
     }
 
