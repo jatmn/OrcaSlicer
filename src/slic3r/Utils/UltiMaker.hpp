@@ -51,7 +51,7 @@ public:
     };
     bool get_projects(std::vector<ProjectInfo>& projects) const;
     bool get_projects(wxArrayString& project_names, wxArrayString& project_ids) const override;
-    bool create_project(const std::string& name, ProjectInfo& project) const;
+    bool create_project(const std::string& name, std::string& project_id, std::string& project_name) const override;
 };
 
 } // namespace Slic3r

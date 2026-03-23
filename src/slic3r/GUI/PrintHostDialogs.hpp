@@ -46,6 +46,7 @@ protected:
     wxComboBox* combo_storage;
     // UltiMaker Digital Factory project/folder selection
     wxComboBox* combo_projects;
+    wxButton* btn_new_project;
     PrintHostPostUploadAction post_upload_action;
     wxString    m_valid_suffix;
     wxString    m_preselected_storage;
@@ -58,6 +59,13 @@ protected:
     // UltiMaker Digital Factory project/folder data
     wxArrayString m_project_names;
     wxArrayString m_project_ids;
+    // Pending new project name (used when user clicks "New Project" button)
+    std::string m_pending_new_project_name;
+
+public:
+    void add_project(const wxString& name, const wxString& id);
+    std::string get_pending_new_project_name() const { return m_pending_new_project_name; }
+    void clear_pending_new_project_name() { m_pending_new_project_name.clear(); }
 };
 
 

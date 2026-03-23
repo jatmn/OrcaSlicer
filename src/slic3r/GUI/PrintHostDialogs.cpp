@@ -51,6 +51,7 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     , combo_groups(!groups.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, groups, wxCB_READONLY) : nullptr)
     , combo_storage(storage_names.GetCount() > 1 ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, storage_names, wxCB_READONLY) : nullptr)
     , combo_projects(!project_names.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, project_names, wxCB_READONLY) : nullptr)
+    , btn_new_project(nullptr)
     , post_upload_action(PrintHostPostUploadAction::None)
     , m_paths(storage_paths)
     , m_switch_to_device_tab(switch_to_device_tab)
@@ -110,7 +111,34 @@ void PrintHostSendDialog::init()
     if (combo_projects != nullptr) {
         auto* label_project = new wxStaticText(this, wxID_ANY, _L("Project Folder"));
         content_sizer->Add(label_project);
-        content_sizer->Add(combo_projects, 0, wxBOTTOM, 2 * VERT_SPACING);
+        
+        // Create horizontal sizer for combo box and "New Project" button
+        auto* project_sizer = new wxBoxSizer(wxHORIZONTAL);
+        project_sizer->Add(combo_projects, 1, wxEXPAND | wxRIGHT, VERT_SPACING);
+        
+        // Add "New Project" button
+        btn_new_project = new wxButton(this, wxID_ANY, _L("New Project"));
+        btn_new_project->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+            // Show text input dialog for new project name
+            wxTextEntryDialog dlg(this, _L("Enter a name for the new project folder:"), _L("New Project"), wxEmptyString);
+            if (dlg.ShowModal() == wxID_OK) {
+                wxString project_name = dlg.GetValue();
+                if (!project_name.IsEmpty()) {
+                    // Try to create the project via the PrintHost
+                    // Note: We need to access the printhost from here - this will be done in Plater.cpp
+                    // For now, emit an event or store the pending project name
+                    // The actual creation will be handled by the caller (Plater)
+                    m_pending_new_project_name = into_u8(project_name);
+                    // Notify parent to handle project creation
+                    wxCommandEvent evt(wxEVT_COMMAND_BUTTON_CLICKED, btn_new_project->GetId());
+                    evt.SetString(project_name);
+                    GetEventHandler()->ProcessEvent(evt);
+                }
+            }
+        });
+        project_sizer->Add(btn_new_project, 0);
+        
+        content_sizer->Add(project_sizer, 0, wxBOTTOM, 2 * VERT_SPACING);
         // Select first project by default if available
         if (m_project_names.GetCount() > 0) {
             combo_projects->SetSelection(0);
@@ -290,6 +318,16 @@ std::map<std::string, std::string> PrintHostSendDialog::extendedInfo() const
     }
     
     return info;
+}
+
+void PrintHostSendDialog::add_project(const wxString& name, const wxString& id)
+{
+    if (combo_projects != nullptr) {
+        m_project_names.Add(name);
+        m_project_ids.Add(id);
+        combo_projects->Append(name);
+        combo_projects->SetSelection(combo_projects->GetCount() - 1);
+    }
 }
 
 wxDEFINE_EVENT(EVT_PRINTHOST_PROGRESS, PrintHostQueueDialog::Event);

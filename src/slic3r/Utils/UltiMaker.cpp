@@ -438,7 +438,7 @@ bool UltiMaker::get_projects(wxArrayString& project_names, wxArrayString& projec
     return result;
 }
 
-bool UltiMaker::create_project(const std::string& name, ProjectInfo& project) const
+bool UltiMaker::create_project(const std::string& name, std::string& project_id, std::string& project_name) const
 {
     if (m_cred.find("access_token") == m_cred.end()) {
         return false;
@@ -460,21 +460,19 @@ bool UltiMaker::create_project(const std::string& name, ProjectInfo& project) co
     };
 
     create_request(m_cred.at("access_token"))
-        .on_complete([&result, &project](std::string body, unsigned http_status) {
+        .on_complete([&result, &project_id, &project_name](std::string body, unsigned http_status) {
             try {
                 auto j = nlohmann::json::parse(body);
                 if (j.contains("data")) {
                     const auto& proj = j["data"];
-                    if (proj.contains("id")) {
-                        project.id = proj["id"];
+                    // Use library_project_id as the id
+                    if (proj.contains("library_project_id")) {
+                        project_id = proj["library_project_id"];
+                    } else if (proj.contains("id")) {
+                        project_id = proj["id"];
                     }
                     if (proj.contains("display_name")) {
-                        project.display_name = proj["display_name"];
-                    }
-                    if (proj.contains("owner")) {
-                        if (proj["owner"].is_object() && proj["owner"].contains("username")) {
-                            project.owner = proj["owner"]["username"];
-                        }
+                        project_name = proj["display_name"];
                     }
                     result = true;
                 }

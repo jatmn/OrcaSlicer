@@ -74,6 +74,9 @@ public:
     // Support for UltiMaker Digital Factory project/folder selection.
     // Returns false if not supported or fail.
     virtual bool get_projects(wxArrayString& /*project_names*/, wxArrayString& /*project_ids*/) const { return false; }
+    // Support for UltiMaker Digital Factory project creation.
+    // Returns false if not supported or fail. Fills project_id and project_name on success.
+    virtual bool create_project(const std::string& /*name*/, std::string& /*project_id*/, std::string& /*project_name*/) const { return false; }
 
     static PrintHost* get_print_host(DynamicPrintConfig *config);
 
