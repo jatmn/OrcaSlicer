@@ -3,6 +3,7 @@
 
 #include "PrintHost.hpp"
 #include "slic3r/GUI/Jobs/OAuthJob.hpp"
+#include <chrono>
 
 namespace Slic3r {
 
@@ -14,9 +15,17 @@ class UltiMaker : public PrintHost
     std::string m_host{"https://api.ultimaker.com"};
     std::string m_client_id{"um----------------------------ultimaker_cura"};
     std::string m_oauth_cred_file;
-    std::map<std::string, std::string> m_cred;
+    mutable std::map<std::string, std::string> m_cred;
+    
+    // Token expiration tracking
+    mutable std::chrono::system_clock::time_point m_token_expires_at{};
+    
+    // Time before expiry to trigger proactive refresh (15 minutes)
+    static constexpr std::chrono::seconds TOKEN_REFRESH_SKEW{900};
 
     void load_oauth_credential();
+    bool refresh_token() const;
+    bool ensure_token_fresh(const std::string& reason) const;
 
     bool do_api_call(std::function<Http(bool /*is_retry*/)>                                                           build_request,
                      std::function<bool(std::string /* body */, unsigned /* http_status */)>                          on_complete,

@@ -43,6 +43,11 @@ void OAuthJob::parse_token_response(const std::string& body, bool error, OAuthRe
         } else if (j.contains("access_token")) {
             j.at("access_token").get_to(result.access_token);
             j.at("refresh_token").get_to(result.refresh_token);
+            // Capture token expiration time if provided
+            if (j.contains("expires_in")) {
+                j.at("expires_in").get_to(result.expires_in);
+                BOOST_LOG_TRIVIAL(info) << "UltiMaker OAuth: Token expires in " << result.expires_in << " seconds";
+            }
             result.success = true;
             BOOST_LOG_TRIVIAL(info) << "UltiMaker OAuth: Successfully obtained access token";
         } else {

@@ -154,6 +154,7 @@ GUI::OAuthParams UltiMaker::get_oauth_params() const
 void UltiMaker::load_oauth_credential()
 {
     m_cred.clear();
+    m_token_expires_at = std::chrono::system_clock::time_point{};
     BOOST_LOG_TRIVIAL(error) << "UltiMaker: Loading OAuth credentials from " << m_oauth_cred_file;
     if (boost::filesystem::exists(m_oauth_cred_file)) {
         nlohmann::json j;
@@ -164,6 +165,15 @@ void UltiMaker::load_oauth_credential()
 
             m_cred["access_token"] = j["access_token"];
             m_cred["refresh_token"] = j["refresh_token"];
+            
+            // Load token expiration time if available
+            if (j.contains("expires_at")) {
+                int64_t expires_at_epoch = j["expires_at"];
+                m_token_expires_at = std::chrono::system_clock::from_time_t(expires_at_epoch);
+                auto now = std::chrono::system_clock::now();
+                auto remaining = std::chrono::duration_cast<std::chrono::seconds>(m_token_expires_at - now).count();
+                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Token expires in " << remaining << " seconds";
+            }
         } catch (std::exception& err) {
             BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": parse " << m_oauth_cred_file << " failed, reason = " << err.what();
             m_cred.clear();
@@ -177,12 +187,95 @@ void UltiMaker::save_oauth_credential(const GUI::OAuthResult& cred) const
     nlohmann::json j;
     j["access_token"] = cred.access_token;
     j["refresh_token"] = cred.refresh_token;
+    
+    // Store token expiration time
+    if (cred.expires_in > 0) {
+        auto expires_at = std::chrono::system_clock::now() + std::chrono::seconds(cred.expires_in);
+        j["expires_at"] = std::chrono::system_clock::to_time_t(expires_at);
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker: Storing token expiration: " << cred.expires_in << " seconds";
+    }
 
     boost::nowide::ofstream c;
     c.open(m_oauth_cred_file, std::ios::out | std::ios::trunc);
     c << std::setw(4) << j << std::endl;
     c.close();
     BOOST_LOG_TRIVIAL(error) << "UltiMaker: OAuth credentials saved successfully";
+}
+
+bool UltiMaker::refresh_token() const
+{
+    if (m_cred.find("refresh_token") == m_cred.end()) {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: No refresh token available";
+        return false;
+    }
+
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refreshing access token";
+
+    // Build URL-encoded form body for refresh token request
+    std::string post_body;
+    post_body += "client_id=" + Http::url_encode(CLIENT_ID);
+    post_body += "&client_secret=" + Http::url_encode(CLIENT_SECRET);
+    post_body += "&redirect_uri=" + get_callback_url();
+    post_body += "&grant_type=" + Http::url_encode("refresh_token");
+    post_body += "&refresh_token=" + Http::url_encode(m_cred.at("refresh_token"));
+    post_body += "&scope=" + Http::url_encode(SCOPES);
+
+    bool success = false;
+    
+    auto http = Http::post(TOKEN_URL);
+    http.timeout_connect(5)
+        .timeout_max(10)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .set_post_body(post_body)
+        .on_complete([this, &success](std::string body, unsigned http_status) {
+            GUI::OAuthResult r;
+            GUI::OAuthJob::parse_token_response(body, false, r);
+            if (r.success) {
+                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Successfully refreshed access token";
+                this->save_oauth_credential(r);
+                
+                // Update in-memory credentials
+                this->m_cred["access_token"] = r.access_token;
+                this->m_cred["refresh_token"] = r.refresh_token;
+                
+                // Update expiration time
+                if (r.expires_in > 0) {
+                    this->m_token_expires_at = std::chrono::system_clock::now() + std::chrono::seconds(r.expires_in);
+                }
+                success = true;
+            } else {
+                BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse refresh token response: " << r.error_message;
+            }
+        })
+        .on_error([&success](std::string body, std::string error, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to refresh token: " << error << ", HTTP " << http_status;
+            success = false;
+        })
+        .perform_sync();
+
+    return success;
+}
+
+bool UltiMaker::ensure_token_fresh(const std::string& reason) const
+{
+    // If no expiration time stored, assume token is fresh
+    if (m_token_expires_at.time_since_epoch().count() == 0) {
+        return true;
+    }
+
+    auto now = std::chrono::system_clock::now();
+    auto time_until_expiry = m_token_expires_at - now;
+    
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Token expires in " << std::chrono::duration_cast<std::chrono::seconds>(time_until_expiry).count() 
+                            << " seconds (check reason: " << reason << ")";
+
+    // Refresh if token expires within TOKEN_REFRESH_SKEW seconds
+    if (time_until_expiry <= TOKEN_REFRESH_SKEW) {
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker: Token expiring soon, proactively refreshing (reason: " << reason << ")";
+        return const_cast<UltiMaker*>(this)->refresh_token();
+    }
+
+    return true;
 }
 
 wxString UltiMaker::get_test_ok_msg() const
@@ -200,12 +293,39 @@ void UltiMaker::log_out() const
     boost::nowide::remove(m_oauth_cred_file.c_str());
 }
 
+namespace {
+// Helper function to check if response indicates token expiration
+bool is_token_expired_error(const std::string& body, unsigned http_status)
+{
+    // Check for HTTP 401 (Unauthorized)
+    if (http_status == 401) {
+        return true;
+    }
+    
+    // Check for HTTP 403 with tokenExpired in the response body
+    // Response format: {"errors":[{"id":"...","code":"tokenExpired","http_status":"403",...}]}
+    if (http_status == 403 || http_status == 401) {
+        // Check if body contains "tokenExpired" string
+        if (body.find("tokenExpired") != std::string::npos) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+} // namespace
+
 bool UltiMaker::do_api_call(std::function<Http(bool)>                               build_request,
                             std::function<bool(std::string, unsigned)>              on_complete,
                             std::function<bool(std::string, std::string, unsigned)> on_error) const
 {
     if (m_cred.find("access_token") == m_cred.end()) {
         return false;
+    }
+
+    // Proactively check if token needs refresh before making the call
+    if (!ensure_token_fresh("do_api_call")) {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Token refresh failed, proceeding with existing token";
     }
 
     bool res = true;
@@ -223,50 +343,24 @@ bool UltiMaker::do_api_call(std::function<Http(bool)>                           
 
     create_request(m_cred.at("access_token"), false)
         .on_error([&res, &on_error, this, &create_request](std::string body, std::string error, unsigned http_status) {
-            if (http_status == 401) {
-                BOOST_LOG_TRIVIAL(warning) << boost::format("UltiMaker: Access token invalid: %1%, HTTP %2%, body: `%3%`") % error %
+            // Check if we need to refresh the token - handles both HTTP 401 and HTTP 403 with tokenExpired
+            if (is_token_expired_error(body, http_status)) {
+                BOOST_LOG_TRIVIAL(warning) << boost::format("UltiMaker: Access token expired or invalid: %1%, HTTP %2%, body: `%3%`") % error %
                                                   http_status % body;
-                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Attempt to refresh access token";
+                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Attempting to refresh access token";
 
-                // Build URL-encoded form body (matches Cura's getAccessTokenUsingRefreshToken)
-                std::string post_body;
-                post_body += "client_id=" + Http::url_encode(CLIENT_ID);
-                post_body += "&client_secret=" + Http::url_encode(CLIENT_SECRET);
-                post_body += "&redirect_uri=" + get_callback_url();
-                post_body += "&grant_type=" + Http::url_encode("refresh_token");
-                post_body += "&refresh_token=" + Http::url_encode(m_cred.at("refresh_token"));
-                post_body += "&scope=" + Http::url_encode(SCOPES);
-
-                auto http = Http::post(TOKEN_URL);
-                http.timeout_connect(5)
-                    .timeout_max(5)
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .set_post_body(post_body)
-                    .on_complete([this, &res, &on_error, &create_request](std::string body, unsigned http_status) {
-                        GUI::OAuthResult r;
-                        GUI::OAuthJob::parse_token_response(body, false, r);
-                        if (r.success) {
-                            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Successfully refreshed access token";
-                            this->save_oauth_credential(r);
-
-                            create_request(r.access_token, true)
-                                .on_error([&res, &on_error](std::string body, std::string error, unsigned http_status) {
-                                    res = on_error(body, error, http_status);
-                                })
-                                .perform_sync();
-                        } else {
-                            BOOST_LOG_TRIVIAL(error)
-                                << boost::format("UltiMaker: Failed to refresh access token: %1%, body: `%2%`") % r.error_message % body;
-                            res = on_error(body, r.error_message, http_status);
-                        }
-                    })
-                    .on_error([&res, &on_error](std::string body, std::string error, unsigned http_status) {
-                        BOOST_LOG_TRIVIAL(error)
-                            << boost::format("UltiMaker: Failed to refresh access token: %1%, HTTP %2%, body: `%3%`") % error %
-                                   http_status % body;
-                        res = on_error(body, error, http_status);
-                    })
-                    .perform_sync();
+                // Try to refresh the token
+                if (this->refresh_token()) {
+                    // Retry the request with new token
+                    create_request(this->m_cred.at("access_token"), true)
+                        .on_error([&res, &on_error](std::string body, std::string error, unsigned http_status) {
+                            res = on_error(body, error, http_status);
+                        })
+                        .perform_sync();
+                } else {
+                    // Refresh failed, call original error handler
+                    res = on_error(body, error, http_status);
+                }
             } else {
                 res = on_error(body, error, http_status);
             }

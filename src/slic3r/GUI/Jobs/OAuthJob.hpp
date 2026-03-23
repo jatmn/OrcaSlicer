@@ -34,6 +34,7 @@ struct OAuthResult
     std::string error_message{""};
     std::string access_token{""};
     std::string refresh_token{""};
+    long        expires_in{0};  // Token lifetime in seconds
 };
 
 struct OAuthData
