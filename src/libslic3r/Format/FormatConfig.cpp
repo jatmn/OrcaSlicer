@@ -258,6 +258,18 @@ std::string FormatConfig::get_file_extension_for_format(const std::string& forma
     return ".gcode";  // Default
 }
 
+std::string FormatConfig::get_format_type_from_extension(const std::string& filepath) {
+    boost::filesystem::path p(filepath);
+    std::string ext = boost::to_lower_copy(p.extension().string());
+    
+    if (ext == ".ufp") {
+        return "ufp";
+    } else if (ext == ".makerbot") {
+        return "makerbot";
+    }
+    return "";
+}
+
 bool FormatConfig::export_to_container(const std::string& format_type,
                                       const std::string& input_gcode_path,
                                       const std::string& output_path,

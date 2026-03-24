@@ -91,6 +91,11 @@ public:
     // Returns ".ufp", ".makerbot", or ".gcode" (default)
     static std::string get_file_extension_for_format(const std::string& format_type);
     
+    // Get format type from file extension ("ufp" or "makerbot")
+    // Returns empty string if extension doesn't match known container formats
+    // Case-insensitive matching
+    static std::string get_format_type_from_extension(const std::string& filepath);
+    
     // Export G-code to container format (.ufp or .makerbot)
     // Returns true on success, false on failure with error_message populated
     // Note: No fallback - if config doesn't exist, export will fail

@@ -865,6 +865,15 @@ void BackgroundSlicingProcess::export_gcode()
 	std::string printer_notes = m_fff_print->full_print_config().opt_string("printer_notes");
 	std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
 	
+	// Fallback: check file extension if no format from printer_notes
+	if (format_type.empty()) {
+		format_type = Slic3r::FormatConfig::get_format_type_from_extension(export_path);
+		if (!format_type.empty()) {
+			BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: "
+								   << "Detected container format from extension: " << format_type;
+		}
+	}
+	
 	BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: export_path=" << export_path;
 	BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: printer_notes=" << printer_notes;
 	BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: format_type=" << format_type;
@@ -876,12 +885,18 @@ void BackgroundSlicingProcess::export_gcode()
 		// Get the appropriate file extension
 		std::string ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
 		
-		// Change export_path extension to the container format
+		// Verify export_path extension matches format (warn if mismatch)
 		boost::filesystem::path export_path_path(export_path);
-		export_path_path.replace_extension(ext);
-		export_path = export_path_path.string();
+		std::string current_ext = boost::to_lower_copy(export_path_path.extension().string());
+		if (current_ext != ext) {
+			BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: "
+									   << "Extension mismatch detected. Changing from " 
+									   << current_ext << " to " << ext;
+			export_path_path.replace_extension(ext);
+			export_path = export_path_path.string();
+		}
 		
-		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: Container format required, changing export_path to: " << export_path;
+		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: Container format required, using export_path: " << export_path;
 		
 		// Create container file path in system temp directory
 		boost::filesystem::path temp_path = boost::filesystem::temp_directory_path();
@@ -896,6 +911,7 @@ void BackgroundSlicingProcess::export_gcode()
 		std::string container_error;
 		if (!Slic3r::FormatConfig::export_to_container(format_type, m_temp_output_path, container_path, printer_notes, container_error)) {
 			BOOST_LOG_TRIVIAL(error) << "BackgroundSlicingProcess::export_gcode: ERROR - Container conversion FAILED: " << container_error;
+			GUI::show_error(nullptr, _L("Failed to export in container format.\n\n") + wxString::FromUTF8(container_error.c_str()));
 			throw Slic3r::ExportError(_utf8(L("Failed to export in container format.\n") + container_error));
 		}
 		
