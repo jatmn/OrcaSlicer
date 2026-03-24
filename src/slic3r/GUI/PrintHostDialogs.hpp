@@ -29,7 +29,7 @@ class PrintHostSendDialog : public GUI::MsgDialog
 public:
     PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab);
     PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
-                       const wxArrayString& project_names, const wxArrayString& project_ids);
+                       const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id = "");
     virtual ~PrintHostSendDialog() {}
     boost::filesystem::path filename() const;
     PrintHostPostUploadAction post_action() const;
@@ -60,6 +60,8 @@ protected:
     // UltiMaker Digital Factory project/folder data
     wxArrayString m_project_names;
     wxArrayString m_project_ids;
+    // Last selected project ID (for remembering user preference)
+    std::string m_last_project_id;
     // Pending new project name (used when user clicks "+" button)
     std::string m_pending_new_project_name;
     // Callback for creating a new project on the server

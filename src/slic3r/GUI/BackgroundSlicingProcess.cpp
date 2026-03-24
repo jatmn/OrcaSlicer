@@ -865,6 +865,10 @@ void BackgroundSlicingProcess::export_gcode()
 	std::string printer_notes = m_fff_print->full_print_config().opt_string("printer_notes");
 	std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
 	
+	BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: export_path=" << export_path;
+	BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: printer_notes=" << printer_notes;
+	BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: format_type=" << format_type;
+	
 	// Container file path (created in system temp directory, deleted after successful copy)
 	std::string container_path;
 	
@@ -877,21 +881,30 @@ void BackgroundSlicingProcess::export_gcode()
 		export_path_path.replace_extension(ext);
 		export_path = export_path_path.string();
 		
+		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: Container format required, changing export_path to: " << export_path;
+		
 		// Create container file path in system temp directory
 		boost::filesystem::path temp_path = boost::filesystem::temp_directory_path();
 		temp_path /= boost::filesystem::unique_path("%%%%-%%%%-%%%%-%%%%");
 		temp_path.replace_extension(ext);
 		container_path = temp_path.string();
 		
+		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: Creating container at temp path: " << container_path;
+		
 		// Export to container format
-		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess: Converting G-code to container format: " << format_type;
+		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: Converting G-code to container format: " << format_type;
 		std::string container_error;
 		if (!Slic3r::FormatConfig::export_to_container(format_type, m_temp_output_path, container_path, printer_notes, container_error)) {
+			BOOST_LOG_TRIVIAL(error) << "BackgroundSlicingProcess::export_gcode: ERROR - Container conversion FAILED: " << container_error;
 			throw Slic3r::ExportError(_utf8(L("Failed to export in container format.\n") + container_error));
 		}
 		
+		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: Container created successfully at: " << container_path;
+		
 		// Use container path as source for copy
 		output_path = container_path;
+	} else {
+		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess::export_gcode: No container format required, exporting raw G-code";
 	}
 
 	//FIXME localize the messages

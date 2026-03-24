@@ -14513,10 +14513,11 @@ void Plater::export_gcode(bool prefer_removable)
         
         // Check if printer requires container format export (.ufp or .makerbot)
         std::string printer_notes;
+        std::string format_type;
         if (printer_technology() == ptFFF) {
             auto cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
             printer_notes = cfg.opt_string("printer_notes");
-            std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
+            format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
             if (!format_type.empty()) {
                 ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
                 BOOST_LOG_TRIVIAL(info) << "Plater::export_gcode: Using container format: " << format_type << " (extension: " << ext << ")";
@@ -14531,9 +14532,15 @@ void Plater::export_gcode(bool prefer_removable)
             dlg_title = _L("Save MakerBot file as:");
         }
         
+        // Update filename to use container extension if applicable
+        fs::path dialog_filename = default_output_file.filename();
+        if (!format_type.empty()) {
+            dialog_filename.replace_extension(ext);
+        }
+        
         wxFileDialog dlg(this, dlg_title,
             start_dir,
-            from_path(default_output_file.filename()),
+            from_path(dialog_filename),
             GUI::file_wildcards((ext == ".ufp") ? FT_UFP : (ext == ".makerbot") ? FT_MAKERBOT : ((printer_technology() == ptFFF) ? FT_GCODE : FT_SL1), ext),
             wxFD_SAVE | wxFD_OVERWRITE_PROMPT
         );
@@ -15779,6 +15786,15 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         }
     }
 
+    // Get printer notes for UltiMaker project memory (before dialog creation)
+    std::string printer_notes;
+    std::string format_config_id;
+    if (printer_technology() == ptFFF) {
+        auto cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+        printer_notes = cfg.opt_string("printer_notes");
+        format_config_id = Slic3r::FormatConfig::parse_format_config_id(printer_notes, "");
+    }
+
     // Repetier specific: Query the server for the list of file groups.
     wxArrayString groups;
     {
@@ -15819,9 +15835,18 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
                 show_error(this, _L("Could not load UltiMaker Digital Factory projects.\n\nPlease make sure you are logged in via the Connect settings and that at least one project exists in your account."));
                 return;
             }
+            
+            // Get last selected project for this printer (per FORMAT_CONFIG_ID)
+            std::string last_project_id;
+            if (!format_config_id.empty()) {
+                std::string config_key = "ultimaker_last_project_" + format_config_id;
+                last_project_id = config->get(config_key);
+                BOOST_LOG_TRIVIAL(info) << "Plater::send_gcode_legacy: Last project for " << format_config_id << ": " << last_project_id;
+            }
+            
             pDlg = std::make_unique<PrintHostSendDialog>(default_output_file, upload_job.printhost->get_post_upload_actions(), groups,
                                                          storage_paths, storage_names, config->get_bool("open_device_tab_post_upload"),
-                                                         project_names, project_ids);
+                                                         project_names, project_ids, last_project_id);
             // Set callback for creating new projects on the server
             pDlg->set_project_create_callback([&upload_job](const std::string& name) {
                 return upload_job.printhost->create_project(name);
@@ -15837,6 +15862,10 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         }
 
         config->set_bool("open_device_tab_post_upload", pDlg->switch_to_device_tab());
+        
+        // Get selected project from dialog and save as last used (per FORMAT_CONFIG_ID)
+        std::string selected_project_id;
+        
         // PrintHostUpload upload_data;
         upload_job.switch_to_device_tab    = pDlg->switch_to_device_tab();
         upload_job.upload_data.upload_path = pDlg->filename();
@@ -15844,6 +15873,19 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         upload_job.upload_data.group       = pDlg->group();
         upload_job.upload_data.storage     = pDlg->storage();
         upload_job.upload_data.extended_info = pDlg->extendedInfo();
+        
+        // Extract selected project_id from extended_info and save as last used
+        auto project_it = upload_job.upload_data.extended_info.find("project_id");
+        if (project_it != upload_job.upload_data.extended_info.end()) {
+            selected_project_id = project_it->second;
+        }
+        
+        // Save selected project as last used (per FORMAT_CONFIG_ID) - immediately after dialog closes
+        if (!format_config_id.empty() && !selected_project_id.empty()) {
+            std::string config_key = "ultimaker_last_project_" + format_config_id;
+            config->set(config_key, selected_project_id);
+            BOOST_LOG_TRIVIAL(info) << "Plater::send_gcode_legacy: Saving last project for " << format_config_id << ": " << selected_project_id;
+        }
         
         // Add printer notes to extended_info for container format detection during upload
         if (printer_technology() == ptFFF) {

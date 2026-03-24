@@ -45,9 +45,9 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
 }
 
 PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUploadActions post_actions, const wxArrayString &groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
-                                       const wxArrayString& project_names, const wxArrayString& project_ids)
+                                       const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id)
     : MsgDialog(static_cast<wxWindow*>(wxGetApp().mainframe), _L("Send G-code to printer host"), _L("Upload to Printer Host with the following filename:"), 0) // Set style = 0 to avoid default creation of the "OK" button. 
-                                                                                                                                                               // All buttons will be added later in this constructor 
+                                                                                                                                                                // All buttons will be added later in this constructor 
     , txt_filename(new wxTextCtrl(this, wxID_ANY))
     , combo_groups(!groups.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, groups, wxCB_READONLY) : nullptr)
     , combo_storage(storage_names.GetCount() > 1 ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, storage_names, wxCB_READONLY) : nullptr)
@@ -61,6 +61,7 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     , m_storage_names(storage_names)
     , m_project_names(project_names)
     , m_project_ids(project_ids)
+    , m_last_project_id(last_project_id)
 {
 #ifdef __APPLE__
     txt_filename->OSXDisableAllSmartSubstitutions();
@@ -189,9 +190,19 @@ void PrintHostSendDialog::init()
 
         content_sizer->Add(project_sizer, 0, wxEXPAND | wxBOTTOM, 2 * VERT_SPACING);
 
-        // Select first project by default if available
+        // Select last used project if available, otherwise select first project
         if (m_project_names.GetCount() > 0) {
-            combo_projects->SetSelection(0);
+            int selection_idx = 0;
+            if (!m_last_project_id.empty()) {
+                // Try to find the last used project in the list
+                for (int i = 0; i < (int)m_project_ids.GetCount(); i++) {
+                    if (m_project_ids[i].ToStdString() == m_last_project_id) {
+                        selection_idx = i;
+                        break;
+                    }
+                }
+            }
+            combo_projects->SetSelection(selection_idx);
         }
     }
 
