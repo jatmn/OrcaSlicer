@@ -787,69 +787,137 @@ bool BackgroundSlicingProcess::invalidate_all_steps()
 	return m_step_state.invalidate_all([this](){ this->stop_internal(); });
 }
 
+// Helper to export file with optional container format conversion and post-processing
+// Returns true on success, false on failure with error_message populated
+bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_path,
+                                                     const std::string& dest_path,
+                                                     bool run_post_process,
+                                                     std::string& error_message)
+{
+    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: source=" << source_path << ", dest=" << dest_path;
+    
+    std::string output_path = source_path;
+    std::string export_path = dest_path;
+    
+    // Run post-processing scripts if requested
+    if (run_post_process) {
+        m_print->set_status(95, _u8L("Running post-processing scripts"));
+        bool post_processed = run_post_process_scripts(output_path, true, "File", export_path, m_fff_print->full_print_config());
+        auto remove_post_processed_temp_file = [post_processed, &output_path]() {
+            if (post_processed)
+                try {
+                    boost::filesystem::remove(output_path);
+                } catch (const std::exception& ex) {
+                    BOOST_LOG_TRIVIAL(error) << "Failed to remove temp file " << output_path << ": " << ex.what();
+                }
+        };
+        m_print->set_status(99, _utf8(L("Successfully executed post-processing script")));
+    }
+    
+    // Check if printer requires container format export (.ufp or .makerbot)
+    std::string printer_notes = m_fff_print->full_print_config().opt_string("printer_notes");
+    std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
+    
+    // Fallback: check file extension if no format from printer_notes
+    if (format_type.empty()) {
+        format_type = Slic3r::FormatConfig::get_format_type_from_extension(export_path);
+        if (!format_type.empty()) {
+            BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Detected container format from extension: " << format_type;
+        }
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: export_path=" << export_path;
+    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: printer_notes=" << printer_notes;
+    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: format_type=" << format_type;
+    
+    // Container file path (created in system temp directory, deleted after successful copy)
+    std::string container_path;
+    
+    if (!format_type.empty()) {
+        // Get the appropriate file extension
+        std::string ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
+        
+        // Verify export_path extension matches format (warn if mismatch)
+        boost::filesystem::path export_path_path(export_path);
+        std::string current_ext = boost::to_lower_copy(export_path_path.extension().string());
+        if (current_ext != ext) {
+            BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Extension mismatch detected. Changing from " 
+                                       << current_ext << " to " << ext;
+            export_path_path.replace_extension(ext);
+            export_path = export_path_path.string();
+        }
+        
+        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Container format required, using export_path: " << export_path;
+        
+        // Create container file path in system temp directory
+        boost::filesystem::path temp_path = boost::filesystem::temp_directory_path();
+        temp_path /= boost::filesystem::unique_path("%%%%-%%%%-%%%%-%%%%");
+        temp_path.replace_extension(ext);
+        container_path = temp_path.string();
+        
+        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Creating container at temp path: " << container_path;
+        
+        // Export to container format
+        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Converting G-code to container format: " << format_type;
+        std::string container_error;
+        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, container_error)) {
+            BOOST_LOG_TRIVIAL(error) << "export_to_final_path: ERROR - Container conversion FAILED: " << container_error;
+            error_message = "Failed to export in container format.\n" + container_error;
+            return false;
+        }
+        
+        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Container created successfully at: " << container_path;
+        
+        // Use container path as source for copy
+        output_path = container_path;
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: No container format required, exporting raw G-code";
+    }
+    
+    // Copy file to final destination
+    int copy_ret_val = CopyFileResult::SUCCESS;
+    try {
+        copy_ret_val = copy_file(output_path, export_path, error_message, m_export_path_on_removable_media);
+    }
+    catch (...) {
+        // Clean up container file if it was created
+        if (!container_path.empty()) {
+            boost::filesystem::remove(container_path);
+        }
+        error_message = "Unknown error when exporting G-code.";
+        return false;
+    }
+    
+    // Clean up container file if it was created (whether copy succeeded or failed)
+    if (!container_path.empty()) {
+        try {
+            boost::filesystem::remove(container_path);
+        } catch (const std::exception& e) {
+            BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Failed to clean up container file: " << e.what();
+        }
+    }
+    
+    if (copy_ret_val != CopyFileResult::SUCCESS) {
+        error_message = "Failed to save G-code file.\nError message: " + error_message + ".\nSource file: " + output_path;
+        return false;
+    }
+    
+    m_print->set_status(100, GUI::format(_L("G-code file exported to %1%"), export_path));
+    return true;
+}
+
 // G-code is generated in m_temp_output_path.
 // Optionally run a post-processing script on a copy of m_temp_output_path.
 // Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
 void BackgroundSlicingProcess::finalize_gcode()
 {
-	m_print->set_status(95, _u8L("Running post-processing scripts"));
-
-	// Perform the final post-processing of the export path by applying the print statistics over the file name.
-	std::string export_path = m_fff_print->print_statistics().finalize_output_path(m_export_path);
-	std::string output_path = m_temp_output_path;
-	// Both output_path and export_path ar in-out parameters.
-	// If post processed, output_path will differ from m_temp_output_path as run_post_process_scripts() will make a copy of the G-code to not
-	// collide with the G-code viewer memory mapping of the unprocessed G-code. G-code viewer maps unprocessed G-code, because m_gcode_result 
-	// is calculated for the unprocessed G-code and it references lines in the memory mapped G-code file by line numbers.
-	// export_path may be changed by the post-processing script as well if the post processing script decides so, see GH #6042.
-	bool post_processed = run_post_process_scripts(output_path, true, "File", export_path, m_fff_print->full_print_config());
-	auto remove_post_processed_temp_file = [post_processed, &output_path]() {
-		if (post_processed)
-			try {
-				boost::filesystem::remove(output_path);
-			} catch (const std::exception &ex) {
-				BOOST_LOG_TRIVIAL(error) << "Failed to remove temp file " << output_path << ": " << ex.what();
-			}
-	};
-    m_print->set_status(99, _utf8(L("Successfully executed post-processing script")));
-
-	//FIXME localize the messages
-	std::string error_message;
-	int copy_ret_val = CopyFileResult::SUCCESS;
-	try
-	{
-		copy_ret_val = copy_file(output_path, export_path, error_message, m_export_path_on_removable_media);
-		remove_post_processed_temp_file();
-	}
-	catch (...)
-	{
-		remove_post_processed_temp_file();
-		throw Slic3r::ExportError(_u8L("Unknown error occurred during exporting G-code."));
-	}
-	switch (copy_ret_val) {
-	case CopyFileResult::SUCCESS: break; // no error
-	case CopyFileResult::FAIL_COPY_FILE:
-		throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code to the output G-code failed. Maybe the SD card is write locked?\nError message: %1%"), error_message));
-		break;
-	case CopyFileResult::FAIL_FILES_DIFFERENT:
-		throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code to the output G-code failed. There might be problem with target device, please try exporting again or using different device. The corrupted output G-code is at %1%.tmp."), export_path));
-		break;
-	case CopyFileResult::FAIL_RENAMING:
-		throw Slic3r::ExportError(GUI::format(_L("Renaming of the G-code after copying to the selected destination folder has failed. Current path is %1%.tmp. Please try exporting again."), export_path));
-		break;
-	case CopyFileResult::FAIL_CHECK_ORIGIN_NOT_OPENED:
-		throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code has finished but the original code at %1% couldn't be opened during copy check. The output G-code is at %2%.tmp."), output_path, export_path));
-		break;
-	case CopyFileResult::FAIL_CHECK_TARGET_NOT_OPENED:
-		throw Slic3r::ExportError(GUI::format(_L("Copying of the temporary G-code has finished but the exported code couldn't be opened during copy check. The output G-code is at %1%.tmp."), export_path));
-		break;
-	default:
-		throw Slic3r::ExportError(_u8L("Unknown error occurred during exporting G-code."));
-		BOOST_LOG_TRIVIAL(error) << "Unexpected fail code(" << (int)copy_ret_val << ") durring copy_file() to " << export_path << ".";
-		break;
-	}
-
-	m_print->set_status(100, GUI::format(_L("G-code file exported to %1%"), export_path));
+    // Perform the final post-processing of the export path by applying the print statistics over the file name.
+    std::string export_path = m_fff_print->print_statistics().finalize_output_path(m_export_path);
+    
+    std::string error_message;
+    if (!export_to_final_path(m_temp_output_path, export_path, true, error_message)) {
+        throw Slic3r::ExportError(error_message);
+    }
 }
 
 // G-code is generated in m_temp_output_path.
@@ -857,130 +925,24 @@ void BackgroundSlicingProcess::finalize_gcode()
 // Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
 void BackgroundSlicingProcess::export_gcode()
 {
-	// Perform the final post-processing of the export path by applying the print statistics over the file name.
-	std::string export_path = m_fff_print->print_statistics().finalize_output_path(m_export_path);
-	std::string output_path = m_temp_output_path;
-	
-	// Check if printer requires container format export (.ufp or .makerbot)
-	std::string printer_notes = m_fff_print->full_print_config().opt_string("printer_notes");
-	std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
-	
-	// Fallback: check file extension if no format from printer_notes
-	if (format_type.empty()) {
-		format_type = Slic3r::FormatConfig::get_format_type_from_extension(export_path);
-		if (!format_type.empty()) {
-		BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: "
-							   << "Detected container format from extension: " << format_type;
-		}
-	}
-	
-	BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: export_path=" << export_path;
-	BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: printer_notes=" << printer_notes;
-	BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: format_type=" << format_type;
-	
-	// Container file path (created in system temp directory, deleted after successful copy)
-	std::string container_path;
-	
-	if (!format_type.empty()) {
-		// Get the appropriate file extension
-		std::string ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
-		
-		// Verify export_path extension matches format (warn if mismatch)
-		boost::filesystem::path export_path_path(export_path);
-		std::string current_ext = boost::to_lower_copy(export_path_path.extension().string());
-		if (current_ext != ext) {
-			BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: "
-									   << "Extension mismatch detected. Changing from " 
-									   << current_ext << " to " << ext;
-			export_path_path.replace_extension(ext);
-			export_path = export_path_path.string();
-		}
-		
-		BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: Container format required, using export_path: " << export_path;
-		
-		// Create container file path in system temp directory
-		boost::filesystem::path temp_path = boost::filesystem::temp_directory_path();
-		temp_path /= boost::filesystem::unique_path("%%%%-%%%%-%%%%-%%%%");
-		temp_path.replace_extension(ext);
-		container_path = temp_path.string();
-		
-		BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: Creating container at temp path: " << container_path;
-		
-		// Export to container format
-		BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: Converting G-code to container format: " << format_type;
-		std::string container_error;
-		if (!Slic3r::FormatConfig::export_to_container(format_type, m_temp_output_path, container_path, printer_notes, container_error)) {
-			BOOST_LOG_TRIVIAL(error) << "BackgroundSlicingProcess::export_gcode: ERROR - Container conversion FAILED: " << container_error;
-			GUI::show_error(nullptr, _L("Failed to export in container format.\n\n") + wxString::FromUTF8(container_error.c_str()));
-			throw Slic3r::ExportError(_utf8(L("Failed to export in container format.\n") + container_error));
-		}
-		
-		BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: Container created successfully at: " << container_path;
-		
-		// Use container path as source for copy
-		output_path = container_path;
-	} else {
-		BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess::export_gcode: No container format required, exporting raw G-code";
-	}
+    // Perform the final post-processing of the export path by applying the print statistics over the file name.
+    std::string export_path = m_fff_print->print_statistics().finalize_output_path(m_export_path);
+    
+    std::string error_message;
+    // Note: run_post_process=false because BBL printers have already run post-processing
+    if (!export_to_final_path(m_temp_output_path, export_path, false, error_message)) {
+        GUI::show_error(nullptr, wxString::FromUTF8(error_message.c_str()));
+        throw Slic3r::ExportError(error_message);
+    }
+    
+    // BBS
+    auto evt = new wxCommandEvent(m_event_export_finished_id, GUI::wxGetApp().mainframe->m_plater->GetId());
+    wxString output_gcode_str = wxString::FromUTF8(export_path.c_str(), export_path.length());
+    evt->SetString(output_gcode_str);
+    wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, evt);
 
-	//FIXME localize the messages
-	std::string error_message;
-	int copy_ret_val = CopyFileResult::SUCCESS;
-	try
-	{
-		copy_ret_val = copy_file(output_path, export_path, error_message, m_export_path_on_removable_media);
-	}
-	catch (...)
-	{
-		// Clean up container file if it was created
-		if (!container_path.empty()) {
-			boost::filesystem::remove(container_path);
-		}
-		throw Slic3r::ExportError(_utf8(L("Unknown error when exporting G-code.")));
-	}
-	
-	// Clean up container file if it was created (whether copy succeeded or failed)
-	if (!container_path.empty()) {
-		try {
-			boost::filesystem::remove(container_path);
-		} catch (const std::exception& e) {
-			BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess: Failed to clean up container file: " << e.what();
-		}
-	}
-	
-	switch (copy_ret_val) {
-	case CopyFileResult::SUCCESS: break; // no error
-	case CopyFileResult::FAIL_COPY_FILE:
-		//throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code to the output G-code failed. Maybe the SD card is write locked?\nError message: %1%"))) % error_message).str());
-		//break;
-	case CopyFileResult::FAIL_FILES_DIFFERENT:
-		//throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code to the output G-code failed. There might be problem with target device, please try exporting again or using different device. The corrupted output G-code is at %1%.tmp."))) % export_path).str());
-		//break;
-	case CopyFileResult::FAIL_RENAMING:
-		//throw Slic3r::ExportError((boost::format(_utf8(L("Renaming of the G-code after copying to the selected destination folder has failed. Current path is %1%.tmp. Please try exporting again."))) % export_path).str());
-		//break;
-	case CopyFileResult::FAIL_CHECK_ORIGIN_NOT_OPENED:
-		//throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code has finished but the original code at %1% couldn't be opened during copy check. The output G-code is at %2%.tmp."))) % output_path % export_path).str());
-		//break;
-	case CopyFileResult::FAIL_CHECK_TARGET_NOT_OPENED:
-		//throw Slic3r::ExportError((boost::format(_utf8(L("Copying of the temporary G-code has finished but the exported code couldn't be opened during copy check. The output G-code is at %1%.tmp."))) % export_path).str());
-		//break;
-	default:
-		BOOST_LOG_TRIVIAL(error) << "Fail code(" << (int)copy_ret_val << ") when copy "<<output_path<<" to " << export_path << ".";
-		throw Slic3r::ExportError((boost::format(_utf8(L("Failed to save G-code file.\nError message: %1%.\nSource file %2%."))) % error_message % output_path).str());
-		//throw Slic3r::ExportError(_utf8(L("Unknown error when exporting G-code.")));
-		break;
-	}
-
-	// BBS
-	auto evt = new wxCommandEvent(m_event_export_finished_id, GUI::wxGetApp().mainframe->m_plater->GetId());
-	wxString output_gcode_str = wxString::FromUTF8(export_path.c_str(), export_path.length());
-	evt->SetString(output_gcode_str);
-	wxQueueEvent(GUI::wxGetApp().mainframe->m_plater, evt);
-
-	// BBS: to be checked. Whether use export_path or output_path.
-	gcode_add_line_number(export_path, m_fff_print->full_print_config());
-
+    // BBS: to be checked. Whether use export_path or output_path.
+    gcode_add_line_number(export_path, m_fff_print->full_print_config());
 }
 
 // A print host upload job has been scheduled, enqueue it to the printhost job queue

@@ -289,6 +289,14 @@ private:
 	void				finalize_gcode();
 	void				export_gcode();
     void                prepare_upload();
+
+    // Helper to export file with optional container format conversion and post-processing
+    // Returns true on success, false on failure with error_message populated
+    bool                export_to_final_path(const std::string& source_path,
+                                              const std::string& dest_path,
+                                              bool run_post_process,
+                                              std::string& error_message);
+
     // To be executed at the background thread.
 	ThumbnailsList		render_thumbnails(const ThumbnailsParams &params);
 	// Execute task from background thread on the UI thread synchronously. Returns true if processed, false if cancelled before executing the task.
