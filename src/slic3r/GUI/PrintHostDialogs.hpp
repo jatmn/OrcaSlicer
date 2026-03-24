@@ -70,6 +70,9 @@ protected:
     wxStaticText* m_project_msg_label;
     // Flag indicating if we started with no projects
     bool m_no_projects;
+    // Cached button pointers for enabling after project creation
+    Button* m_btn_upload;
+    Button* m_btn_upload_and_print;
 
 public:
     void add_project(const wxString& name, const wxString& id);

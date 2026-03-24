@@ -64,6 +64,8 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     , m_last_project_id(last_project_id)
     , m_project_msg_label(nullptr)
     , m_no_projects(no_projects)
+    , m_btn_upload(nullptr)
+    , m_btn_upload_and_print(nullptr)
 {
 #ifdef __APPLE__
     txt_filename->OSXDisableAllSmartSubstitutions();
@@ -160,11 +162,15 @@ void PrintHostSendDialog::init()
                             if (m_project_msg_label) {
                                 m_project_msg_label->Show(false);
                             }
-                            // Enable upload button
-                            auto* btn_ok = dynamic_cast<wxButton*>(FindWindow(wxID_OK));
-                            if (btn_ok) {
-                                btn_ok->Enable(true);
+                            // Enable upload buttons using stored pointers
+                            if (m_btn_upload) {
+                                m_btn_upload->Enable(true);
                             }
+                            if (m_btn_upload_and_print) {
+                                m_btn_upload_and_print->Enable(true);
+                            }
+                            // Mark that we now have projects
+                            m_no_projects = false;
                         }
                         
                         // Add to combo box with real ID and select it
@@ -277,12 +283,12 @@ void PrintHostSendDialog::init()
         return true;
     };
 
-    auto* btn_ok = add_button(wxID_OK, true, _L("Upload"));
+    m_btn_upload = add_button(wxID_OK, true, _L("Upload"));
     // Disable upload button if no projects exist
     if (m_no_projects) {
-        btn_ok->Enable(false);
+        m_btn_upload->Enable(false);
     }
-    btn_ok->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
+    m_btn_upload->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
         // Validate that a real project is selected (not the placeholder)
         if (m_no_projects) {
             wxMessageDialog err_dlg(this, _L("Please create a project folder before uploading."), _L("Error"), wxOK | wxICON_ERROR);
@@ -307,12 +313,12 @@ void PrintHostSendDialog::init()
     // }
 
     if (post_actions.has(PrintHostPostUploadAction::StartPrint)) {
-        auto* btn_print = add_button(wxID_YES, false, _L("Upload and Print"));
+        m_btn_upload_and_print = add_button(wxID_YES, false, _L("Upload and Print"));
         // Disable upload button if no projects exist
         if (m_no_projects) {
-            btn_print->Enable(false);
+            m_btn_upload_and_print->Enable(false);
         }
-        btn_print->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
+        m_btn_upload_and_print->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
             if (m_no_projects) {
                 wxMessageDialog err_dlg(this, _L("Please create a project folder before uploading."), _L("Error"), wxOK | wxICON_ERROR);
                 err_dlg.ShowModal();
