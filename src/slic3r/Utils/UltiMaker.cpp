@@ -337,6 +337,9 @@ bool UltiMaker::do_api_call(std::function<Http(bool)>                           
         auto http = build_request(is_retry);
         set_auth(http, access_token);
         http.header("User-Agent", "UltiMaker OrcaSlicer Plugin")
+            .header("Cache-Control", "no-cache, no-store, must-revalidate")
+            .header("Pragma", "no-cache")
+            .header("Expires", "0")
             .on_complete([&](std::string body, unsigned http_status) {
                 res = on_complete(body, http_status);
             });
@@ -567,9 +570,11 @@ bool UltiMaker::get_projects(std::vector<ProjectInfo>& projects) const
 
     return do_api_call(
         [](bool is_retry) {
-            auto http = Http::get(LIBRARY_API_BASE + "/projects?shared=false&limit=100");
+            // Add cache-busting timestamp to prevent browser/proxy caching
+            std::string url = LIBRARY_API_BASE + "/projects?shared=false&limit=100&_=" + std::to_string(std::time(nullptr));
+            auto http = Http::get(url);
             http.header("Accept", "application/json");
-            BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: GET " << LIBRARY_API_BASE << "/projects?shared=false&limit=100";
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Fetching projects from " << url;
             return http;
         },
         [&result, &projects](std::string body, unsigned http_status) {

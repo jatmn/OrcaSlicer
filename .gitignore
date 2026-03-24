@@ -47,3 +47,4 @@ internal_docs/
 *.flatpak
 /flatpak-repo/
 ULTIMAKER_OAUTH_FIX.md
+ORCASLICER_AGENTS.md

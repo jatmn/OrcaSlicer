@@ -48,6 +48,7 @@ protected:
     // UltiMaker Digital Factory project/folder selection
     wxComboBox* combo_projects;
     wxButton* btn_new_project;
+    wxButton* btn_refresh_projects;
     PrintHostPostUploadAction post_upload_action;
     wxString    m_valid_suffix;
     wxString    m_preselected_storage;
@@ -66,6 +67,8 @@ protected:
     std::string m_pending_new_project_name;
     // Callback for creating a new project on the server
     std::function<PrintHost::CreateProjectResult(const std::string& name)> m_project_create_callback;
+    // Callback for refreshing the project list from server
+    std::function<bool(wxArrayString&, wxArrayString&)> m_project_refresh_callback;
     // Message label shown when no projects exist
     wxStaticText* m_project_msg_label;
     // Flag indicating if we started with no projects
@@ -79,6 +82,7 @@ public:
     std::string get_pending_new_project_name() const { return m_pending_new_project_name; }
     void clear_pending_new_project_name() { m_pending_new_project_name.clear(); }
     void set_project_create_callback(std::function<PrintHost::CreateProjectResult(const std::string&)> callback) { m_project_create_callback = callback; }
+    void set_project_refresh_callback(std::function<bool(wxArrayString&, wxArrayString&)> callback) { m_project_refresh_callback = callback; }
 };
 
 

@@ -53,6 +53,7 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     , combo_storage(storage_names.GetCount() > 1 ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, storage_names, wxCB_READONLY) : nullptr)
     , combo_projects(!project_names.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, project_names, wxCB_READONLY) : nullptr)
     , btn_new_project(nullptr)
+    , btn_refresh_projects(nullptr)
     , post_upload_action(PrintHostPostUploadAction::None)
     , m_paths(storage_paths)
     , m_switch_to_device_tab(switch_to_device_tab)
@@ -220,6 +221,66 @@ void PrintHostSendDialog::init()
             }
         });
         project_sizer->Add(btn_new_project, 0, wxALIGN_CENTER_VERTICAL);
+
+        // Add refresh button for reloading project list
+        btn_refresh_projects = new wxButton(this, wxID_ANY, _L("\u21bb"), wxDefaultPosition, wxSize(FromDIP(30), -1));
+        btn_refresh_projects->SetToolTip(_L("Refresh project list from Digital Factory"));
+        btn_refresh_projects->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+            if (m_project_refresh_callback) {
+                // Disable controls during refresh
+                btn_refresh_projects->Enable(false);
+                combo_projects->Enable(false);
+                if (m_btn_upload) m_btn_upload->Enable(false);
+                if (m_btn_upload_and_print) m_btn_upload_and_print->Enable(false);
+
+                // Fetch fresh data
+                wxArrayString new_names;
+                wxArrayString new_ids;
+                {
+                    wxBusyCursor wait;
+                    if (m_project_refresh_callback(new_names, new_ids)) {
+                        // Update dropdown with fresh data
+                        combo_projects->Clear();
+                        for (size_t i = 0; i < new_names.GetCount(); ++i) {
+                            combo_projects->Append(new_names[i]);
+                        }
+                        m_project_names = new_names;
+                        m_project_ids = new_ids;
+
+                        // Update no_projects flag and UI state
+                        m_no_projects = new_names.IsEmpty();
+                        if (m_no_projects) {
+                            combo_projects->Append(_L("-- Create a project folder to upload --"));
+                            m_project_ids.Add("");
+                            if (m_btn_upload) m_btn_upload->Enable(false);
+                            if (m_btn_upload_and_print) m_btn_upload_and_print->Enable(false);
+                            if (m_project_msg_label) {
+                                m_project_msg_label->Show(true);
+                            }
+                        } else {
+                            if (m_btn_upload) m_btn_upload->Enable(true);
+                            if (m_btn_upload_and_print) m_btn_upload_and_print->Enable(true);
+                            if (m_project_msg_label) {
+                                m_project_msg_label->Show(false);
+                            }
+                        }
+
+                        // Restore selection if project still exists
+                        if (!m_last_project_id.empty()) {
+                            int idx = m_project_ids.Index(wxString::FromUTF8(m_last_project_id.c_str()));
+                            if (idx != wxNOT_FOUND) {
+                                combo_projects->SetSelection(idx);
+                            }
+                        }
+                    }
+                }
+
+                // Re-enable controls
+                btn_refresh_projects->Enable(true);
+                combo_projects->Enable(!m_no_projects);
+            }
+        });
+        project_sizer->Add(btn_refresh_projects, 0, wxALIGN_CENTER_VERTICAL | wxLEFT, VERT_SPACING);
 
         content_sizer->Add(project_sizer, 0, wxEXPAND | wxBOTTOM, 2 * VERT_SPACING);
 
