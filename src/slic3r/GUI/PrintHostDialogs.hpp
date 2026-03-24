@@ -59,7 +59,7 @@ protected:
     // UltiMaker Digital Factory project/folder data
     wxArrayString m_project_names;
     wxArrayString m_project_ids;
-    // Pending new project name (used when user clicks "New Project" button)
+    // Pending new project name (used when user clicks "+" button)
     std::string m_pending_new_project_name;
 
 public:

@@ -543,21 +543,21 @@ bool UltiMaker::create_project(const std::string& name, std::string& project_id,
 
     bool result = false;
 
-    const auto create_request = [this, &name](const std::string& access_token) {
-        auto http = Http::put(LIBRARY_API_BASE + "/projects");
-        http.header("Accept", "application/json");
-        http.header("Authorization", "Bearer " + access_token);
-        http.header("Content-Type", "application/json");
-        http.header("User-Agent", "UltiMaker OrcaSlicer Plugin");
-        
-        nlohmann::json body;
-        body["display_name"] = name;
-        http.set_post_body(body.dump());
-        return http;
-    };
-
-    create_request(m_cred.at("access_token"))
-        .on_complete([&result, &project_id, &project_name](std::string body, unsigned http_status) {
+    return do_api_call(
+        [&name](bool is_retry) {
+            auto http = Http::put2(LIBRARY_API_BASE + "/projects");
+            http.header("Accept", "application/json");
+            http.header("Content-Type", "application/json");
+            
+            // Wrap in "data" object like Cura does
+            nlohmann::json body;
+            body["data"]["display_name"] = name;
+            http.set_post_body(body.dump());
+            BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project request body: " << body.dump();
+            return http;
+        },
+        [&result, &project_id, &project_name](std::string body, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project response HTTP " << http_status << ", body length: " << body.size();
             try {
                 auto j = nlohmann::json::parse(body);
                 if (j.contains("data")) {
@@ -572,17 +572,20 @@ bool UltiMaker::create_project(const std::string& name, std::string& project_id,
                         project_name = proj["display_name"];
                     }
                     result = true;
+                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Project created successfully - id: " << project_id << ", name: " << project_name;
+                } else {
+                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project response missing 'data' field";
                 }
             } catch (const std::exception& e) {
                 BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse create project response: " << e.what();
             }
-        })
-        .on_error([](std::string body, std::string error, unsigned http_status) {
-            BOOST_LOG_TRIVIAL(error) << boost::format("UltiMaker: Error creating project: %1%, HTTP %2%") % error % http_status;
-        })
-        .perform_sync();
-
-    return result;
+            return result;
+        },
+        [&result](std::string body, std::string error, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker: Error creating project: " << error << ", HTTP " << http_status << ", body: " << body;
+            result = false;
+            return false;
+        });
 }
 
 } // namespace Slic3r

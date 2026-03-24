@@ -111,34 +111,34 @@ void PrintHostSendDialog::init()
     if (combo_projects != nullptr) {
         auto* label_project = new wxStaticText(this, wxID_ANY, _L("Project Folder"));
         content_sizer->Add(label_project);
-        
-        // Create horizontal sizer for combo box and "New Project" button
+
+        // Create horizontal sizer for combo box and "+" button
         auto* project_sizer = new wxBoxSizer(wxHORIZONTAL);
         project_sizer->Add(combo_projects, 1, wxEXPAND | wxRIGHT, VERT_SPACING);
-        
-        // Add "New Project" button
-        btn_new_project = new wxButton(this, wxID_ANY, _L("New Project"));
+
+        // Add "+" button for new project
+        btn_new_project = new wxButton(this, wxID_ANY, _L("+"), wxDefaultPosition, wxSize(FromDIP(30), -1));
+        btn_new_project->SetToolTip(_L("Create new project folder"));
         btn_new_project->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
             // Show text input dialog for new project name
             wxTextEntryDialog dlg(this, _L("Enter a name for the new project folder:"), _L("New Project"), wxEmptyString);
             if (dlg.ShowModal() == wxID_OK) {
                 wxString project_name = dlg.GetValue();
                 if (!project_name.IsEmpty()) {
-                    // Try to create the project via the PrintHost
-                    // Note: We need to access the printhost from here - this will be done in Plater.cpp
-                    // For now, emit an event or store the pending project name
-                    // The actual creation will be handled by the caller (Plater)
+                    // Store pending project name for creation after dialog closes
                     m_pending_new_project_name = into_u8(project_name);
-                    // Notify parent to handle project creation
-                    wxCommandEvent evt(wxEVT_COMMAND_BUTTON_CLICKED, btn_new_project->GetId());
-                    evt.SetString(project_name);
-                    GetEventHandler()->ProcessEvent(evt);
+                    // Add to combo box and select it (will be created when Upload is clicked)
+                    m_project_names.Add(project_name);
+                    m_project_ids.Add(wxEmptyString);  // Empty ID indicates new project
+                    combo_projects->Append(project_name);
+                    combo_projects->SetSelection(combo_projects->GetCount() - 1);
                 }
             }
         });
-        project_sizer->Add(btn_new_project, 0);
-        
-        content_sizer->Add(project_sizer, 0, wxBOTTOM, 2 * VERT_SPACING);
+        project_sizer->Add(btn_new_project, 0, wxALIGN_CENTER_VERTICAL);
+
+        content_sizer->Add(project_sizer, 0, wxEXPAND | wxBOTTOM, 2 * VERT_SPACING);
+
         // Select first project by default if available
         if (m_project_names.GetCount() > 0) {
             combo_projects->SetSelection(0);
@@ -308,15 +308,22 @@ void PrintHostSendDialog::EndModal(int ret)
 std::map<std::string, std::string> PrintHostSendDialog::extendedInfo() const
 {
     std::map<std::string, std::string> info;
-    
-    // Return the selected project ID for UltiMaker Digital Factory
+
+    // UltiMaker Digital Factory project/folder selection
     if (combo_projects != nullptr && combo_projects->GetSelection() >= 0) {
         int sel = combo_projects->GetSelection();
         if (sel >= 0 && sel < (int)m_project_ids.GetCount()) {
-            info["project_id"] = into_u8(m_project_ids[sel]);
+            wxString project_id = m_project_ids[sel];
+            if (project_id.IsEmpty()) {
+                // New project - use the pending name
+                info["new_project_name"] = get_pending_new_project_name();
+            } else {
+                // Existing project
+                info["project_id"] = into_u8(project_id);
+            }
         }
     }
-    
+
     return info;
 }
 
