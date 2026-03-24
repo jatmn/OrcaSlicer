@@ -45,9 +45,9 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
 }
 
 PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUploadActions post_actions, const wxArrayString &groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
-                                       const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id)
+                                       const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id, bool no_projects)
     : MsgDialog(static_cast<wxWindow*>(wxGetApp().mainframe), _L("Send G-code to printer host"), _L("Upload to Printer Host with the following filename:"), 0) // Set style = 0 to avoid default creation of the "OK" button. 
-                                                                                                                                                                // All buttons will be added later in this constructor 
+                                                                                                                                                                 // All buttons will be added later in this constructor 
     , txt_filename(new wxTextCtrl(this, wxID_ANY))
     , combo_groups(!groups.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, groups, wxCB_READONLY) : nullptr)
     , combo_storage(storage_names.GetCount() > 1 ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, storage_names, wxCB_READONLY) : nullptr)
@@ -62,6 +62,8 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     , m_project_names(project_names)
     , m_project_ids(project_ids)
     , m_last_project_id(last_project_id)
+    , m_project_msg_label(nullptr)
+    , m_no_projects(no_projects)
 {
 #ifdef __APPLE__
     txt_filename->OSXDisableAllSmartSubstitutions();
@@ -111,6 +113,14 @@ void PrintHostSendDialog::init()
 
     // UltiMaker Digital Factory project/folder selection
     if (combo_projects != nullptr) {
+        // Add message label when no projects exist
+        if (m_no_projects) {
+            m_project_msg_label = new wxStaticText(this, wxID_ANY, _L("Please create a project folder to upload your file."));
+            m_project_msg_label->SetFont(::Label::Body_13);
+            m_project_msg_label->SetForegroundColour(wxColour(200, 50, 50)); // Red-ish to draw attention
+            content_sizer->Add(m_project_msg_label, 0, wxBOTTOM, VERT_SPACING);
+        }
+        
         auto* label_project = new wxStaticText(this, wxID_ANY, _L("Project Folder"));
         content_sizer->Add(label_project);
 
@@ -140,6 +150,23 @@ void PrintHostSendDialog::init()
                     PrintHost::CreateProjectResult result = m_project_create_callback(into_u8(project_name));
                     
                     if (result.success && !result.project_id.empty()) {
+                        // Remove placeholder if it exists
+                        if (m_project_ids.GetCount() > 0 && m_project_ids[0].IsEmpty()) {
+                            combo_projects->Delete(0);
+                            m_project_names.RemoveAt(0);
+                            m_project_ids.RemoveAt(0);
+                            combo_projects->Enable(true);
+                            // Hide the "create folder" message
+                            if (m_project_msg_label) {
+                                m_project_msg_label->Show(false);
+                            }
+                            // Enable upload button
+                            auto* btn_ok = dynamic_cast<wxButton*>(FindWindow(wxID_OK));
+                            if (btn_ok) {
+                                btn_ok->Enable(true);
+                            }
+                        }
+                        
                         // Add to combo box with real ID and select it
                         // Find alphabetical insertion position
                         int insert_idx = 0;
@@ -191,7 +218,7 @@ void PrintHostSendDialog::init()
         content_sizer->Add(project_sizer, 0, wxEXPAND | wxBOTTOM, 2 * VERT_SPACING);
 
         // Select last used project if available, otherwise select first project
-        if (m_project_names.GetCount() > 0) {
+        if (m_project_names.GetCount() > 0 && !m_no_projects) {
             int selection_idx = 0;
             if (!m_last_project_id.empty()) {
                 // Try to find the last used project in the list
@@ -203,6 +230,10 @@ void PrintHostSendDialog::init()
                 }
             }
             combo_projects->SetSelection(selection_idx);
+        } else if (m_no_projects) {
+            // No projects - disable dropdown and select placeholder (which is first and only item)
+            combo_projects->SetSelection(0);
+            combo_projects->Enable(false);
         }
     }
 
@@ -247,7 +278,17 @@ void PrintHostSendDialog::init()
     };
 
     auto* btn_ok = add_button(wxID_OK, true, _L("Upload"));
+    // Disable upload button if no projects exist
+    if (m_no_projects) {
+        btn_ok->Enable(false);
+    }
     btn_ok->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
+        // Validate that a real project is selected (not the placeholder)
+        if (m_no_projects) {
+            wxMessageDialog err_dlg(this, _L("Please create a project folder before uploading."), _L("Error"), wxOK | wxICON_ERROR);
+            err_dlg.ShowModal();
+            return;
+        }
         if (validate_path(txt_filename->GetValue())) {
             post_upload_action = PrintHostPostUploadAction::None;
             EndDialog(wxID_OK);
@@ -267,7 +308,16 @@ void PrintHostSendDialog::init()
 
     if (post_actions.has(PrintHostPostUploadAction::StartPrint)) {
         auto* btn_print = add_button(wxID_YES, false, _L("Upload and Print"));
+        // Disable upload button if no projects exist
+        if (m_no_projects) {
+            btn_print->Enable(false);
+        }
         btn_print->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
+            if (m_no_projects) {
+                wxMessageDialog err_dlg(this, _L("Please create a project folder before uploading."), _L("Error"), wxOK | wxICON_ERROR);
+                err_dlg.ShowModal();
+                return;
+            }
             if (validate_path(txt_filename->GetValue())) {
                 post_upload_action = PrintHostPostUploadAction::StartPrint;
                 EndDialog(wxID_OK);

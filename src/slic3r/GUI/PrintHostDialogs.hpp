@@ -29,7 +29,7 @@ class PrintHostSendDialog : public GUI::MsgDialog
 public:
     PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab);
     PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
-                       const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id = "");
+                       const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id = "", bool no_projects = false);
     virtual ~PrintHostSendDialog() {}
     boost::filesystem::path filename() const;
     PrintHostPostUploadAction post_action() const;
@@ -66,6 +66,10 @@ protected:
     std::string m_pending_new_project_name;
     // Callback for creating a new project on the server
     std::function<PrintHost::CreateProjectResult(const std::string& name)> m_project_create_callback;
+    // Message label shown when no projects exist
+    wxStaticText* m_project_msg_label;
+    // Flag indicating if we started with no projects
+    bool m_no_projects;
 
 public:
     void add_project(const wxString& name, const wxString& id);

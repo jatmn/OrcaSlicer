@@ -15830,15 +15830,17 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
                 wxBusyCursor wait;
                 upload_job.printhost->get_projects(project_names, project_ids);
             }
-            if (project_names.IsEmpty()) {
-                // Could not load projects — user is not logged in or has no projects
-                show_error(this, _L("Could not load UltiMaker Digital Factory projects.\n\nPlease make sure you are logged in via the Connect settings and that at least one project exists in your account."));
-                return;
+            // Check if project list is empty
+            bool no_projects = project_names.IsEmpty();
+            if (no_projects) {
+                // Add placeholder text to indicate user needs to create a folder
+                project_names.Add(_L("-- Create a project folder to upload --"));
+                project_ids.Add(""); // Empty ID indicates placeholder
             }
             
             // Get last selected project for this printer (per FORMAT_CONFIG_ID)
             std::string last_project_id;
-            if (!format_config_id.empty()) {
+            if (!format_config_id.empty() && !no_projects) {
                 std::string config_key = "ultimaker_last_project_" + format_config_id;
                 last_project_id = config->get(config_key);
                 BOOST_LOG_TRIVIAL(info) << "Plater::send_gcode_legacy: Last project for " << format_config_id << ": " << last_project_id;
@@ -15846,7 +15848,7 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
             
             pDlg = std::make_unique<PrintHostSendDialog>(default_output_file, upload_job.printhost->get_post_upload_actions(), groups,
                                                          storage_paths, storage_names, config->get_bool("open_device_tab_post_upload"),
-                                                         project_names, project_ids, last_project_id);
+                                                         project_names, project_ids, last_project_id, no_projects);
             // Set callback for creating new projects on the server
             pDlg->set_project_create_callback([&upload_job](const std::string& name) {
                 return upload_job.printhost->create_project(name);
