@@ -15834,6 +15834,15 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         upload_job.upload_data.group       = pDlg->group();
         upload_job.upload_data.storage     = pDlg->storage();
         upload_job.upload_data.extended_info = pDlg->extendedInfo();
+        
+        // Add printer notes to extended_info for container format detection during upload
+        if (printer_technology() == ptFFF) {
+            auto cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+            std::string printer_notes = cfg.opt_string("printer_notes");
+            if (!printer_notes.empty()) {
+                upload_job.upload_data.extended_info["printer_notes"] = printer_notes;
+            }
+        }
     }
 
     // Show "Is printer clean" dialog for PrusaConnect - Upload and print.

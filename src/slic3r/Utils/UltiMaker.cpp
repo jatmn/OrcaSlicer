@@ -6,10 +6,13 @@
 #include <boost/nowide/fstream.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/asio.hpp>
+#include <thread>
+#include <chrono>
 
 #include "slic3r/Utils/Http.hpp"
 #include "nlohmann/json.hpp"
 #include "libslic3r/Utils.hpp"
+#include "libslic3r/Format/FormatConfig.hpp"
 #include "slic3r/GUI/I18N.hpp"
 #include "slic3r/GUI/format.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
@@ -400,6 +403,49 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
         return false;
     }
 
+    // Get printer notes from extended_info to check for FORMAT_CONFIG_ID
+    std::string printer_notes;
+    auto notes_it = upload_data.extended_info.find("printer_notes");
+    if (notes_it != upload_data.extended_info.end()) {
+        printer_notes = notes_it->second;
+    }
+
+    // Check if printer requires container format (.ufp or .makerbot)
+    std::string format_type = FormatConfig::get_format_type_for_printer(printer_notes);
+    std::string container_path;
+    
+    if (!format_type.empty()) {
+        // Printer requires container format - create container from G-code
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Printer requires container format: " << format_type;
+        
+        // Create temp file for container
+        fs::path temp_dir = boost::filesystem::temp_directory_path();
+        std::string extension = FormatConfig::get_file_extension_for_format(format_type);
+        std::string base_filename = upload_data.upload_path.filename().stem().string();
+        container_path = (temp_dir / (base_filename + "_upload" + extension)).string();
+        
+        // Convert G-code to container format
+        std::string error_message;
+        if (!FormatConfig::export_to_container(format_type, 
+                                               upload_data.source_path.string(), 
+                                               container_path, 
+                                               printer_notes, 
+                                               error_message)) {
+            // Hard stop - conversion failed, no fallback to raw G-code
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: Container conversion failed: " << error_message;
+            error_fn(_L("Failed to create container file for upload: ") + error_message);
+            return false;
+        }
+        
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Container created at: " << container_path;
+        
+        // Update source_path to upload the container instead of raw G-code
+        upload_data.source_path = container_path;
+        // Update filename to reflect container extension
+        upload_data.upload_path = upload_data.upload_path.parent_path() / 
+                                  (base_filename + extension);
+    }
+
     const auto filename = upload_data.upload_path.filename().string();
 
     // Check if a project folder is specified in extended_info
@@ -409,7 +455,10 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
         project_id = it->second;
     }
 
-    return do_api_call(
+    // Capture container_path for cleanup scheduling
+    std::string final_container_path = container_path;
+    
+    bool upload_success = do_api_call(
         [&upload_data, &filename, &prorgess_fn, &project_id](bool is_retry) {
             std::string url = LIBRARY_API_BASE + "/files";
             // If project_id is specified, upload to that project
@@ -422,16 +471,32 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
                 .on_progress([&prorgess_fn](Http::Progress progress, bool& cancel) { prorgess_fn(std::move(progress), cancel); });
             return http;
         },
-        [&info_fn, &filename](std::string body, unsigned status) {
+        [&info_fn, &filename, final_container_path](std::string body, unsigned status) {
             BOOST_LOG_TRIVIAL(info) << boost::format("UltiMaker: File uploaded: HTTP %1%: %2%") % status % body;
             info_fn("UltiMaker", _L("File uploaded successfully"));
+            
+            // Schedule cleanup of temp container file 1 minute after successful upload
+            if (!final_container_path.empty()) {
+                std::thread cleanup_thread([final_container_path]() {
+                    std::this_thread::sleep_for(std::chrono::seconds(60));
+                    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Cleaning up temp container file: " << final_container_path;
+                    try {
+                        boost::filesystem::remove(final_container_path);
+                    } catch (const std::exception& e) {
+                        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: Failed to remove temp file: " << e.what();
+                    }
+                });
+                cleanup_thread.detach();
+            }
             return true;
         },
         [this, &error_fn](std::string body, std::string error, unsigned status) {
-            BOOST_LOG_TRIVIAL(error) << boost::format("UltiMaker: Error uploading file: %1%, HTTP %2%, body: `%3%`") % error % status % body;
+            BOOST_LOG_TRIVIAL(error) << boost::format("UltiMaker: Error uploading file: %1%, HTTP %2%, body: `%3%") % error % status % body;
             error_fn(format_error(body, error, status));
             return false;
         });
+    
+    return upload_success;
 }
 
 bool UltiMaker::get_projects(std::vector<ProjectInfo>& projects) const
