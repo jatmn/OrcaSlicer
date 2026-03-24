@@ -21,6 +21,7 @@
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/GCode/PostProcessor.hpp"
 #include "libslic3r/Format/SL1.hpp"
+#include "libslic3r/Format/FormatConfig.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/libslic3r.h"
 
@@ -859,6 +860,39 @@ void BackgroundSlicingProcess::export_gcode()
 	// Perform the final post-processing of the export path by applying the print statistics over the file name.
 	std::string export_path = m_fff_print->print_statistics().finalize_output_path(m_export_path);
 	std::string output_path = m_temp_output_path;
+	
+	// Check if printer requires container format export (.ufp or .makerbot)
+	std::string printer_notes = m_fff_print->full_print_config().opt_string("printer_notes");
+	std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
+	
+	// Container file path (created in system temp directory, deleted after successful copy)
+	std::string container_path;
+	
+	if (!format_type.empty()) {
+		// Get the appropriate file extension
+		std::string ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
+		
+		// Change export_path extension to the container format
+		boost::filesystem::path export_path_path(export_path);
+		export_path_path.replace_extension(ext);
+		export_path = export_path_path.string();
+		
+		// Create container file path in system temp directory
+		boost::filesystem::path temp_path = boost::filesystem::temp_directory_path();
+		temp_path /= boost::filesystem::unique_path("%%%%-%%%%-%%%%-%%%%");
+		temp_path.replace_extension(ext);
+		container_path = temp_path.string();
+		
+		// Export to container format
+		BOOST_LOG_TRIVIAL(info) << "BackgroundSlicingProcess: Converting G-code to container format: " << format_type;
+		std::string container_error;
+		if (!Slic3r::FormatConfig::export_to_container(format_type, m_temp_output_path, container_path, printer_notes, container_error)) {
+			throw Slic3r::ExportError(_utf8(L("Failed to export in container format.\n") + container_error));
+		}
+		
+		// Use container path as source for copy
+		output_path = container_path;
+	}
 
 	//FIXME localize the messages
 	std::string error_message;
@@ -869,8 +903,22 @@ void BackgroundSlicingProcess::export_gcode()
 	}
 	catch (...)
 	{
+		// Clean up container file if it was created
+		if (!container_path.empty()) {
+			boost::filesystem::remove(container_path);
+		}
 		throw Slic3r::ExportError(_utf8(L("Unknown error when exporting G-code.")));
 	}
+	
+	// Clean up container file if it was created (whether copy succeeded or failed)
+	if (!container_path.empty()) {
+		try {
+			boost::filesystem::remove(container_path);
+		} catch (const std::exception& e) {
+			BOOST_LOG_TRIVIAL(warning) << "BackgroundSlicingProcess: Failed to clean up container file: " << e.what();
+		}
+	}
+	
 	switch (copy_ret_val) {
 	case CopyFileResult::SUCCESS: break; // no error
 	case CopyFileResult::FAIL_COPY_FILE:

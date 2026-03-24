@@ -83,6 +83,23 @@ public:
     // Returns the extracted ID if found, otherwise returns default_id
     static std::string parse_format_config_id(const std::string& printer_notes, const std::string& default_id);
     
+    // Get the format type ("ufp" or "makerbot") based on FORMAT_CONFIG_ID in printer_notes
+    // Returns empty string if no valid format config ID is found
+    static std::string get_format_type_for_printer(const std::string& printer_notes);
+    
+    // Get the file extension for a given format type
+    // Returns ".ufp", ".makerbot", or ".gcode" (default)
+    static std::string get_file_extension_for_format(const std::string& format_type);
+    
+    // Export G-code to container format (.ufp or .makerbot)
+    // Returns true on success, false on failure with error_message populated
+    // Note: No fallback - if config doesn't exist, export will fail
+    static bool export_to_container(const std::string& format_type,
+                                     const std::string& input_gcode_path,
+                                     const std::string& output_path,
+                                     const std::string& printer_notes,
+                                     std::string& error_message);
+    
 private:
     static boost::filesystem::path get_formats_directory();
     static std::string load_template_file(const boost::filesystem::path& template_path);

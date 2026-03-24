@@ -202,6 +202,14 @@ set(lisbslic3r_sources
     Format/svg.hpp
     Format/ZipperArchiveImport.cpp
     Format/ZipperArchiveImport.hpp
+    Format/FormatConfig.cpp
+    Format/FormatConfig.hpp
+    Format/GCodeContainerWriter.cpp
+    Format/GCodeContainerWriter.hpp
+    Format/UFPWriter.cpp
+    Format/UFPWriter.hpp
+    Format/MakerBotWriter.cpp
+    Format/MakerBotWriter.hpp
     GCode/AdaptivePAInterpolator.cpp
     GCode/AdaptivePAInterpolator.hpp
     GCode/AdaptivePAProcessor.cpp

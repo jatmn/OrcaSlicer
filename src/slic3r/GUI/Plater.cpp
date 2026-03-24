@@ -54,6 +54,7 @@
 #include "libslic3r/Format/AMF.hpp"
 //#include "libslic3r/Format/3mf.hpp"
 #include "libslic3r/Format/bbs_3mf.hpp"
+#include "libslic3r/Format/FormatConfig.hpp"
 #include "libslic3r/GCode/ThumbnailData.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/SLA/Hollowing.hpp"
@@ -14509,7 +14510,28 @@ void Plater::export_gcode(bool prefer_removable)
     fs::path output_path;
     {
         std::string ext = default_output_file.extension().string();
-        wxFileDialog dlg(this, (printer_technology() == ptFFF) ? _L("Save G-code file as:") : _L("Save SLA file as:"),
+        
+        // Check if printer requires container format export (.ufp or .makerbot)
+        std::string printer_notes;
+        if (printer_technology() == ptFFF) {
+            auto cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+            printer_notes = cfg.opt_string("printer_notes");
+            std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
+            if (!format_type.empty()) {
+                ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
+                BOOST_LOG_TRIVIAL(info) << "Plater::export_gcode: Using container format: " << format_type << " (extension: " << ext << ")";
+            }
+        }
+        
+        wxString dlg_title = (printer_technology() == ptFFF) ? _L("Save G-code file as:") : _L("Save SLA file as:");
+        // Update dialog title to reflect container format if applicable
+        if (ext == ".ufp") {
+            dlg_title = _L("Save UltiMaker Format Package as:");
+        } else if (ext == ".makerbot") {
+            dlg_title = _L("Save MakerBot file as:");
+        }
+        
+        wxFileDialog dlg(this, dlg_title,
             start_dir,
             from_path(default_output_file.filename()),
             GUI::file_wildcards((printer_technology() == ptFFF) ? FT_GCODE : FT_SL1, ext),

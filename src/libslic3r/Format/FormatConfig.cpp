@@ -1,4 +1,6 @@
 #include "FormatConfig.hpp"
+#include "UFPWriter.hpp"
+#include "MakerBotWriter.hpp"
 #include "../Utils.hpp"
 #include <boost/filesystem.hpp>
 #include <boost/nowide/fstream.hpp>
@@ -220,6 +222,106 @@ std::string FormatConfig::parse_format_config_id(const std::string& printer_note
         }
     }
     return default_id;
+}
+
+std::string FormatConfig::get_format_type_for_printer(const std::string& printer_notes) {
+    // Parse the FORMAT_CONFIG_ID from printer notes
+    std::string config_id = parse_format_config_id(printer_notes, "");
+    
+    if (config_id.empty()) {
+        return "";
+    }
+    
+    // UltiMaker formats (.ufp)
+    if (config_id == "ultimaker_s6" || config_id == "ultimaker_s5" ||
+        config_id == "ultimaker_2pc" || config_id == "ultimaker_f4") {
+        return "ufp";
+    }
+    
+    // MakerBot formats (.makerbot)
+    if (config_id == "sketch_small" || config_id == "sketch_sprint" ||
+        config_id == "sketch_large" || config_id == "method_x" || config_id == "method_xl") {
+        return "makerbot";
+    }
+    
+    // Unknown format ID
+    BOOST_LOG_TRIVIAL(warning) << "FormatConfig: Unknown FORMAT_CONFIG_ID: " << config_id;
+    return "";
+}
+
+std::string FormatConfig::get_file_extension_for_format(const std::string& format_type) {
+    if (format_type == "ufp") {
+        return ".ufp";
+    } else if (format_type == "makerbot") {
+        return ".makerbot";
+    }
+    return ".gcode";  // Default
+}
+
+bool FormatConfig::export_to_container(const std::string& format_type,
+                                      const std::string& input_gcode_path,
+                                      const std::string& output_path,
+                                      const std::string& printer_notes,
+                                      std::string& error_message) {
+    // Parse the FORMAT_CONFIG_ID from printer notes
+    std::string config_id = parse_format_config_id(printer_notes, "");
+    
+    if (config_id.empty()) {
+        error_message = "No FORMAT_CONFIG_ID found in printer notes. "
+                       "To export in container format, add FORMAT_CONFIG_ID:<id> to your printer notes. "
+                       "Valid IDs for .ufp: ultimaker_s6, ultimaker_s5, ultimaker_2pc, ultimaker_f4. "
+                       "Valid IDs for .makerbot: sketch_small, sketch_sprint, sketch_large, method_x, method_xl.";
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
+        return false;
+    }
+    
+    // Load the printer-specific config (NO FALLBACK - fail if config doesn't exist)
+    PrinterFormatConfig format_config;
+    if (!load_printer_config(format_type, config_id, format_config)) {
+        error_message = "Failed to load configuration for FORMAT_CONFIG_ID: " + config_id + ". "
+                       "The configuration file '" + config_id + ".json' does not exist in the formats directory. "
+                       "Please ensure the printer preset is properly configured.";
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
+        return false;
+    }
+    
+    BOOST_LOG_TRIVIAL(info) << "FormatConfig: Exporting to " << format_type 
+                           << " format using config: " << config_id;
+    
+    // Create the appropriate writer
+    bool success = false;
+    if (format_type == "ufp") {
+        UFPWriter writer(format_config);
+        success = writer.write(input_gcode_path, output_path);
+        if (!success) {
+            error_message = "Failed to create UltiMaker Format Package (.ufp). "
+                           "The UFP writer encountered an error while packaging the G-code file. "
+                           "This may be caused by an invalid or corrupted G-code file, "
+                           "or missing required metadata in the printer configuration.";
+        }
+    } else if (format_type == "makerbot") {
+        MakerBotWriter writer(format_config);
+        success = writer.write(input_gcode_path, output_path);
+        if (!success) {
+            error_message = "Failed to create MakerBot file (.makerbot). "
+                           "The MakerBot writer encountered an error while packaging the G-code file. "
+                           "This may be caused by an invalid or corrupted G-code file, "
+                           "or missing required metadata in the printer configuration.";
+        }
+    } else {
+        error_message = "Unknown format type: " + format_type + ". "
+                       "Supported formats are 'ufp' and 'makerbot'.";
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
+        return false;
+    }
+    
+    if (success) {
+        BOOST_LOG_TRIVIAL(info) << "FormatConfig: Successfully exported to " << output_path;
+    } else {
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: Export failed: " << error_message;
+    }
+    
+    return success;
 }
 
 } // namespace Slic3r
