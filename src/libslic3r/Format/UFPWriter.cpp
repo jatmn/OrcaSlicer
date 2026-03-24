@@ -72,7 +72,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // Write files in exact order matching valid UFP format:
     // 1. /3D/model.gcode
-    if (!mz_zip_writer_add_mem(&archive, "/3D/model.gcode", 
+    if (!mz_zip_writer_add_mem(&archive, "3D/model.gcode", 
                               gcode_content.c_str(), gcode_content.length(), 
                               MZ_NO_COMPRESSION)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add model.gcode, m_last_error=" 
@@ -95,7 +95,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
             try {
                 std::vector<uint8_t> png_data = base64_decode(it->second);
                 if (!png_data.empty()) {
-                    if (!mz_zip_writer_add_mem(&archive, "/Metadata/thumbnail.png",
+                    if (!mz_zip_writer_add_mem(&archive, "Metadata/thumbnail.png",
                                               png_data.data(), png_data.size(),
                                               MZ_NO_COMPRESSION)) {
                         BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to add thumbnail";
@@ -112,7 +112,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // 3. /3D/_rels/model.gcode.rels
     std::string gcode_rels = generate_gcode_rels_xml(has_thumbnail);
-    if (!mz_zip_writer_add_mem(&archive, "/3D/_rels/model.gcode.rels",
+    if (!mz_zip_writer_add_mem(&archive, "3D/_rels/model.gcode.rels",
                               gcode_rels.c_str(), gcode_rels.length(),
                               MZ_NO_COMPRESSION)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add model.gcode.rels";
@@ -122,7 +122,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // 4. /Cura/slicemetadata.json
     std::string slicemetadata = generate_slicemetadata_json(meta);
-    if (!mz_zip_writer_add_mem(&archive, "/Cura/slicemetadata.json",
+    if (!mz_zip_writer_add_mem(&archive, "Cura/slicemetadata.json",
                               slicemetadata.c_str(), slicemetadata.length(),
                               MZ_NO_COMPRESSION)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add slicemetadata.json";
@@ -132,7 +132,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // 5. /Metadata/UFP_Global.json
     std::string ufp_global = generate_ufp_global_json(meta);
-    if (!mz_zip_writer_add_mem(&archive, "/Metadata/UFP_Global.json",
+    if (!mz_zip_writer_add_mem(&archive, "Metadata/UFP_Global.json",
                               ufp_global.c_str(), ufp_global.length(),
                               MZ_NO_COMPRESSION)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add UFP_Global.json";
@@ -142,7 +142,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // 6. /Materials/material.xml.fdm_material
     std::string material_xml = generate_material_xml(meta);
-    if (!mz_zip_writer_add_mem(&archive, "/Materials/material.xml.fdm_material",
+    if (!mz_zip_writer_add_mem(&archive, "Materials/material.xml.fdm_material",
                               material_xml.c_str(), material_xml.length(),
                               MZ_NO_COMPRESSION)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add material.xml.fdm_material";
@@ -152,7 +152,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // 7. /_rels/.rels
     std::string rels = generate_rels_xml();
-    if (!mz_zip_writer_add_mem(&archive, "/_rels/.rels",
+    if (!mz_zip_writer_add_mem(&archive, "_rels/.rels",
                               rels.c_str(), rels.length(),
                               MZ_NO_COMPRESSION)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add .rels";
@@ -162,7 +162,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // 8. /[Content_Types].xml
     std::string content_types = generate_content_types_xml();
-    if (!mz_zip_writer_add_mem(&archive, "/[Content_Types].xml",
+    if (!mz_zip_writer_add_mem(&archive, "[Content_Types].xml",
                               content_types.c_str(), content_types.length(),
                               MZ_NO_COMPRESSION)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add [Content_Types].xml";

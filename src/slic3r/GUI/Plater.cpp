@@ -14534,7 +14534,7 @@ void Plater::export_gcode(bool prefer_removable)
         wxFileDialog dlg(this, dlg_title,
             start_dir,
             from_path(default_output_file.filename()),
-            GUI::file_wildcards((printer_technology() == ptFFF) ? FT_GCODE : FT_SL1, ext),
+            GUI::file_wildcards((ext == ".ufp") ? FT_UFP : (ext == ".makerbot") ? FT_MAKERBOT : ((printer_technology() == ptFFF) ? FT_GCODE : FT_SL1), ext),
             wxFD_SAVE | wxFD_OVERWRITE_PROMPT
         );
         if (dlg.ShowModal() == wxID_OK) {
@@ -15767,6 +15767,16 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
     default_output_file = fs::path(Slic3r::fold_utf8_to_ascii(default_output_file.string()));
     if (use_3mf) {
         default_output_file.replace_extension("3mf");
+    } else if (printer_technology() == ptFFF) {
+        // Check if printer requires container format export (.ufp or .makerbot)
+        auto cfg = wxGetApp().preset_bundle->printers.get_edited_preset().config;
+        std::string printer_notes = cfg.opt_string("printer_notes");
+        std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
+        if (!format_type.empty()) {
+            std::string ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
+            default_output_file.replace_extension(ext);
+            BOOST_LOG_TRIVIAL(info) << "Plater::send_gcode_legacy: Using container format for upload: " << format_type << " (extension: " << ext << ")";
+        }
     }
 
     // Repetier specific: Query the server for the list of file groups.
