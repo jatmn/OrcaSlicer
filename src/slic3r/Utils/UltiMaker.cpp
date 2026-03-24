@@ -496,6 +496,12 @@ bool UltiMaker::get_projects(std::vector<ProjectInfo>& projects) const
                             count++;
                         }
                     }
+                    
+                    // Sort projects alphabetically by display_name (case-insensitive)
+                    std::sort(projects.begin(), projects.end(), [](const ProjectInfo& a, const ProjectInfo& b) {
+                        return a.display_name < b.display_name;
+                    });
+                    
                     result = true;
                     BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Total projects added: " << projects.size() << " out of " << j["data"].size() << " items in response";
                 } else {

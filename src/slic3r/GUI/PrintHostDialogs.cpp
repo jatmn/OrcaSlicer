@@ -140,10 +140,20 @@ void PrintHostSendDialog::init()
                     
                     if (result.success && !result.project_id.empty()) {
                         // Add to combo box with real ID and select it
-                        m_project_names.Add(project_name);
-                        m_project_ids.Add(wxString::FromUTF8(result.project_id.c_str()));
-                        combo_projects->Append(project_name);
-                        combo_projects->SetSelection(combo_projects->GetCount() - 1);
+                        // Find alphabetical insertion position
+                        int insert_idx = 0;
+                        for (int i = 0; i < combo_projects->GetCount(); i++) {
+                            if (project_name > combo_projects->GetString(i)) {
+                                insert_idx = i + 1;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        m_project_names.Insert(project_name, insert_idx);
+                        m_project_ids.Insert(wxString::FromUTF8(result.project_id.c_str()), insert_idx);
+                        combo_projects->Insert(project_name, insert_idx);
+                        combo_projects->SetSelection(insert_idx);
                     } else {
                         // Map error codes to user-friendly messages
                         wxString error_message;
@@ -366,10 +376,20 @@ std::map<std::string, std::string> PrintHostSendDialog::extendedInfo() const
 void PrintHostSendDialog::add_project(const wxString& name, const wxString& id)
 {
     if (combo_projects != nullptr) {
-        m_project_names.Add(name);
-        m_project_ids.Add(id);
-        combo_projects->Append(name);
-        combo_projects->SetSelection(combo_projects->GetCount() - 1);
+        // Find alphabetical insertion position
+        int insert_idx = 0;
+        for (int i = 0; i < combo_projects->GetCount(); i++) {
+            if (name > combo_projects->GetString(i)) {
+                insert_idx = i + 1;
+            } else {
+                break;
+            }
+        }
+        
+        m_project_names.Insert(name, insert_idx);
+        m_project_ids.Insert(id, insert_idx);
+        combo_projects->Insert(name, insert_idx);
+        combo_projects->SetSelection(insert_idx);
     }
 }
 
