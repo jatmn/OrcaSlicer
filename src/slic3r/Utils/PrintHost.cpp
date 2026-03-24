@@ -187,33 +187,43 @@ void PrintHostJobQueue::priv::stop_bg_thread()
 void PrintHostJobQueue::priv::bg_thread_main()
 {
     // bg thread entry point
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: bg_thread_main started";
 
     try {
         // Pick up jobs from the job channel:
         while (! bg_exit) {
+            BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: Waiting for job...";
             auto job = channel_jobs.pop();   // Sleeps in a cond var if there are no jobs
+            BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: Job popped from queue";
             if (job.empty()) {
                 // This happens when the thread is being stopped
+                BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: Empty job received, exiting";
                 break;
             }
 
             source_to_remove = job.upload_data.source_path;
 
-            BOOST_LOG_TRIVIAL(debug) << boost::format("PrintHostJobQueue/bg_thread: Received job: [%1%]: `%2%` -> `%3%`, cancelled: %4%")
+            BOOST_LOG_TRIVIAL(error) << boost::format("ULTIMAKER_THREAD: Received job [%1%]: `%2%` -> `%3%`, cancelled: %4%")
                 % job_id
                 % job.upload_data.upload_path
                 % job.printhost->get_host()
                 % job.cancelled;
 
             if (! job.cancelled) {
+                BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: Calling perform_job";
                 perform_job(std::move(job));
+                BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: perform_job returned";
             }
 
             remove_source();
             job_id++;
         }
     } catch (const std::exception &e) {
+        BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: EXCEPTION in bg_thread_main: " << e.what();
         emit_error(e.what());
+    } catch (...) {
+        BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: UNKNOWN EXCEPTION in bg_thread_main";
+        emit_error("Unknown error in upload thread");
     }
 
     // Cleanup leftover files, if any
@@ -320,13 +330,17 @@ void PrintHostJobQueue::priv::remove_source()
 
 void PrintHostJobQueue::priv::perform_job(PrintHostJob the_job)
 {
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: perform_job starting";
     emit_progress(0);   // Indicate the upload is starting
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: About to call upload()";
 
     bool success = the_job.printhost->upload(std::move(the_job.upload_data),
         [this](Http::Progress progress, bool &cancel)   { this->progress_fn(std::move(progress), cancel); },
         [this](wxString error)                          { this->error_fn(std::move(error)); },
         [this](wxString tag, wxString host)             { this->info_fn(std::move(tag), std::move(host)); }
     );
+
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_THREAD: upload() returned, success=" << success;
 
     if (success) {
         emit_progress(100);

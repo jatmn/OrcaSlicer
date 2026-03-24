@@ -8,6 +8,8 @@
 #include <boost/asio.hpp>
 #include <thread>
 #include <chrono>
+#include <mutex>
+#include <condition_variable>
 
 #include "slic3r/Utils/Http.hpp"
 #include "nlohmann/json.hpp"
@@ -399,8 +401,32 @@ bool UltiMaker::test(wxString& curl_msg) const
         });
 }
 
+namespace {
+// Helper to get MIME type based on FORMAT_CONFIG_ID and file extension
+std::string get_mime_type_for_upload(const std::string& format_config_id, const std::string& extension)
+{
+    // UltiMaker formats
+    if (format_config_id == "ultimaker_s6" || format_config_id == "ultimaker_s5" || 
+        format_config_id == "ultimaker_2pc" || format_config_id == "ultimaker_f4") {
+        return "application/x-ufp";
+    }
+    // MakerBot Sketch formats
+    if (format_config_id == "sketch_small" || format_config_id == "sketch_sprint" || 
+        format_config_id == "sketch_large") {
+        return "application/x-makerbot-sketch";
+    }
+    // MakerBot Method formats
+    if (format_config_id == "method_x" || format_config_id == "method_xl") {
+        return "application/x-makerbot";
+    }
+    // Fallback based on extension
+    return (extension == ".ufp") ? "application/x-ufp" : "application/x-makerbot";
+}
+} // namespace
+
 bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, ErrorFn error_fn, InfoFn info_fn) const
 {
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: upload() function ENTERED - source=" << upload_data.source_path;
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Starting upload";
     
     if (m_cred.find("access_token") == m_cred.end()) {
@@ -446,6 +472,7 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Creating container at: " << container_path;
     
     // Convert G-code to container format
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: About to call export_to_container()";
     std::string error_message;
     if (!FormatConfig::export_to_container(format_type, 
                                            upload_data.source_path.string(), 
@@ -458,6 +485,7 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
         return false;
     }
     
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: Container created successfully at: " << container_path;
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Container created successfully at: " << container_path;
     
     // Update source_path to upload the container instead of raw G-code
@@ -472,21 +500,9 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: filename=" << filename;
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: source_ext=" << source_ext;
 
-    // Determine Content-Type based on FORMAT_CONFIG_ID (from Cura source)
-    std::string content_type;
-    if (format_config_id == "ultimaker_s6" || format_config_id == "ultimaker_s5" || 
-        format_config_id == "ultimaker_2pc" || format_config_id == "ultimaker_f4") {
-        content_type = "application/x-ufp";
-    } else if (format_config_id.find("sketch") != std::string::npos) {
-        content_type = "application/x-makerbot-sketch";
-    } else if (format_config_id.find("method") != std::string::npos) {
-        content_type = "application/x-makerbot";
-    } else {
-        // Fallback based on extension
-        content_type = (source_ext == ".ufp") ? "application/x-ufp" : "application/x-makerbot";
-    }
-    
-    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Using Content-Type: " << content_type;
+    // Get MIME type for the upload request
+    std::string mime_type = get_mime_type_for_upload(format_config_id, source_ext);
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: MIME type=" << mime_type;
 
     // Check if a project folder is specified in extended_info
     std::string project_id;
@@ -494,56 +510,243 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
     if (it != upload_data.extended_info.end()) {
         project_id = it->second;
     }
-
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: project_id=" << project_id;
 
-    // Capture container_path for cleanup scheduling
+    // Get file size for upload request
+    boost::filesystem::ifstream file_check(upload_data.source_path, std::ios::binary | std::ios::ate);
+    if (!file_check.good()) {
+        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - Cannot open file for size check: " << upload_data.source_path;
+        error_fn(_L("Cannot open file for upload"));
+        return false;
+    }
+    size_t file_size = file_check.tellg();
+    file_check.close();
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: file_size=" << file_size;
+
+    // Capture container_path for cleanup
     std::string final_container_path = container_path;
+
+    // =========================================================================
+    // STEP 1: Request upload URL from Digital Factory API
+    // =========================================================================
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 1 - Requesting upload URL from API";
     
-    // Upload using PUT with raw file body and correct Content-Type (NOT multipart/form-data)
-    bool upload_success = do_api_call(
-        [&upload_data, &filename, &prorgess_fn, &project_id, &content_type](bool is_retry) {
-            std::string url = LIBRARY_API_BASE + "/files";
-            // If project_id is specified, upload to that project
-            if (!project_id.empty()) {
-                url = LIBRARY_API_BASE + "/projects/" + project_id + "/files";
-            }
+    // Build JSON request body matching Cura's format
+    nlohmann::json request_body = {
+        {"data", {
+            {"job_name", filename},
+            {"file_size", file_size},
+            {"content_type", mime_type},
+            {"library_project_id", project_id},
+            {"source_file_id", ""}  // Empty for standalone print job uploads
+        }}
+    };
+    
+    std::string request_body_str = request_body.dump();
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Request body: " << request_body_str;
+
+    UploadResponse upload_response;
+    bool step1_success = false;
+    
+    // Make synchronous POST request to /jobs/upload
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: About to start Step 1 HTTP request";
+    {
+        auto http = Http::post(LIBRARY_API_BASE + "/jobs/upload");
+        http.header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .set_post_body(request_body_str);
+        
+        std::mutex response_mutex;
+        std::condition_variable response_cv;
+        bool response_received = false;
+        
+        set_auth(http, m_cred.at("access_token"));
+        http.header("User-Agent", "UltiMaker OrcaSlicer Plugin")
+            .header("Cache-Control", "no-cache, no-store, must-revalidate");
+        
+        http.on_complete([&](std::string body, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 1 response status=" << http_status;
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 1 response body=" << body;
             
-            BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Uploading to URL: " << url;
-            
-            // Use PUT with raw file body and correct Content-Type header
-            auto http = Http::put(url);
-            http.header("Content-Type", content_type)
-                .set_put_body(upload_data.source_path)
-                .on_progress([&prorgess_fn](Http::Progress progress, bool& cancel) { 
-                    prorgess_fn(std::move(progress), cancel); 
-                });
-            return http;
-        },
-        [&info_fn, &filename, final_container_path](std::string body, unsigned status) {
-            BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: SUCCESS - HTTP " << status << ": " << body;
-            info_fn("UltiMaker", _L("File uploaded successfully"));
-            
-            // Schedule cleanup of temp container file 60 seconds after successful upload
-            if (!final_container_path.empty()) {
-                std::thread cleanup_thread([final_container_path]() {
-                    std::this_thread::sleep_for(std::chrono::seconds(60));
-                    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Cleaning up temp container file: " << final_container_path;
-                    try {
-                        boost::filesystem::remove(final_container_path);
-                    } catch (const std::exception& e) {
-                        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: Failed to remove temp file: " << e.what();
+            if (http_status >= 200 && http_status < 300) {
+                try {
+                    auto response_json = nlohmann::json::parse(body);
+                    if (response_json.contains("data")) {
+                        auto& data = response_json["data"];
+                        upload_response.upload_url = data.value("upload_url", "");
+                        upload_response.content_type = data.value("content_type", mime_type);
+                        upload_response.job_id = data.value("job_id", "");
+                        upload_response.success = !upload_response.upload_url.empty();
+                        if (!upload_response.success) {
+                            upload_response.error_message = "Missing upload_url in response";
+                        }
+                    } else {
+                        upload_response.error_message = "Missing 'data' in response";
                     }
-                });
-                cleanup_thread.detach();
+                } catch (const std::exception& e) {
+                    upload_response.error_message = std::string("JSON parse error: ") + e.what();
+                    BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: JSON parse error: " << e.what();
+                }
+            } else {
+                upload_response.error_message = format_error(body, "", http_status).utf8_string();
             }
-            return true;
-        },
-        [this, &error_fn](std::string body, std::string error, unsigned status) {
-            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: FAILED - HTTP " << status << ", error: " << error << ", body: " << body;
-            error_fn(format_error(body, error, status));
-            return false;
+            step1_success = upload_response.success;
+            
+            std::lock_guard<std::mutex> lock(response_mutex);
+            response_received = true;
+            response_cv.notify_one();
         });
+        
+        http.on_error([&](std::string body, std::string error, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: STEP 1 error: " << error << ", HTTP " << http_status;
+            upload_response.error_message = format_error(body, error, http_status).utf8_string();
+            step1_success = false;
+            
+            std::lock_guard<std::mutex> lock(response_mutex);
+            response_received = true;
+            response_cv.notify_one();
+        });
+        
+        http.perform_sync();
+    }
+    
+    if (!step1_success || !upload_response.success) {
+        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: STEP 1 FAILED: " << upload_response.error_message;
+        error_fn(_("Failed to request upload URL: ") + upload_response.error_message);
+        // Cleanup temp file on failure
+        try { boost::filesystem::remove(final_container_path); } catch (...) {}
+        return false;
+    }
+    
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: STEP 1 COMPLETED SUCCESSFULLY";
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 1 SUCCESS - upload_url=" << upload_response.upload_url;
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 1 SUCCESS - content_type=" << upload_response.content_type;
+
+    // =========================================================================
+    // STEP 2: Upload file to pre-signed URL
+    // =========================================================================
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: Starting Step 2 - file upload to pre-signed URL";
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Uploading file to: " << upload_response.upload_url;
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - File path: " << upload_data.source_path;
+    
+    // Verify file exists and is readable before uploading
+    if (!boost::filesystem::exists(upload_data.source_path)) {
+        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - File does not exist: " << upload_data.source_path;
+        error_fn(_L("Upload failed: Container file not found"));
+        // Cleanup temp file
+        try { boost::filesystem::remove(final_container_path); } catch (...) {}
+        return false;
+    }
+    
+    // Test open the file to ensure it's readable
+    {
+        boost::filesystem::ifstream test_stream(upload_data.source_path, std::ios::binary);
+        if (!test_stream.is_open()) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - Cannot open file for reading: " << upload_data.source_path;
+            error_fn(_L("Upload failed: Cannot read container file"));
+            // Cleanup temp file
+            try { boost::filesystem::remove(final_container_path); } catch (...) {}
+            return false;
+        }
+        test_stream.close();
+    }
+    
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - File verified, proceeding with upload";
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Content-Type: " << upload_response.content_type;
+    
+    // Read file into memory buffer to avoid Http::set_put_body callback lifetime issues
+    std::string file_buffer;
+    try {
+        boost::filesystem::ifstream file_stream(upload_data.source_path, std::ios::binary | std::ios::ate);
+        if (!file_stream.is_open()) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - Cannot open file for reading: " << upload_data.source_path;
+            error_fn(_L("Upload failed: Cannot read container file"));
+            try { boost::filesystem::remove(final_container_path); } catch (...) {}
+            return false;
+        }
+        
+        auto file_size = file_stream.tellg();
+        file_stream.seekg(0, std::ios::beg);
+        
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - File size: " << file_size;
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Reading file into memory buffer";
+        
+        file_buffer.resize(static_cast<size_t>(file_size));
+        if (!file_stream.read(file_buffer.data(), file_size)) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - Failed to read file into buffer";
+            error_fn(_L("Upload failed: Cannot read container file"));
+            try { boost::filesystem::remove(final_container_path); } catch (...) {}
+            return false;
+        }
+        file_stream.close();
+        
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - File loaded into buffer, size=" << file_buffer.size();
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - Exception reading file: " << e.what();
+        error_fn(_L("Upload failed: Cannot read container file"));
+        try { boost::filesystem::remove(final_container_path); } catch (...) {}
+        return false;
+    }
+    
+    bool upload_success = false;
+    {
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Creating Http::put request";
+        auto http = Http::put(upload_response.upload_url);
+        http.header("Content-Type", upload_response.content_type);
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Calling set_post_body with file buffer";
+        http.set_post_body(file_buffer);  // Use memory buffer instead of file stream
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - set_post_body completed, adding progress callback";
+        http.on_progress([&prorgess_fn](Http::Progress progress, bool& cancel) { 
+            prorgess_fn(std::move(progress), cancel); 
+        });
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - All callbacks set, calling perform_sync";
+        
+        std::mutex response_mutex;
+        std::condition_variable response_cv;
+        bool response_received = false;
+        
+        // No auth needed for pre-signed URL
+        http.on_complete([&](std::string body, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 response status=" << http_status;
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 response body=" << body;
+            upload_success = (http_status >= 200 && http_status < 300);
+            
+            std::lock_guard<std::mutex> lock(response_mutex);
+            response_received = true;
+            response_cv.notify_one();
+        });
+        
+        http.on_error([&](std::string body, std::string error, unsigned http_status) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: STEP 2 error: " << error << ", HTTP " << http_status << ", body: " << body;
+            upload_success = false;
+            
+            std::lock_guard<std::mutex> lock(response_mutex);
+            response_received = true;
+            response_cv.notify_one();
+        });
+        
+        http.perform_sync();
+    }
+    
+    // Schedule cleanup of temp container file 60 seconds after result
+    std::thread cleanup_thread([final_container_path]() {
+        std::this_thread::sleep_for(std::chrono::seconds(60));
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Cleaning up temp container file: " << final_container_path;
+        try {
+            boost::filesystem::remove(final_container_path);
+        } catch (const std::exception& e) {
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: Failed to remove temp file: " << e.what();
+        }
+    });
+    cleanup_thread.detach();
+    
+    if (upload_success) {
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: SUCCESS";
+        info_fn("UltiMaker", _L("File uploaded successfully"));
+    } else {
+        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: FAILED";
+        error_fn(_L("Failed to upload file to Digital Factory"));
+    }
     
     return upload_success;
 }

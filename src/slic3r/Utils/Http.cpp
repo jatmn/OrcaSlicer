@@ -274,7 +274,16 @@ int Http::priv::xfercb_legacy(void *userp, double dltotal, double dlnow, double 
 
 size_t Http::priv::form_file_read_cb(char *buffer, size_t size, size_t nitems, void *userp)
 {
+    if (!userp) {
+        return CURL_READFUNC_ABORT;
+    }
+
     auto f = reinterpret_cast<form_file*>(userp);
+
+    // Check if form_file pointer is valid and stream is in good state
+    if (!f || !f->ifs.good() || !f->ifs.is_open()) {
+        return CURL_READFUNC_ABORT;
+    }
 
 	try {
 	    size_t max_read_size = size * nitems;
@@ -282,7 +291,8 @@ size_t Http::priv::form_file_read_cb(char *buffer, size_t size, size_t nitems, v
 			// Unlimited
             f->ifs.read(buffer, max_read_size);
         } else {
-            unsigned long long read_size = f->ifs.tellg() - f->init_offset;
+            auto pos = f->ifs.tellg();
+            unsigned long long read_size = pos - f->init_offset;
             if (read_size >= f->content_length) {
                 return 0;
             }
@@ -290,7 +300,7 @@ size_t Http::priv::form_file_read_cb(char *buffer, size_t size, size_t nitems, v
             max_read_size = std::min(max_read_size, size_t(f->content_length - read_size));
             f->ifs.read(buffer, max_read_size);
         }
-	} catch (const std::exception &) {
+ 	} catch (...) {
 		return CURL_READFUNC_ABORT;
 	}
 
@@ -393,12 +403,21 @@ void Http::priv::set_put_body(const fs::path &path)
 {
 	boost::system::error_code ec;
 	boost::uintmax_t filesize = file_size(path, ec);
-	if (!ec) {
-        putFile = std::make_unique<form_file>(path, 0, 0);
-		::curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
-		::curl_easy_setopt(curl, CURLOPT_READDATA, (void *) (putFile.get()));
-		::curl_easy_setopt(curl, CURLOPT_INFILESIZE, filesize);
+	if (ec) {
+		BOOST_LOG_TRIVIAL(error) << "Http: Cannot get file size for " << path << ": " << ec.message();
+		return;
 	}
+
+    putFile = std::make_unique<form_file>(path, 0, 0);
+
+    if (!putFile->ifs.is_open()) {
+		BOOST_LOG_TRIVIAL(error) << "Http: Cannot open file " << path;
+        putFile.reset();
+        return;
+    }
+
+	::curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+	::curl_easy_setopt(curl, CURLOPT_INFILESIZE, filesize);
 }
 
 void Http::priv::set_del_body(const std::string& body)
@@ -431,7 +450,13 @@ void Http::priv::http_perform()
 	::curl_easy_setopt(curl, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
 	::curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writecb);
 	::curl_easy_setopt(curl, CURLOPT_WRITEDATA, static_cast<void*>(this));
-	::curl_easy_setopt(curl, CURLOPT_READFUNCTION, form_file_read_cb);
+	
+	// Only set read callback when we have a file to upload via set_put_body()
+	// This prevents crashes when using PUT with set_post_body() (memory buffer)
+	if (putFile) {
+		::curl_easy_setopt(curl, CURLOPT_READFUNCTION, form_file_read_cb);
+		::curl_easy_setopt(curl, CURLOPT_READDATA, static_cast<void*>(putFile.get()));
+	}
 	//BBS set header functions
 	::curl_easy_setopt(curl, CURLOPT_HEADERDATA, static_cast<void *>(this));
 	::curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, headers_cb);

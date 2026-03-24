@@ -58,6 +58,16 @@ public:
         std::string display_name;
         std::string owner;
     };
+
+    // Response from upload URL request (Step 1 of two-step upload)
+    struct UploadResponse {
+        std::string upload_url;
+        std::string content_type;
+        std::string job_id;
+        bool success = false;
+        std::string error_message;
+    };
+
     bool get_projects(std::vector<ProjectInfo>& projects) const;
     bool get_projects(wxArrayString& project_names, wxArrayString& project_ids) const override;
     CreateProjectResult create_project(const std::string& name) const override;
