@@ -548,13 +548,13 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
     UploadResponse upload_response;
     bool step1_success = false;
     
-    // Make synchronous POST request to /jobs/upload
+    // Make synchronous PUT request to /jobs/upload
     BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: About to start Step 1 HTTP request";
     {
-        auto http = Http::post(LIBRARY_API_BASE + "/jobs/upload");
+        auto http = Http::put(LIBRARY_API_BASE + "/jobs/upload");
         http.header("Content-Type", "application/json")
             .header("Accept", "application/json")
-            .set_post_body(request_body_str);
+            .set_put_body_raw(request_body_str);
         
         std::mutex response_mutex;
         std::condition_variable response_cv;

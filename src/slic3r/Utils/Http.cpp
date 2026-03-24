@@ -420,6 +420,14 @@ void Http::priv::set_put_body(const fs::path &path)
 	::curl_easy_setopt(curl, CURLOPT_INFILESIZE, filesize);
 }
 
+void Http::priv::set_put_body_raw(const std::string &body)
+{
+    postfields = body;
+    // Use CURLOPT_CUSTOMREQUEST to force PUT method
+    // This bypasses CURLOPT_UPLOAD which is for file stream uploads
+    ::curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+}
+
 void Http::priv::set_del_body(const std::string& body)
 {
 	postfields = body;
@@ -732,6 +740,12 @@ Http& Http::set_post_body(const std::string &body)
 Http& Http::set_put_body(const fs::path &path)
 {
 	if (p) { p->set_put_body(path);}
+	return *this;
+}
+
+Http& Http::set_put_body_raw(const std::string &body)
+{
+	if (p) { p->set_put_body_raw(body); }
 	return *this;
 }
 

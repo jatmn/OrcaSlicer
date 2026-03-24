@@ -157,6 +157,13 @@ public:
 	// This can be used for hosts which do not support multipart requests.
 	Http& set_put_body(const boost::filesystem::path &path);
 
+	/// Upload data using PUT method with raw body (not file stream).
+	/// Used for APIs that require PUT with JSON/raw body data, unlike set_put_body()
+	/// which uses file streaming. This sends complete body data directly.
+	/// 
+	/// Note: Only used by UltiMaker Digital Factory upload flow (Step 1)
+	Http& set_put_body_raw(const std::string &body);
+
 	// Set the file contents as a DELETE request body.
 	// The data is used verbatim, it is not additionally encoded in any way.
 	// This can be used for hosts which do not support multipart requests.
