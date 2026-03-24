@@ -14,6 +14,7 @@
 #include <wx/wupdlock.h>
 #include <wx/debug.h>
 #include <wx/msgdlg.h>
+#include <wx/utils.h>
 
 #include <boost/log/trivial.hpp>
 #include <boost/filesystem.hpp>
@@ -124,14 +125,53 @@ void PrintHostSendDialog::init()
             wxTextEntryDialog dlg(this, _L("Enter a name for the new project folder:"), _L("New Project"), wxEmptyString);
             if (dlg.ShowModal() == wxID_OK) {
                 wxString project_name = dlg.GetValue();
-                if (!project_name.IsEmpty()) {
-                    // Store pending project name for creation after dialog closes
-                    m_pending_new_project_name = into_u8(project_name);
-                    // Add to combo box and select it (will be created when Upload is clicked)
-                    m_project_names.Add(project_name);
-                    m_project_ids.Add(wxEmptyString);  // Empty ID indicates new project
-                    combo_projects->Append(project_name);
-                    combo_projects->SetSelection(combo_projects->GetCount() - 1);
+                
+                // Client-side validation: minimum 2 characters
+                if (project_name.Length() < 2) {
+                    wxMessageDialog err_dlg(this, _L("Project name must be at least 2 characters long."), _L("Error"), wxOK | wxICON_ERROR);
+                    err_dlg.ShowModal();
+                    return;
+                }
+                
+                if (m_project_create_callback) {
+                    // Show busy cursor during project creation
+                    wxBusyCursor wait;
+                    PrintHost::CreateProjectResult result = m_project_create_callback(into_u8(project_name));
+                    
+                    if (result.success && !result.project_id.empty()) {
+                        // Add to combo box with real ID and select it
+                        m_project_names.Add(project_name);
+                        m_project_ids.Add(wxString::FromUTF8(result.project_id.c_str()));
+                        combo_projects->Append(project_name);
+                        combo_projects->SetSelection(combo_projects->GetCount() - 1);
+                    } else {
+                        // Map error codes to user-friendly messages
+                        wxString error_message;
+                        bool show_open_digital_factory = false;
+                        
+                        if (result.error_code == "lessLengthThanMinimum") {
+                            error_message = _L("Project name must be at least 2 characters long.");
+                        } else if (result.error_code == "greaterLengthThanMaximum") {
+                            error_message = _L("Project name is too long. Please use a shorter name.");
+                        } else if (result.error_code == "insufficientSubscriptionPlan") {
+                            error_message = _L("You've reached your project limit. Please visit your UltiMaker Digital Factory Library to manage your projects or upgrade your subscription.");
+                            show_open_digital_factory = true;
+                        } else {
+                            error_message = _L("Failed to create project. Please try again or check your UltiMaker Digital Factory Library for more information.");
+                            show_open_digital_factory = true;
+                        }
+                        
+                        if (show_open_digital_factory) {
+                            // Show dialog with "Open Digital Factory" button
+                            wxMessageDialog err_dlg(this, error_message, _L("Error"), wxOK | wxICON_ERROR);
+                            if (err_dlg.ShowModal() == wxID_OK) {
+                                wxLaunchDefaultBrowser("https://digitalfactory.ultimaker.com/library");
+                            }
+                        } else {
+                            wxMessageDialog err_dlg(this, error_message, _L("Error"), wxOK | wxICON_ERROR);
+                            err_dlg.ShowModal();
+                        }
+                    }
                 }
             }
         });
@@ -314,11 +354,7 @@ std::map<std::string, std::string> PrintHostSendDialog::extendedInfo() const
         int sel = combo_projects->GetSelection();
         if (sel >= 0 && sel < (int)m_project_ids.GetCount()) {
             wxString project_id = m_project_ids[sel];
-            if (project_id.IsEmpty()) {
-                // New project - use the pending name
-                info["new_project_name"] = get_pending_new_project_name();
-            } else {
-                // Existing project
+            if (!project_id.IsEmpty()) {
                 info["project_id"] = into_u8(project_id);
             }
         }

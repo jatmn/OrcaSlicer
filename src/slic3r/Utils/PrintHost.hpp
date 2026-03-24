@@ -51,6 +51,17 @@ public:
     typedef std::function<void(wxString /* error */)> ErrorFn;
     typedef std::function<void(wxString /* tag */, wxString /* status */)> InfoFn;
 
+    // Result structure for creating a new project on UltiMaker Digital Factory
+    struct CreateProjectResult {
+        bool success;              // true if project was created successfully
+        std::string error_code;    // Error code from server (e.g., "insufficientSubscriptionPlan", "lessLengthThanMinimum")
+        std::string error_title;   // Error title from server for debugging
+        std::string project_id;    // Valid on success
+        std::string project_name; // Valid on success
+
+        CreateProjectResult() : success(false), error_code(""), error_title(""), project_id(""), project_name("") {}
+    };
+
     virtual const char* get_name() const = 0;
 
     virtual bool test(wxString &curl_msg) const = 0;
@@ -75,8 +86,8 @@ public:
     // Returns false if not supported or fail.
     virtual bool get_projects(wxArrayString& /*project_names*/, wxArrayString& /*project_ids*/) const { return false; }
     // Support for UltiMaker Digital Factory project creation.
-    // Returns false if not supported or fail. Fills project_id and project_name on success.
-    virtual bool create_project(const std::string& /*name*/, std::string& /*project_id*/, std::string& /*project_name*/) const { return false; }
+    // Returns CreateProjectResult with success/failure info and project_id/project_name on success.
+    virtual CreateProjectResult create_project(const std::string& /*name*/) const { return CreateProjectResult(); }
 
     static PrintHost* get_print_host(DynamicPrintConfig *config);
 

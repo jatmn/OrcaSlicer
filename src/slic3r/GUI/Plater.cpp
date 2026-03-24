@@ -15790,6 +15790,10 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
             pDlg = std::make_unique<PrintHostSendDialog>(default_output_file, upload_job.printhost->get_post_upload_actions(), groups,
                                                          storage_paths, storage_names, config->get_bool("open_device_tab_post_upload"),
                                                          project_names, project_ids);
+            // Set callback for creating new projects on the server
+            pDlg->set_project_create_callback([&upload_job](const std::string& name) {
+                return upload_job.printhost->create_project(name);
+            });
         } else {
             pDlg = std::make_unique<PrintHostSendDialog>(default_output_file, upload_job.printhost->get_post_upload_actions(), groups,
                                                          storage_paths, storage_names, config->get_bool("open_device_tab_post_upload"));
@@ -15808,21 +15812,6 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         upload_job.upload_data.group       = pDlg->group();
         upload_job.upload_data.storage     = pDlg->storage();
         upload_job.upload_data.extended_info = pDlg->extendedInfo();
-
-        // UltiMaker: Handle new project creation if user typed a new project name
-        if (host_type == htUltiMaker) {
-            auto it = upload_job.upload_data.extended_info.find("new_project_name");
-            if (it != upload_job.upload_data.extended_info.end()) {
-                std::string new_project_name = it->second;
-                std::string project_id;
-                std::string project_name;
-                if (upload_job.printhost->create_project(new_project_name, project_id, project_name)) {
-                    // Update extended_info with the new project_id for upload
-                    upload_job.upload_data.extended_info["project_id"] = project_id;
-                    upload_job.upload_data.extended_info.erase("new_project_name");
-                }
-            }
-        }
     }
 
     // Show "Is printer clean" dialog for PrusaConnect - Upload and print.

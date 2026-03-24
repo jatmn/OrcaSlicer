@@ -532,18 +532,23 @@ bool UltiMaker::get_projects(wxArrayString& project_names, wxArrayString& projec
     return result;
 }
 
-bool UltiMaker::create_project(const std::string& name, std::string& project_id, std::string& project_name) const
+PrintHost::CreateProjectResult UltiMaker::create_project(const std::string& name) const
 {
     BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project() called with name: " << name;
     
     if (m_cred.find("access_token") == m_cred.end()) {
         BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project() - no access token";
-        return false;
+        PrintHost::CreateProjectResult result;
+        result.success = false;
+        result.error_code = "no_access_token";
+        result.error_title = "No access token available";
+        return result;
     }
 
-    bool result = false;
+    PrintHost::CreateProjectResult result;
 
-    return do_api_call(
+    // Use a lambda that calls do_api_call and captures the bool result
+    bool api_call_result = do_api_call(
         [&name](bool is_retry) {
             auto http = Http::put2(LIBRARY_API_BASE + "/projects");
             http.header("Accept", "application/json");
@@ -556,7 +561,7 @@ bool UltiMaker::create_project(const std::string& name, std::string& project_id,
             BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project request body: " << body.dump();
             return http;
         },
-        [&result, &project_id, &project_name](std::string body, unsigned http_status) {
+        [&result](std::string body, unsigned http_status) {
             BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project response HTTP " << http_status << ", body length: " << body.size();
             try {
                 auto j = nlohmann::json::parse(body);
@@ -564,28 +569,49 @@ bool UltiMaker::create_project(const std::string& name, std::string& project_id,
                     const auto& proj = j["data"];
                     // Use library_project_id as the id
                     if (proj.contains("library_project_id")) {
-                        project_id = proj["library_project_id"];
+                        result.project_id = proj["library_project_id"];
                     } else if (proj.contains("id")) {
-                        project_id = proj["id"];
+                        result.project_id = proj["id"];
                     }
                     if (proj.contains("display_name")) {
-                        project_name = proj["display_name"];
+                        result.project_name = proj["display_name"];
                     }
-                    result = true;
-                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Project created successfully - id: " << project_id << ", name: " << project_name;
+                    result.success = true;
+                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Project created successfully - id: " << result.project_id << ", name: " << result.project_name;
                 } else {
                     BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: create_project response missing 'data' field";
                 }
             } catch (const std::exception& e) {
                 BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse create project response: " << e.what();
             }
-            return result;
+            return result.success;
         },
         [&result](std::string body, std::string error, unsigned http_status) {
             BOOST_LOG_TRIVIAL(error) << "UltiMaker: Error creating project: " << error << ", HTTP " << http_status << ", body: " << body;
-            result = false;
+            
+            // Try to parse error JSON to extract error code and title
+            try {
+                auto j = nlohmann::json::parse(body);
+                if (j.contains("errors") && j["errors"].is_array() && !j["errors"].empty()) {
+                    const auto& err = j["errors"][0];
+                    if (err.contains("code")) {
+                        result.error_code = err["code"];
+                    }
+                    if (err.contains("title")) {
+                        result.error_title = err["title"];
+                    }
+                    BOOST_LOG_TRIVIAL(error) << "UM_DEBUG: Parsed error code: " << result.error_code << ", title: " << result.error_title;
+                }
+            } catch (const std::exception& e) {
+                BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse error response: " << e.what();
+            }
+            
+            result.success = false;
             return false;
         });
+    
+    (void)api_call_result;  // Suppress unused variable warning - result.success is already set by callbacks
+    return result;
 }
 
 } // namespace Slic3r

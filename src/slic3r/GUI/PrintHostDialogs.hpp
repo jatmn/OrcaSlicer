@@ -3,6 +3,7 @@
 
 #include <set>
 #include <string>
+#include <functional>
 #include <boost/filesystem/path.hpp>
 
 #include <wx/string.h>
@@ -61,11 +62,14 @@ protected:
     wxArrayString m_project_ids;
     // Pending new project name (used when user clicks "+" button)
     std::string m_pending_new_project_name;
+    // Callback for creating a new project on the server
+    std::function<PrintHost::CreateProjectResult(const std::string& name)> m_project_create_callback;
 
 public:
     void add_project(const wxString& name, const wxString& id);
     std::string get_pending_new_project_name() const { return m_pending_new_project_name; }
     void clear_pending_new_project_name() { m_pending_new_project_name.clear(); }
+    void set_project_create_callback(std::function<PrintHost::CreateProjectResult(const std::string&)> callback) { m_project_create_callback = callback; }
 };
 
 
