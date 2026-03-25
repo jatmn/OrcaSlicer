@@ -412,28 +412,25 @@ std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta,
         }
     }
     
-    // Strip footer comments - find CONFIG_BLOCK_START or similar and truncate
+    // Strip footer comments (lines starting with ;) but ONLY after END_OF_HEADER
+    // Don't strip header comments!
     std::vector<std::string> truncated;
-    bool in_config_block = false;
+    bool passed_end_of_header = false;
     for (const auto& l : final_lines) {
-        // Check for config block markers
-        if (l.find("CONFIG_BLOCK_START") != std::string::npos ||
-            l.find("; config") != std::string::npos ||
-            l.find(";first_layer_") != std::string::npos ||
-            l.find(";bed_shape") != std::string::npos) {
-            in_config_block = true;
-        }
-        
-        // Skip comment-only lines in footer (lines starting with ; in last part of file)
-        if (in_config_block && l.find_first_not_of(" \t\r\n") == 0 && l[0] == ';') {
+        // Track when we pass END_OF_HEADER
+        if (l.find(";END_OF_HEADER") != std::string::npos) {
+            passed_end_of_header = true;
+            truncated.push_back(l);
             continue;
         }
         
-        // If we hit CONFIG_BLOCK_END, stop including
-        if (l.find("CONFIG_BLOCK_END") != std::string::npos) {
-            break;
+        // Only skip comment lines after we've passed END_OF_HEADER
+        if (passed_end_of_header) {
+            size_t first_non_ws = l.find_first_not_of(" \t\r\n");
+            if (first_non_ws != std::string::npos && l[first_non_ws] == ';') {
+                continue;  // Skip footer comment
+            }
         }
-        
         truncated.push_back(l);
     }
     

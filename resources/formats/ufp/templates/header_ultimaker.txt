@@ -11,11 +11,14 @@
 ;EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:{{nozzle_diameter}}
 ;EXTRUDER_TRAIN.0.NOZZLE.NAME:{{nozzle_name}}
 ;BUILD_PLATE.INITIAL_TEMPERATURE:{{bed_temp}}
+;BUILD_VOLUME.TEMPERATURE:{{build_volume_temp}}
 ;PRINT.TIME:{{print_time}}
+;PRINT.GROUPS:{{print_groups}}
 ;PRINT.SIZE.MIN.X:{{print_size_min_x}}
 ;PRINT.SIZE.MIN.Y:{{print_size_min_y}}
 ;PRINT.SIZE.MIN.Z:{{print_size_min_z}}
 ;PRINT.SIZE.MAX.X:{{print_size_max_x}}
 ;PRINT.SIZE.MAX.Y:{{print_size_max_y}}
 ;PRINT.SIZE.MAX.Z:{{print_size_max_z}}
+;SLICE_UUID:{{slice_uuid}}
 ;END_OF_HEADER

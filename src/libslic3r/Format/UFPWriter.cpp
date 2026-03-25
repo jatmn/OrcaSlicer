@@ -7,8 +7,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem.hpp>
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
@@ -145,12 +144,13 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    // 6. /Materials/material.xml.fdm_material
+    // 6. /Materials/ultimaker_{material}.xml.fdm_material
+    std::string material_filename = "ultimaker_" + meta.material_name + ".xml.fdm_material";
     std::string material_xml = generate_material_xml(meta);
-    if (!mz_zip_writer_add_mem(&archive, "Materials/material.xml.fdm_material",
+    if (!mz_zip_writer_add_mem(&archive, ("Materials/" + material_filename).c_str(),
                               material_xml.c_str(), material_xml.length(),
                               MZ_NO_COMPRESSION)) {
-        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add material.xml.fdm_material";
+        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add " << material_filename;
         cleanup();
         return false;
     }
@@ -249,14 +249,17 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["print_size_max_x"] = "330";
     values["print_size_max_y"] = "240";
     values["print_size_max_z"] = "300";
+    values["build_volume_temp"] = "28";
+    values["print_groups"] = "1";
+    values["slice_uuid"] = meta.slice_uuid;
     
     return substitute_template(m_config.header_template_content, values);
 }
 
 std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
-    // Load full Cura template and patch dynamic values
-    namespace pt = boost::property_tree;
+    // Load full Cura template and patch dynamic values using nlohmann/json
     namespace fs = boost::filesystem;
+    using json = nlohmann::json;
     
     // Find template file - try multiple locations
     std::vector<std::string> template_paths = {
@@ -285,65 +288,53 @@ std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
     
     try {
         // Parse template
-        std::istringstream template_stream(template_content);
-        pt::ptree root;
-        pt::read_json(template_stream, root);
+        json root = json::parse(template_content);
         
-        // Patch material
-        if (auto material = root.get_child_optional("material")) {
-            if (auto length = material->get_child_optional("length")) {
-                auto& arr = length.get();
-                if (arr.size() > 0) {
-                    arr.begin()->second.put_value(meta.filament_mm);
-                }
+        // Patch material with proper types (numbers, not strings)
+        if (root.contains("material")) {
+            if (root["material"].contains("length") && root["material"]["length"].is_array() && root["material"]["length"].size() > 0) {
+                root["material"]["length"][0] = meta.filament_mm;
             }
-            if (auto weight = material->get_child_optional("weight")) {
-                auto& arr = weight.get();
-                if (arr.size() > 0) {
-                    arr.begin()->second.put_value(meta.filament_g);
-                }
+            if (root["material"].contains("weight") && root["material"]["weight"].is_array() && root["material"]["weight"].size() > 0) {
+                root["material"]["weight"][0] = meta.filament_g;
             }
         }
         
         // Patch quality
-        if (auto quality = root.get_child_optional("quality")) {
-            quality->put("layer_height", meta.layer_height);
+        if (root.contains("quality")) {
+            root["quality"]["layer_height"] = meta.layer_height;
         }
         
-        // Patch global settings
-        if (auto global = root.get_child_optional("global")) {
-            if (auto all_settings = global->get_child_optional("all_settings")) {
-                all_settings->put("material_guid", meta.material_guid);
-                all_settings->put("material_type", meta.material_type);
-                all_settings->put("layer_height", meta.layer_height);
-                all_settings->put("infill_sparse_density", meta.infill_percent);
-                all_settings->put("material_bed_temperature", meta.bed_temp);
-                all_settings->put("material_bed_temperature_layer_0", meta.bed_temp);
-                all_settings->put("material_print_temperature", meta.extruder_temp);
-                all_settings->put("material_print_temperature_layer_0", meta.extruder_temp);
-                all_settings->put("machine_name", m_config.target_machine);
-            }
+        // Patch global settings with proper types
+        if (root.contains("global") && root["global"].contains("all_settings")) {
+            auto& settings = root["global"]["all_settings"];
+            settings["material_guid"] = meta.material_guid;
+            settings["material_type"] = meta.material_type;
+            settings["layer_height"] = meta.layer_height;
+            settings["infill_sparse_density"] = meta.infill_percent;
+            settings["material_bed_temperature"] = meta.bed_temp;
+            settings["material_bed_temperature_layer_0"] = meta.bed_temp;
+            settings["material_print_temperature"] = meta.extruder_temp;
+            settings["material_print_temperature_layer_0"] = meta.extruder_temp;
+            settings["machine_name"] = m_config.target_machine;
         }
         
-        // Patch extruder_0 settings
-        if (auto extruder = root.get_child_optional("extruder_0")) {
-            if (auto all_settings = extruder->get_child_optional("all_settings")) {
-                all_settings->put("material_guid", meta.material_guid);
-                all_settings->put("material_type", meta.material_type);
-                all_settings->put("layer_height", meta.layer_height);
-                all_settings->put("infill_sparse_density", meta.infill_percent);
-                all_settings->put("material_bed_temperature", meta.bed_temp);
-                all_settings->put("material_bed_temperature_layer_0", meta.bed_temp);
-                all_settings->put("material_print_temperature", meta.extruder_temp);
-                all_settings->put("material_print_temperature_layer_0", meta.extruder_temp);
-                all_settings->put("machine_name", m_config.target_machine);
-            }
+        // Patch extruder_0 settings with proper types
+        if (root.contains("extruder_0") && root["extruder_0"].contains("all_settings")) {
+            auto& settings = root["extruder_0"]["all_settings"];
+            settings["material_guid"] = meta.material_guid;
+            settings["material_type"] = meta.material_type;
+            settings["layer_height"] = meta.layer_height;
+            settings["infill_sparse_density"] = meta.infill_percent;
+            settings["material_bed_temperature"] = meta.bed_temp;
+            settings["material_bed_temperature_layer_0"] = meta.bed_temp;
+            settings["material_print_temperature"] = meta.extruder_temp;
+            settings["material_print_temperature_layer_0"] = meta.extruder_temp;
+            settings["machine_name"] = m_config.target_machine;
         }
         
-        // Serialize back to JSON
-        std::ostringstream output;
-        pt::write_json(output, root, false);  // false = no pretty print
-        return output.str();
+        // Serialize back to JSON (compact format)
+        return root.dump();
         
     } catch (const std::exception& e) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter: Failed to patch template: " << e.what() << ", using fallback";
@@ -352,8 +343,8 @@ std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
 }
 
 std::string UFPWriter::generate_ufp_global_json(const GCodeMetadata& meta) {
-    // Simple format matching Python postprocessor
-    return "{\"version\": 1}";
+    // Match native Cura format
+    return "{\"metadata\": {\"objects\": [{\"name\": \"model.stl\"}]}}";
 }
 
 std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
@@ -385,26 +376,31 @@ std::string UFPWriter::generate_content_types_xml() {
 }
 
 std::string UFPWriter::generate_rels_xml() {
-    return R"(<?xml version="1.0" encoding="utf-8"?>
+    // Match native Cura: only 2 relationships (gcode and opc_metadata)
+    return R"(<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Type="http://schemas.ultimaker.org/package/2018/relationships/gcode" Target="/3D/model.gcode" Id="rel-1" />
-  <Relationship Type="http://schemas.ultimaker.org/package/2018/relationships/slicemetadata" Target="/Cura/slicemetadata.json" Id="rel-2" />
-  <Relationship Type="http://schemas.ultimaker.org/package/2018/relationships/material" Target="/Materials/material.xml.fdm_material" Id="rel-3" />
-  <Relationship Type="http://schemas.ultimaker.org/package/2018/relationships/global_json" Target="/Metadata/UFP_Global.json" Id="rel-4" />
+  <Relationship Target="/3D/model.gcode" Type="http://schemas.ultimaker.org/package/2018/relationships/gcode" Id="rel0" />
+  <Relationship Target="/Metadata/UFP_Global.json" Type="http://schemas.ultimaker.org/package/2018/relationships/opc_metadata" Id="rel1" />
 </Relationships>)";
 }
 
 std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail) {
+    // Match native Cura format: Target first, then Type, UTF-8 encoding
+    std::string rels = R"(<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">)";
+    
+    int rel_id = 0;
     if (has_thumbnail) {
-        return R"(<?xml version="1.0" encoding="utf-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail" Target="/Metadata/thumbnail.png" Id="rel-1" />
-</Relationships>)";
-    } else {
-        return R"(<?xml version="1.0" encoding="utf-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-</Relationships>)";
+        rels += "\n  <Relationship Target=\"/Metadata/thumbnail.png\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/thumbnail\" Id=\"rel" + std::to_string(rel_id) + "\" />";
+        rel_id++;
     }
+    
+    // Add material relationship(s) - Cura native has specific material filenames
+    // Use PLA as default, should be dynamic based on material_type
+    rels += "\n  <Relationship Target=\"/Materials/ultimaker_pla.xml.fdm_material\" Type=\"http://schemas.ultimaker.org/package/2018/relationships/material\" Id=\"rel" + std::to_string(rel_id) + "\" />";
+    
+    rels += "\n</Relationships>";
+    return rels;
 }
 
 std::string UFPWriter::generate_build_date() {
