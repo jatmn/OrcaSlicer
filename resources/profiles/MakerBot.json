@@ -1,0 +1,53 @@
+{
+    "name": "MakerBot",
+    "url": "",
+    "version": "01.00.00.00",
+    "force_update": "0",
+    "description": "MakerBot configurations",
+    "machine_model_list": [
+        {
+            "name": "MakerBot Sketch",
+            "sub_path": "machine/MakerBot Sketch.json"
+        },
+        {
+            "name": "MakerBot Sketch Large",
+            "sub_path": "machine/MakerBot Sketch Large.json"
+        },
+        {
+            "name": "MakerBot Sketch Sprint",
+            "sub_path": "machine/MakerBot Sketch Sprint.json"
+        }
+    ],
+    "process_list": [],
+    "filament_list": [],
+    "machine_list": [
+        {
+            "name": "fdm_makerbot_common",
+            "sub_path": "machine/fdm_makerbot_common.json"
+        },
+        {
+            "name": "MakerBot Sketch",
+            "sub_path": "machine/MakerBot Sketch.json"
+        },
+        {
+            "name": "MakerBot Sketch 0.40",
+            "sub_path": "machine/MakerBot Sketch 0.40.json"
+        },
+        {
+            "name": "MakerBot Sketch Large",
+            "sub_path": "machine/MakerBot Sketch Large.json"
+        },
+        {
+            "name": "MakerBot Sketch Large 0.40",
+            "sub_path": "machine/MakerBot Sketch Large 0.40.json"
+        },
+        {
+            "name": "MakerBot Sketch Sprint",
+            "sub_path": "machine/MakerBot Sketch Sprint.json"
+        },
+        {
+            "name": "MakerBot Sketch Sprint 0.40",
+            "sub_path": "machine/MakerBot Sketch Sprint 0.40.json"
+        }
+    ]
+}

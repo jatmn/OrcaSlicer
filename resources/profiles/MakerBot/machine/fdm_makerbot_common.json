@@ -1,0 +1,16 @@
+{
+  "type": "machine",
+  "setting_id": "fdm_makerbot_common",
+  "name": "MakerBot Common",
+  "from": "system",
+  "vendor": "MakerBot",
+  "vendor_id": "MakerBot",
+  "machine_type": "FFF",
+  "machine_tech": "FDM",
+  "family": "MakerBot",
+  "gcode_flavor": "MakerBot",
+  "device_type": "printer",
+  "serial": "",
+  "baudrate": "115200",
+  "printer_notes": "Base configuration for MakerBot printers"
+}

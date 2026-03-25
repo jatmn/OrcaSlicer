@@ -1,0 +1,19 @@
+{
+    "type": "machine_model",
+    "name": "UltiMaker S6",
+    "from": "system",
+    "description": "UltiMaker S6 - Dual extruder 3D printer with 330x240x300mm build volume",
+    "printer_model": "UltiMaker S6",
+    "printer_notes": "FORMAT_CONFIG_ID:ultimaker_s6",
+    "default_print_profile": "0.20mm Standard @UltiMaker S6 AA 0.4",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "printable_area": [
+        "0x0",
+        "330x0",
+        "330x240",
+        "0x240"
+    ],
+    "printable_height": "300"
+}

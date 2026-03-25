@@ -1,0 +1,20 @@
+{
+    "type": "machine",
+    "name": "UltiMaker S6 CC 0.6",
+    "inherits": "fdm_ultimaker_s_common",
+    "from": "system",
+    "setting_id": "GM001",
+    "instantiation": "true",
+    "printer_model": "UltiMaker S6",
+    "default_print_profile": "0.30mm Draft @UltiMaker S6 CC 0.6",
+    "nozzle_diameter": ["0.6"],
+    "printer_variant": "CC 0.6",
+    "max_layer_height": ["0.48"],
+    "min_layer_height": ["0.12"],
+    "nozzle_type": "hardened_steel",
+    "printable_area": ["0x0", "330x0", "330x240", "0x240"],
+    "printable_height": "300",
+    "printer_settings_id": "UltiMaker S6",
+    "printer_notes": "FORMAT_CONFIG_ID:ultimaker_s6",
+    "default_filament_profile": ["UltiMaker PET-CF @System"]
+}

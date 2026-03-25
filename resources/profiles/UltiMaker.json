@@ -8,6 +8,34 @@
         {
             "name": "UltiMaker 2",
             "sub_path": "machine/UltiMaker 2.json"
+        },
+        {
+            "name": "UltiMaker S6",
+            "sub_path": "machine/UltiMaker S6.json"
+        },
+        {
+            "name": "UltiMaker S8",
+            "sub_path": "machine/UltiMaker S8.json"
+        },
+        {
+            "name": "UltiMaker S5",
+            "sub_path": "machine/UltiMaker S5.json"
+        },
+        {
+            "name": "UltiMaker S7",
+            "sub_path": "machine/UltiMaker S7.json"
+        },
+        {
+            "name": "UltiMaker S3",
+            "sub_path": "machine/UltiMaker S3.json"
+        },
+        {
+            "name": "UltiMaker Factor 4",
+            "sub_path": "machine/UltiMaker Factor 4.json"
+        },
+        {
+            "name": "UltiMaker 2+ Connect",
+            "sub_path": "machine/UltiMaker 2+ Connect.json"
         }
     ],
     "process_list": [
@@ -37,6 +65,326 @@
         {
             "name": "UltiMaker 2 0.4 nozzle",
             "sub_path": "machine/UltiMaker 2 0.4 nozzle.json"
+        },
+        {
+            "name": "UltiMaker S6",
+            "sub_path": "machine/UltiMaker S6.json"
+        },
+        {
+            "name": "UltiMaker S6 AA 0.4",
+            "sub_path": "machine/UltiMaker S6 AA 0.4.json"
+        },
+        {
+            "name": "UltiMaker S6 AA 0.25",
+            "sub_path": "machine/UltiMaker S6 AA 0.25.json"
+        },
+        {
+            "name": "UltiMaker S6 AA 0.8",
+            "sub_path": "machine/UltiMaker S6 AA 0.8.json"
+        },
+        {
+            "name": "UltiMaker S6 BB 0.4",
+            "sub_path": "machine/UltiMaker S6 BB 0.4.json"
+        },
+        {
+            "name": "UltiMaker S6 BB 0.8",
+            "sub_path": "machine/UltiMaker S6 BB 0.8.json"
+        },
+        {
+            "name": "UltiMaker S6 CC 0.4",
+            "sub_path": "machine/UltiMaker S6 CC 0.4.json"
+        },
+        {
+            "name": "UltiMaker S6 CC 0.6",
+            "sub_path": "machine/UltiMaker S6 CC 0.6.json"
+        },
+        {
+            "name": "UltiMaker S6 CC RED 0.6",
+            "sub_path": "machine/UltiMaker S6 CC RED 0.6.json"
+        },
+        {
+            "name": "UltiMaker S6 AA+ 0.4",
+            "sub_path": "machine/UltiMaker S6 AA+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S6 CC+ 0.4",
+            "sub_path": "machine/UltiMaker S6 CC+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S6 CC+ 0.6",
+            "sub_path": "machine/UltiMaker S6 CC+ 0.6.json"
+        },
+        {
+            "name": "UltiMaker S6 HT 0.6",
+            "sub_path": "machine/UltiMaker S6 HT 0.6.json"
+        },
+        {
+            "name": "UltiMaker S8",
+            "sub_path": "machine/UltiMaker S8.json"
+        },
+        {
+            "name": "UltiMaker S8 AA 0.4",
+            "sub_path": "machine/UltiMaker S8 AA 0.4.json"
+        },
+        {
+            "name": "UltiMaker S8 AA 0.25",
+            "sub_path": "machine/UltiMaker S8 AA 0.25.json"
+        },
+        {
+            "name": "UltiMaker S8 AA 0.8",
+            "sub_path": "machine/UltiMaker S8 AA 0.8.json"
+        },
+        {
+            "name": "UltiMaker S8 BB 0.4",
+            "sub_path": "machine/UltiMaker S8 BB 0.4.json"
+        },
+        {
+            "name": "UltiMaker S8 BB 0.8",
+            "sub_path": "machine/UltiMaker S8 BB 0.8.json"
+        },
+        {
+            "name": "UltiMaker S8 CC 0.4",
+            "sub_path": "machine/UltiMaker S8 CC 0.4.json"
+        },
+        {
+            "name": "UltiMaker S8 CC 0.6",
+            "sub_path": "machine/UltiMaker S8 CC 0.6.json"
+        },
+        {
+            "name": "UltiMaker S8 CC RED 0.6",
+            "sub_path": "machine/UltiMaker S8 CC RED 0.6.json"
+        },
+        {
+            "name": "UltiMaker S8 AA+ 0.4",
+            "sub_path": "machine/UltiMaker S8 AA+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S8 CC+ 0.4",
+            "sub_path": "machine/UltiMaker S8 CC+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S8 CC+ 0.6",
+            "sub_path": "machine/UltiMaker S8 CC+ 0.6.json"
+        },
+        {
+            "name": "UltiMaker S8 HT 0.6",
+            "sub_path": "machine/UltiMaker S8 HT 0.6.json"
+        },
+        {
+            "name": "UltiMaker S5",
+            "sub_path": "machine/UltiMaker S5.json"
+        },
+        {
+            "name": "UltiMaker S5 AA 0.4",
+            "sub_path": "machine/UltiMaker S5 AA 0.4.json"
+        },
+        {
+            "name": "UltiMaker S5 AA 0.25",
+            "sub_path": "machine/UltiMaker S5 AA 0.25.json"
+        },
+        {
+            "name": "UltiMaker S5 AA 0.8",
+            "sub_path": "machine/UltiMaker S5 AA 0.8.json"
+        },
+        {
+            "name": "UltiMaker S5 BB 0.4",
+            "sub_path": "machine/UltiMaker S5 BB 0.4.json"
+        },
+        {
+            "name": "UltiMaker S5 BB 0.8",
+            "sub_path": "machine/UltiMaker S5 BB 0.8.json"
+        },
+        {
+            "name": "UltiMaker S5 CC 0.4",
+            "sub_path": "machine/UltiMaker S5 CC 0.4.json"
+        },
+        {
+            "name": "UltiMaker S5 CC 0.6",
+            "sub_path": "machine/UltiMaker S5 CC 0.6.json"
+        },
+        {
+            "name": "UltiMaker S5 CC RED 0.6",
+            "sub_path": "machine/UltiMaker S5 CC RED 0.6.json"
+        },
+        {
+            "name": "UltiMaker S5 AA+ 0.4",
+            "sub_path": "machine/UltiMaker S5 AA+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S5 CC+ 0.4",
+            "sub_path": "machine/UltiMaker S5 CC+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S5 CC+ 0.6",
+            "sub_path": "machine/UltiMaker S5 CC+ 0.6.json"
+        },
+        {
+            "name": "UltiMaker S5 HT 0.6",
+            "sub_path": "machine/UltiMaker S5 HT 0.6.json"
+        },
+        {
+            "name": "UltiMaker S7",
+            "sub_path": "machine/UltiMaker S7.json"
+        },
+        {
+            "name": "UltiMaker S7 AA 0.4",
+            "sub_path": "machine/UltiMaker S7 AA 0.4.json"
+        },
+        {
+            "name": "UltiMaker S7 AA 0.25",
+            "sub_path": "machine/UltiMaker S7 AA 0.25.json"
+        },
+        {
+            "name": "UltiMaker S7 AA 0.8",
+            "sub_path": "machine/UltiMaker S7 AA 0.8.json"
+        },
+        {
+            "name": "UltiMaker S7 BB 0.4",
+            "sub_path": "machine/UltiMaker S7 BB 0.4.json"
+        },
+        {
+            "name": "UltiMaker S7 BB 0.8",
+            "sub_path": "machine/UltiMaker S7 BB 0.8.json"
+        },
+        {
+            "name": "UltiMaker S7 CC 0.4",
+            "sub_path": "machine/UltiMaker S7 CC 0.4.json"
+        },
+        {
+            "name": "UltiMaker S7 CC 0.6",
+            "sub_path": "machine/UltiMaker S7 CC 0.6.json"
+        },
+        {
+            "name": "UltiMaker S7 CC RED 0.6",
+            "sub_path": "machine/UltiMaker S7 CC RED 0.6.json"
+        },
+        {
+            "name": "UltiMaker S7 AA+ 0.4",
+            "sub_path": "machine/UltiMaker S7 AA+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S7 CC+ 0.4",
+            "sub_path": "machine/UltiMaker S7 CC+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S7 CC+ 0.6",
+            "sub_path": "machine/UltiMaker S7 CC+ 0.6.json"
+        },
+        {
+            "name": "UltiMaker S7 HT 0.6",
+            "sub_path": "machine/UltiMaker S7 HT 0.6.json"
+        },
+        {
+            "name": "UltiMaker S3",
+            "sub_path": "machine/UltiMaker S3.json"
+        },
+        {
+            "name": "UltiMaker S3 AA 0.4",
+            "sub_path": "machine/UltiMaker S3 AA 0.4.json"
+        },
+        {
+            "name": "UltiMaker S3 AA 0.25",
+            "sub_path": "machine/UltiMaker S3 AA 0.25.json"
+        },
+        {
+            "name": "UltiMaker S3 AA 0.8",
+            "sub_path": "machine/UltiMaker S3 AA 0.8.json"
+        },
+        {
+            "name": "UltiMaker S3 BB 0.4",
+            "sub_path": "machine/UltiMaker S3 BB 0.4.json"
+        },
+        {
+            "name": "UltiMaker S3 BB 0.8",
+            "sub_path": "machine/UltiMaker S3 BB 0.8.json"
+        },
+        {
+            "name": "UltiMaker S3 CC 0.4",
+            "sub_path": "machine/UltiMaker S3 CC 0.4.json"
+        },
+        {
+            "name": "UltiMaker S3 CC 0.6",
+            "sub_path": "machine/UltiMaker S3 CC 0.6.json"
+        },
+        {
+            "name": "UltiMaker S3 CC RED 0.6",
+            "sub_path": "machine/UltiMaker S3 CC RED 0.6.json"
+        },
+        {
+            "name": "UltiMaker S3 AA+ 0.4",
+            "sub_path": "machine/UltiMaker S3 AA+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S3 CC+ 0.4",
+            "sub_path": "machine/UltiMaker S3 CC+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker S3 CC+ 0.6",
+            "sub_path": "machine/UltiMaker S3 CC+ 0.6.json"
+        },
+        {
+            "name": "UltiMaker S3 HT 0.6",
+            "sub_path": "machine/UltiMaker S3 HT 0.6.json"
+        },
+        {
+            "name": "UltiMaker Factor 4",
+            "sub_path": "machine/UltiMaker Factor 4.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 AA 0.4",
+            "sub_path": "machine/UltiMaker Factor 4 AA 0.4.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 AA 0.25",
+            "sub_path": "machine/UltiMaker Factor 4 AA 0.25.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 AA 0.8",
+            "sub_path": "machine/UltiMaker Factor 4 AA 0.8.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 BB 0.4",
+            "sub_path": "machine/UltiMaker Factor 4 BB 0.4.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 BB 0.8",
+            "sub_path": "machine/UltiMaker Factor 4 BB 0.8.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 CC 0.4",
+            "sub_path": "machine/UltiMaker Factor 4 CC 0.4.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 CC 0.6",
+            "sub_path": "machine/UltiMaker Factor 4 CC 0.6.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 CC RED 0.6",
+            "sub_path": "machine/UltiMaker Factor 4 CC RED 0.6.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 AA+ 0.4",
+            "sub_path": "machine/UltiMaker Factor 4 AA+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 CC+ 0.4",
+            "sub_path": "machine/UltiMaker Factor 4 CC+ 0.4.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 CC+ 0.6",
+            "sub_path": "machine/UltiMaker Factor 4 CC+ 0.6.json"
+        },
+        {
+            "name": "UltiMaker Factor 4 HT 0.6",
+            "sub_path": "machine/UltiMaker Factor 4 HT 0.6.json"
+        },
+        {
+            "name": "UltiMaker 2+ Connect",
+            "sub_path": "machine/UltiMaker 2+ Connect.json"
+        },
+        {
+            "name": "UltiMaker 2+ Connect 0.40",
+            "sub_path": "machine/UltiMaker 2+ Connect 0.40.json"
         }
     ]
 }
