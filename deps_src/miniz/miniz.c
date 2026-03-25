@@ -6026,8 +6026,15 @@ static mz_bool mz_zip_writer_create_central_dir_header(mz_zip_archive *pZip, mz_
     mz_bool is_zip64_needed = uncomp_size >= MZ_UINT32_MAX || comp_size >= MZ_UINT32_MAX;
     memset(pDst, 0, MZ_ZIP_CENTRAL_DIR_HEADER_SIZE);
     MZ_WRITE_LE32(pDst + MZ_ZIP_CDH_SIG_OFS, MZ_ZIP_CENTRAL_DIR_HEADER_SIG);
-    MZ_WRITE_LE16(pDst + MZ_ZIP_CDH_VERSION_MADE_BY_OFS, is_zip64_needed ? 0x002D : (method ? 0x0014 : 0x0000));
-    MZ_WRITE_LE16(pDst + MZ_ZIP_CDH_VERSION_NEEDED_OFS, is_zip64_needed ? 0x002D : (method ? 0x0014 : 0x0000));
+    /* If caller supplied Unix external attributes (upper 16 bits non-zero), write Unix (0x03) as
+     * creator so readers interpret the Unix file-mode bits correctly (e.g. UFP/OPC containers).
+     * Otherwise use DOS (0x00) for full compatibility with 3MF, AMF, and other formats. */
+    {
+        mz_uint8 creator = (ext_attributes >> 16) ? 0x03 : 0x00;
+        mz_uint8 version = is_zip64_needed ? 0x2D : 0x14;
+        MZ_WRITE_LE16(pDst + MZ_ZIP_CDH_VERSION_MADE_BY_OFS, (mz_uint16)((creator << 8) | version));
+    }
+    MZ_WRITE_LE16(pDst + MZ_ZIP_CDH_VERSION_NEEDED_OFS, is_zip64_needed ? 0x002D : 0x0014);
     MZ_WRITE_LE16(pDst + MZ_ZIP_CDH_BIT_FLAG_OFS, bit_flags);
     MZ_WRITE_LE16(pDst + MZ_ZIP_CDH_METHOD_OFS, method);
     MZ_WRITE_LE16(pDst + MZ_ZIP_CDH_FILE_TIME_OFS, dos_time);
@@ -6085,9 +6092,9 @@ static mz_bool mz_zip_writer_add_to_central_dir(mz_zip_archive *pZip, const char
 
 static mz_bool mz_zip_writer_validate_archive_name(const char *pArchive_name)
 {
-    /* Basic ZIP archive filename validity checks: Valid filenames cannot start with a forward slash, cannot contain a drive letter, and cannot use DOS-style backward slashes. */
-    if (*pArchive_name == '/')
-        return MZ_FALSE;
+    /* Basic ZIP archive filename validity checks: cannot contain a drive letter, and cannot use DOS-style backward slashes. */
+    /* Note: Leading forward slash IS allowed for OPC/UFP compatibility (Ultimaker firmware requires /path/file.ext format) */
+    /* if (*pArchive_name == '/') return MZ_FALSE; */
 
     /* Making sure the name does not contain drive letters or DOS style backward slashes is the responsibility of the program using miniz*/
 
@@ -6122,7 +6129,7 @@ static mz_bool mz_zip_writer_write_zeros(mz_zip_archive *pZip, mz_uint64 cur_fil
 mz_bool mz_zip_writer_add_mem_ex(mz_zip_archive *pZip, const char *pArchive_name, const void *pBuf, size_t buf_size, const void *pComment, mz_uint16 comment_size, mz_uint level_and_flags,
                                  mz_uint64 uncomp_size, mz_uint32 uncomp_crc32)
 {
-    return mz_zip_writer_add_mem_ex_v2(pZip, pArchive_name, pBuf, buf_size, pComment, comment_size, level_and_flags, uncomp_size, uncomp_crc32, NULL, NULL, 0, NULL, 0);
+    return mz_zip_writer_add_mem_ex_v2(pZip, pArchive_name, pBuf, buf_size, pComment, comment_size, level_and_flags, uncomp_size, uncomp_crc32, NULL, NULL, 0, NULL, 0, 0);
 }
 
 mz_bool mz_zip_writer_add_mem_ex_v2(mz_zip_archive *pZip, const char *pArchive_name, const void *pBuf, size_t buf_size, const void *pComment, mz_uint16 comment_size,
@@ -7034,11 +7041,11 @@ mz_bool mz_zip_writer_add_cfile(mz_zip_archive *pZip, const char *pArchive_name,
 // BBS: support storage path with unicode path extra
 mz_bool mz_zip_writer_add_file(mz_zip_archive *pZip, const char *pArchive_name, const char *pSrc_filename, const void *pComment, mz_uint16 comment_size, mz_uint level_and_flags)
 {
-    return mz_zip_writer_add_file_ex(pZip, pArchive_name, pSrc_filename, pComment, comment_size, level_and_flags, NULL, 0, NULL, 0);
+    return mz_zip_writer_add_file_ex(pZip, pArchive_name, pSrc_filename, pComment, comment_size, level_and_flags, NULL, 0, NULL, 0, 0);
 }
 
-mz_bool mz_zip_writer_add_file_ex(mz_zip_archive *pZip, const char *pArchive_name, const char *pSrc_filename, const void *pComment, mz_uint16 comment_size, mz_uint level_and_flags, 
-    const char *user_extra_data, mz_uint user_extra_data_len, const char *user_extra_data_central, mz_uint user_extra_data_central_len)
+mz_bool mz_zip_writer_add_file_ex(mz_zip_archive *pZip, const char *pArchive_name, const char *pSrc_filename, const void *pComment, mz_uint16 comment_size, mz_uint level_and_flags,
+    const char *user_extra_data, mz_uint user_extra_data_len, const char *user_extra_data_central, mz_uint user_extra_data_central_len, mz_uint32 ext_attributes)
 {
     MZ_FILE *pSrc_file = NULL;
     mz_uint64 uncomp_size = 0;

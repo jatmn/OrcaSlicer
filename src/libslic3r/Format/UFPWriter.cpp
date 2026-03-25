@@ -54,7 +54,17 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Zip writer opened successfully, mode=" << archive.m_zip_mode;
+    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Zip writer opened successfully, mode=" << archive.m_zip_mode 
+                           << ", archive_size=" << archive.m_archive_size;
+    
+    // Debug: verify archive is ready
+    if (archive.m_zip_mode != MZ_ZIP_MODE_WRITING) {
+        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Archive not in WRITE mode! mode=" << archive.m_zip_mode;
+        close_zip_writer(&archive);
+        return false;
+    }
+    
+    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Archive is ready for writing";
     
     BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Zip writer opened successfully";
     
@@ -74,18 +84,27 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
+    // Debug: check if archive is still in writing mode before adding first file
+    if (archive.m_zip_mode != MZ_ZIP_MODE_WRITING) {
+        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Archive mode changed before adding files! mode=" << archive.m_zip_mode;
+        cleanup();
+        return false;
+    }
+    
     // Write files in exact order matching valid UFP format:
-    // 1. /3D/model.gcode
-    if (!mz_zip_writer_add_mem(&archive, "3D/model.gcode", 
-                              gcode_content.c_str(), gcode_content.length(), 
-                              MZ_NO_COMPRESSION)) {
+    // 1. /3D/model.gcode (with leading slash)
+    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Adding /3D/model.gcode, size=" << gcode_content.length();
+    
+    if (!mz_zip_writer_add_mem_ex(&archive, "/3D/model.gcode",
+                              gcode_content.c_str(), gcode_content.length(),
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add model.gcode, m_last_error=" 
                                  << archive.m_last_error;
         cleanup();
         return false;
     }
     
-    // 2. /Metadata/thumbnail.png (if available)
+    // 2. /Metadata/thumbnail.png (if available) - with leading slash
     bool has_thumbnail = false;
     if (!meta.thumbnails.empty()) {
         BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Has thumbnails, size=" << meta.thumbnails.size();
@@ -99,9 +118,9 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
             try {
                 std::vector<uint8_t> png_data = base64_decode(it->second);
                 if (!png_data.empty()) {
-                    if (!mz_zip_writer_add_mem(&archive, "Metadata/thumbnail.png",
+                    if (!mz_zip_writer_add_mem_ex(&archive, "/Metadata/thumbnail.png",
                                               png_data.data(), png_data.size(),
-                                              MZ_NO_COMPRESSION)) {
+                                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
                         BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to add thumbnail";
                     } else {
                         has_thumbnail = true;
@@ -114,62 +133,62 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         }
     }
     
-    // 3. /3D/_rels/model.gcode.rels
+    // 3. /3D/_rels/model.gcode.rels - with leading slash
     std::string gcode_rels = generate_gcode_rels_xml(has_thumbnail);
-    if (!mz_zip_writer_add_mem(&archive, "3D/_rels/model.gcode.rels",
+    if (!mz_zip_writer_add_mem_ex(&archive, "/3D/_rels/model.gcode.rels",
                               gcode_rels.c_str(), gcode_rels.length(),
-                              MZ_NO_COMPRESSION)) {
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add model.gcode.rels";
         cleanup();
         return false;
     }
     
-    // 4. /Cura/slicemetadata.json
+    // 4. /Cura/slicemetadata.json - with leading slash
     std::string slicemetadata = generate_slicemetadata_json(meta);
-    if (!mz_zip_writer_add_mem(&archive, "Cura/slicemetadata.json",
+    if (!mz_zip_writer_add_mem_ex(&archive, "/Cura/slicemetadata.json",
                               slicemetadata.c_str(), slicemetadata.length(),
-                              MZ_NO_COMPRESSION)) {
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add slicemetadata.json";
         cleanup();
         return false;
     }
     
-    // 5. /Metadata/UFP_Global.json
+    // 5. /Metadata/UFP_Global.json - with leading slash
     std::string ufp_global = generate_ufp_global_json(meta);
-    if (!mz_zip_writer_add_mem(&archive, "Metadata/UFP_Global.json",
+    if (!mz_zip_writer_add_mem_ex(&archive, "/Metadata/UFP_Global.json",
                               ufp_global.c_str(), ufp_global.length(),
-                              MZ_NO_COMPRESSION)) {
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add UFP_Global.json";
         cleanup();
         return false;
     }
     
-    // 6. /Materials/ultimaker_{material}.xml.fdm_material
-    std::string material_filename = "ultimaker_" + meta.material_name + ".xml.fdm_material";
+    // 6. /Materials/material.xml.fdm_material - fixed filename (not ultimaker_xxx)
+    std::string material_filename = "material.xml.fdm_material";
     std::string material_xml = generate_material_xml(meta);
-    if (!mz_zip_writer_add_mem(&archive, ("Materials/" + material_filename).c_str(),
+    if (!mz_zip_writer_add_mem_ex(&archive, ("/Materials/" + material_filename).c_str(),
                               material_xml.c_str(), material_xml.length(),
-                              MZ_NO_COMPRESSION)) {
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add " << material_filename;
         cleanup();
         return false;
     }
     
-    // 7. /_rels/.rels
+    // 7. /_rels/.rels - with leading slash
     std::string rels = generate_rels_xml();
-    if (!mz_zip_writer_add_mem(&archive, "_rels/.rels",
+    if (!mz_zip_writer_add_mem_ex(&archive, "/_rels/.rels",
                               rels.c_str(), rels.length(),
-                              MZ_NO_COMPRESSION)) {
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add .rels";
         cleanup();
         return false;
     }
     
-    // 8. /[Content_Types].xml
+    // 8. /[Content_Types].xml - with leading slash
     std::string content_types = generate_content_types_xml();
-    if (!mz_zip_writer_add_mem(&archive, "[Content_Types].xml",
+    if (!mz_zip_writer_add_mem_ex(&archive, "/[Content_Types].xml",
                               content_types.c_str(), content_types.length(),
-                              MZ_NO_COMPRESSION)) {
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add [Content_Types].xml";
         cleanup();
         return false;
@@ -343,8 +362,8 @@ std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
 }
 
 std::string UFPWriter::generate_ufp_global_json(const GCodeMetadata& meta) {
-    // Match native Cura format
-    return "{\"metadata\": {\"objects\": [{\"name\": \"model.stl\"}]}}";
+    // Match native Cura format: just {"version": 1}
+    return "{\"version\": 1}";
 }
 
 std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
@@ -371,13 +390,13 @@ std::string UFPWriter::generate_content_types_xml() {
   <Default Extension="gcode" ContentType="text/x-gcode" />
   <Default Extension="png" ContentType="image/png" />
   <Default Extension="json" ContentType="application/json" />
-  <Default Extension="fdm_material" ContentType="text/xml" />
+  <Default Extension="xml.fdm_material" ContentType="application/x-ultimaker-material-profile" />
 </Types>)";
 }
 
 std::string UFPWriter::generate_rels_xml() {
     // Match native Cura: only 2 relationships (gcode and opc_metadata)
-    return R"(<?xml version="1.0" encoding="UTF-8"?>
+    return R"(<?xml version="1.0" encoding="utf-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Target="/3D/model.gcode" Type="http://schemas.ultimaker.org/package/2018/relationships/gcode" Id="rel0" />
   <Relationship Target="/Metadata/UFP_Global.json" Type="http://schemas.ultimaker.org/package/2018/relationships/opc_metadata" Id="rel1" />
@@ -385,8 +404,8 @@ std::string UFPWriter::generate_rels_xml() {
 }
 
 std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail) {
-    // Match native Cura format: Target first, then Type, UTF-8 encoding
-    std::string rels = R"(<?xml version="1.0" encoding="UTF-8"?>
+    // Match native Cura format: Target first, then Type, utf-8 encoding
+    std::string rels = R"(<?xml version="1.0" encoding="utf-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">)";
     
     int rel_id = 0;
@@ -395,9 +414,8 @@ std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail) {
         rel_id++;
     }
     
-    // Add material relationship(s) - Cura native has specific material filenames
-    // Use PLA as default, should be dynamic based on material_type
-    rels += "\n  <Relationship Target=\"/Materials/ultimaker_pla.xml.fdm_material\" Type=\"http://schemas.ultimaker.org/package/2018/relationships/material\" Id=\"rel" + std::to_string(rel_id) + "\" />";
+    // Add material relationship(s) - match valid Cura format: material.xml.fdm_material
+    rels += "\n  <Relationship Target=\"/Materials/material.xml.fdm_material\" Type=\"http://schemas.ultimaker.org/package/2018/relationships/material\" Id=\"rel" + std::to_string(rel_id) + "\" />";
     
     rels += "\n</Relationships>";
     return rels;
