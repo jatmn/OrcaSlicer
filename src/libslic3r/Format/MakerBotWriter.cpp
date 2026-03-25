@@ -4,34 +4,40 @@
 #include <boost/nowide/fstream.hpp>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 
 namespace Slic3r {
 
 std::string MakerBotWriter::generate_header(const GCodeMetadata& meta) {
-    std::map<std::string, std::string> values;
-    values["generator_name"] = m_config.gcode_metadata.generator_name;
-    values["generator_version"] = m_config.gcode_metadata.generator_version;
-    values["build_date"] = "2026-03-20";
-    values["target_machine"] = m_config.target_machine;
-    values["extruder_temp"] = std::to_string(meta.extruder_temp);
-    values["filament_volume"] = std::to_string(static_cast<int>(meta.filament_mm));
-    values["material_guid"] = meta.material_guid;
-    values["nozzle_diameter"] = "0.4";
-    values["nozzle_name"] = "0.4mm";
-    values["bed_temp"] = std::to_string(meta.bed_temp);
-    values["print_time"] = std::to_string(meta.duration_s);
-    values["print_groups"] = "1";
-    values["min_x"] = std::to_string(meta.min_x);
-    values["min_y"] = std::to_string(meta.min_y);
-    values["min_z"] = std::to_string(meta.min_z);
-    values["max_x"] = std::to_string(meta.max_x);
-    values["max_y"] = std::to_string(meta.max_y);
-    values["max_z"] = std::to_string(meta.max_z);
-    values["slice_uuid"] = meta.slice_uuid;
-    values["layer_height"] = std::to_string(meta.layer_height);
-    values["filament_m"] = std::to_string(meta.filament_mm / 1000.0);
+    std::ostringstream header;
     
-    return substitute_template(m_config.header_template_content, values);
+    if (m_config.header_template == "griffin") {
+        // Griffin flavor header (Sketch Small style)
+        header << ";START_OF_HEADER\n";
+        header << ";HEADER_VERSION:0.1\n";
+        header << ";FLAVOR:Griffin\n";
+        header << ";PRINT.TIME:" << meta.duration_s << "\n";
+        header << ";SLICE_UUID:" << meta.slice_uuid << "\n";
+        header << ";END_OF_HEADER\n\n";
+    } else if (m_config.header_template == "marlin") {
+        // Marlin flavor header (Sketch Sprint style)
+        double filament_m = meta.filament_mm / 1000.0;
+        header << ";FLAVOR:Marlin\n";
+        header << ";TIME:" << meta.duration_s << "\n";
+        header << ";Filament used: " << std::fixed << std::setprecision(6) << filament_m << "m\n";
+        header << ";Layer height: " << meta.layer_height << "\n";
+        header << ";TARGET_MACHINE.NAME:" << m_config.target_machine << "\n\n";
+    } else {
+        // Fallback to Griffin
+        header << ";START_OF_HEADER\n";
+        header << ";HEADER_VERSION:0.1\n";
+        header << ";FLAVOR:Griffin\n";
+        header << ";PRINT.TIME:" << meta.duration_s << "\n";
+        header << ";SLICE_UUID:" << meta.slice_uuid << "\n";
+        header << ";END_OF_HEADER\n\n";
+    }
+    
+    return header.str();
 }
 
 bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::string& gcode_content, const std::string& output_path) {
@@ -45,6 +51,8 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     auto cleanup = [&]() {
         close_zip_writer(&archive);
     };
+    
+    // 1. print.gcode
     if (!mz_zip_writer_add_mem(&archive, "print.gcode",
                               gcode_content.c_str(), gcode_content.length(),
                               MZ_DEFAULT_COMPRESSION)) {
@@ -70,6 +78,9 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
         return false;
     }
     
+    // 4. Thumbnails
+    add_thumbnails_to_archive(archive, meta);
+    
     // Finalize archive
     if (!mz_zip_writer_finalize_archive(&archive)) {
         cleanup();
@@ -78,6 +89,71 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     
     cleanup();
     return true;
+}
+
+void MakerBotWriter::add_thumbnails_to_archive(mz_zip_archive& archive, const GCodeMetadata& meta) {
+    if (meta.thumbnails.empty()) {
+        return;
+    }
+    
+    // Determine naming convention based on printer type
+    // sketch_small: 120/320/640 -> isometric_thumbnail, others -> thumbnail
+    // sketch_sprint: ALL -> isometric_thumbnail
+    bool all_isometric = (m_config.header_template == "marlin");  // Sprint uses all isometric
+    
+    for (const auto& thumb : meta.thumbnails) {
+        const std::string& size = thumb.first;
+        const std::string& base64_data = thumb.second;
+        
+        std::string filename;
+        if (all_isometric || size == "120x120" || size == "320x320" || size == "640x640") {
+            filename = "isometric_thumbnail_" + size + ".png";
+        } else {
+            filename = "thumbnail_" + size + ".png";
+        }
+        
+        // Decode base64 and add to archive
+        try {
+            std::string cleaned = base64_data;
+            boost::algorithm::trim(cleaned);
+            cleaned.erase(std::remove_if(cleaned.begin(), cleaned.end(), ::isspace), cleaned.end());
+            
+            // Simple base64 decode
+            std::vector<uint8_t> png_data = base64_decode(cleaned);
+            if (!png_data.empty()) {
+                mz_zip_writer_add_mem(&archive, filename.c_str(),
+                                     png_data.data(), png_data.size(),
+                                     MZ_DEFAULT_COMPRESSION);
+            }
+        } catch (...) {
+            // Skip failed thumbnails
+        }
+    }
+}
+
+// Simple base64 decoder for MakerBot
+std::vector<uint8_t> MakerBotWriter::base64_decode(const std::string& encoded) {
+    static const std::string base64_chars = 
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    
+    std::vector<uint8_t> result;
+    int i = 0;
+    uint32_t val = 0;
+    int valb = -8;
+    
+    for (unsigned char c : encoded) {
+        if (c == '=') break;
+        size_t pos = base64_chars.find(c);
+        if (pos == std::string::npos) continue;
+        val = (val << 6) + pos;
+        valb += 6;
+        if (valb >= 0) {
+            result.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+    
+    return result;
 }
 
 std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
@@ -107,6 +183,12 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     json << "      \"printMode\": \"default\"\n";
     json << "    }\n";
     json << "  },\n";
+    
+    // Add extruderProfiles for Sprint variant
+    if (m_config.header_template == "marlin") {
+        json << "  \"extruderProfiles\": [{ \"nozzle_diameter\": 0.4, \"tool_type\": \"" << m_config.tool_type << "\" }],\n";
+    }
+    
     json << "  \"miracle_config\": {\n";
     json << "    \"gaggles\": {\"instance0\": {}},\n";
     json << "    \"curaengine_version\": \"" << m_config.miracle_config.curaengine_version << "\",\n";
@@ -127,10 +209,15 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
 }
 
 std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
+    // Determine if material.length should be in meters (Sprint) or mm (Sketch)
+    bool use_meters = (m_config.header_template == "marlin");
+    double length_value = use_meters ? (meta.filament_mm / 1000.0) : meta.filament_mm;
+    int precision = use_meters ? 5 : 1;
+    
     std::ostringstream json;
     json << "{\n";
     json << "  \"material\": {\n";
-    json << "    \"length\": [" << std::fixed << std::setprecision(1) << meta.filament_mm << "],\n";
+    json << "    \"length\": [" << std::fixed << std::setprecision(precision) << length_value << "],\n";
     json << "    \"weight\": [" << std::fixed << std::setprecision(6) << meta.filament_g << "],\n";
     json << "    \"cost\": [0.0]\n";
     json << "  },\n";

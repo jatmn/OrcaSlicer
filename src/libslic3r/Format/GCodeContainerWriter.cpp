@@ -61,7 +61,7 @@ bool GCodeContainerWriter::write_from_memory(const std::string& gcode_data, cons
 bool GCodeContainerWriter::write_from_lines(const std::vector<std::string>& lines, const std::string& output_path) {
     GCodeMetadata meta = parse_gcode(lines);
     
-    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::write_from_lines: parsed metadata - "
+    BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::write_from_lines: parsed metadata - "
                           << "duration_s=" << meta.duration_s
                           << ", filament_mm=" << meta.filament_mm
                           << ", filament_g=" << meta.filament_g
@@ -72,7 +72,7 @@ bool GCodeContainerWriter::write_from_lines(const std::vector<std::string>& line
     // Allow subclasses to override metadata with injected values
     override_metadata(meta);
     
-    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::write_from_lines: after override - "
+    BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::write_from_lines: after override - "
                           << "duration_s=" << meta.duration_s
                           << ", filament_mm=" << meta.filament_mm
                           << ", filament_g=" << meta.filament_g;
@@ -146,10 +146,13 @@ GCodeMetadata GCodeContainerWriter::parse_gcode(const std::vector<std::string>& 
         meta.bed_temp = static_cast<int>(std::stod(match[1]));
     }
     
-    // Parse time
-    boost::regex time_regex(R"(; estimated printing time.*= (.*))");
+    // Parse time - use more specific regex to avoid matching other lines
+    boost::regex time_regex(R"(; estimated printing time \([^)]+\)\s*=\s*([\dhms ]+))");
     if (boost::regex_search(content, match, time_regex)) {
         meta.duration_s = parse_time_string(match[1]);
+        BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::parse_gcode: Parsed duration_s=" << meta.duration_s << " from: " << match[1];
+    } else {
+        BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::parse_gcode: Failed to parse estimated printing time";
     }
     
     // Parse filament
@@ -158,10 +161,16 @@ GCodeMetadata GCodeContainerWriter::parse_gcode(const std::vector<std::string>& 
     
     if (boost::regex_search(content, match, filament_regex)) {
         meta.filament_mm = std::stod(match[1]);
+        BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::parse_gcode: Parsed filament_mm=" << meta.filament_mm;
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "GCodeContainerWriter::parse_gcode: Failed to parse filament used [mm]";
     }
     
     if (boost::regex_search(content, match, weight_regex)) {
         meta.filament_g = std::stod(match[1]);
+        BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::parse_gcode: Parsed filament_g=" << meta.filament_g;
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "GCodeContainerWriter::parse_gcode: Failed to parse filament used [g]";
     }
     
     // Parse layer height
@@ -403,9 +412,30 @@ std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta,
         }
     }
     
-    // Don't truncate - preserve entire body including CONFIG_BLOCK
-    // The original G-code already has the proper footer
-    std::vector<std::string> truncated = final_lines;
+    // Strip footer comments - find CONFIG_BLOCK_START or similar and truncate
+    std::vector<std::string> truncated;
+    bool in_config_block = false;
+    for (const auto& l : final_lines) {
+        // Check for config block markers
+        if (l.find("CONFIG_BLOCK_START") != std::string::npos ||
+            l.find("; config") != std::string::npos ||
+            l.find(";first_layer_") != std::string::npos ||
+            l.find(";bed_shape") != std::string::npos) {
+            in_config_block = true;
+        }
+        
+        // Skip comment-only lines in footer (lines starting with ; in last part of file)
+        if (in_config_block && l.find_first_not_of(" \t\r\n") == 0 && l[0] == ';') {
+            continue;
+        }
+        
+        // If we hit CONFIG_BLOCK_END, stop including
+        if (l.find("CONFIG_BLOCK_END") != std::string::npos) {
+            break;
+        }
+        
+        truncated.push_back(l);
+    }
     
     // Reconstruct final string
     std::ostringstream result;

@@ -403,24 +403,32 @@ bool UltiMaker::test(wxString& curl_msg) const
 
 namespace {
 // Helper to get MIME type based on FORMAT_CONFIG_ID and file extension
+// Valid types per API: text/plain, application/x-ufp, application/gzip, 
+// application/x-makerbot, application/x-makerbot-sketch, text/x-gcode
 std::string get_mime_type_for_upload(const std::string& format_config_id, const std::string& extension)
 {
-    // UltiMaker formats
+    // UltiMaker formats - use application/x-ufp
     if (format_config_id == "ultimaker_s6" || format_config_id == "ultimaker_s5" || 
         format_config_id == "ultimaker_2pc" || format_config_id == "ultimaker_f4") {
         return "application/x-ufp";
     }
-    // MakerBot Sketch formats
+    // MakerBot Sketch formats - use application/x-makerbot-sketch
     if (format_config_id == "sketch_small" || format_config_id == "sketch_sprint" || 
         format_config_id == "sketch_large") {
         return "application/x-makerbot-sketch";
     }
-    // MakerBot Method formats
+    // MakerBot Method formats - use application/x-makerbot
     if (format_config_id == "method_x" || format_config_id == "method_xl") {
         return "application/x-makerbot";
     }
     // Fallback based on extension
-    return (extension == ".ufp") ? "application/x-ufp" : "application/x-makerbot";
+    if (extension == ".ufp") {
+        return "application/x-ufp";
+    }
+    if (extension == ".makerbot") {
+        return "application/x-makerbot";
+    }
+    return "application/x-ufp";  // Default to x-ufp for unknown formats
 }
 } // namespace
 
@@ -537,10 +545,11 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
             {"job_name", filename},
             {"file_size", file_size},
             {"content_type", mime_type},
-            {"library_project_id", project_id},
-            {"source_file_id", ""}  // Empty for standalone print job uploads
+            {"library_project_id", project_id}
         }}
     };
+    // source_file_id is optional - only include if we have a valid value
+    // API requires minimum 44 characters if provided
     
     std::string request_body_str = request_body.dump();
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Request body: " << request_body_str;
@@ -693,8 +702,8 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
         BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Creating Http::put request";
         auto http = Http::put(upload_response.upload_url);
         http.header("Content-Type", upload_response.content_type);
-        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Calling set_post_body with file buffer";
-        http.set_post_body(file_buffer);  // Use memory buffer instead of file stream
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - Calling set_put_body_raw with file buffer";
+        http.set_put_body_raw(file_buffer);  // Use PUT with raw body (fixed for proper upload)
         BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 2 - set_post_body completed, adding progress callback";
         http.on_progress([&prorgess_fn](Http::Progress progress, bool& cancel) { 
             prorgess_fn(std::move(progress), cancel); 

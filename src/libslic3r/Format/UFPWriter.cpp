@@ -1,13 +1,18 @@
 #include "UFPWriter.hpp"
 #include "../miniz_extension.hpp"
+#include "../Utils.hpp"
 #include <boost/algorithm/string.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/beast/core/detail/base64.hpp>
+#include <boost/filesystem.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <fstream>
 
 namespace Slic3r {
 
@@ -249,13 +254,105 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
 }
 
 std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
-    // Simplified format matching working Python post-processor output
-    std::ostringstream json;
-    json << "{\"machine_id\": \"" << m_config.target_machine << "\", \"version\": 1}";
-    return json.str();
+    // Load full Cura template and patch dynamic values
+    namespace pt = boost::property_tree;
+    namespace fs = boost::filesystem;
+    
+    // Find template file - try multiple locations
+    std::vector<std::string> template_paths = {
+        (fs::path(Slic3r::resources_dir()) / "formats" / "ufp" / "slicemetadata_template.json").string(),
+        (fs::path("resources") / "formats" / "ufp" / "slicemetadata_template.json").string(),
+        "slicemetadata_template.json"
+    };
+    
+    std::string template_content;
+    bool found = false;
+    for (const auto& path : template_paths) {
+        boost::nowide::ifstream file(path);
+        if (file.is_open()) {
+            template_content = std::string((std::istreambuf_iterator<char>(file)),
+                                           std::istreambuf_iterator<char>());
+            found = true;
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter: Loaded slicemetadata template from " << path;
+            break;
+        }
+    }
+    
+    if (!found) {
+        BOOST_LOG_TRIVIAL(error) << "UFPWriter: Could not find slicemetadata_template.json, using minimal fallback";
+        return "{\"machine_id\": \"" + m_config.target_machine + "\", \"version\": 1}";
+    }
+    
+    try {
+        // Parse template
+        std::istringstream template_stream(template_content);
+        pt::ptree root;
+        pt::read_json(template_stream, root);
+        
+        // Patch material
+        if (auto material = root.get_child_optional("material")) {
+            if (auto length = material->get_child_optional("length")) {
+                auto& arr = length.get();
+                if (arr.size() > 0) {
+                    arr.begin()->second.put_value(meta.filament_mm);
+                }
+            }
+            if (auto weight = material->get_child_optional("weight")) {
+                auto& arr = weight.get();
+                if (arr.size() > 0) {
+                    arr.begin()->second.put_value(meta.filament_g);
+                }
+            }
+        }
+        
+        // Patch quality
+        if (auto quality = root.get_child_optional("quality")) {
+            quality->put("layer_height", meta.layer_height);
+        }
+        
+        // Patch global settings
+        if (auto global = root.get_child_optional("global")) {
+            if (auto all_settings = global->get_child_optional("all_settings")) {
+                all_settings->put("material_guid", meta.material_guid);
+                all_settings->put("material_type", meta.material_type);
+                all_settings->put("layer_height", meta.layer_height);
+                all_settings->put("infill_sparse_density", meta.infill_percent);
+                all_settings->put("material_bed_temperature", meta.bed_temp);
+                all_settings->put("material_bed_temperature_layer_0", meta.bed_temp);
+                all_settings->put("material_print_temperature", meta.extruder_temp);
+                all_settings->put("material_print_temperature_layer_0", meta.extruder_temp);
+                all_settings->put("machine_name", m_config.target_machine);
+            }
+        }
+        
+        // Patch extruder_0 settings
+        if (auto extruder = root.get_child_optional("extruder_0")) {
+            if (auto all_settings = extruder->get_child_optional("all_settings")) {
+                all_settings->put("material_guid", meta.material_guid);
+                all_settings->put("material_type", meta.material_type);
+                all_settings->put("layer_height", meta.layer_height);
+                all_settings->put("infill_sparse_density", meta.infill_percent);
+                all_settings->put("material_bed_temperature", meta.bed_temp);
+                all_settings->put("material_bed_temperature_layer_0", meta.bed_temp);
+                all_settings->put("material_print_temperature", meta.extruder_temp);
+                all_settings->put("material_print_temperature_layer_0", meta.extruder_temp);
+                all_settings->put("machine_name", m_config.target_machine);
+            }
+        }
+        
+        // Serialize back to JSON
+        std::ostringstream output;
+        pt::write_json(output, root, false);  // false = no pretty print
+        return output.str();
+        
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "UFPWriter: Failed to patch template: " << e.what() << ", using fallback";
+        return "{\"machine_id\": \"" + m_config.target_machine + "\", \"version\": 1}";
+    }
 }
 
 std::string UFPWriter::generate_ufp_global_json(const GCodeMetadata& meta) {
+    // Simple format matching Python postprocessor
     return "{\"version\": 1}";
 }
 

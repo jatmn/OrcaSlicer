@@ -14,10 +14,10 @@
     {"size": "120x120", "name": "isometric_thumbnail_120x120.png"},
     {"size": "320x320", "name": "isometric_thumbnail_320x320.png"},
     {"size": "640x640", "name": "isometric_thumbnail_640x640.png"},
-    {"size": "90x90", "name": "thumbnail_90x90.png"},
-    {"size": "140x106", "name": "thumbnail_140x106.png"},
-    {"size": "212x300", "name": "thumbnail_212x300.png"},
-    {"size": "960x1460", "name": "thumbnail_960x1460.png"}
+    {"size": "90x90", "name": "isometric_thumbnail_90x90.png"},
+    {"size": "140x106", "name": "isometric_thumbnail_140x106.png"},
+    {"size": "212x300", "name": "isometric_thumbnail_212x300.png"},
+    {"size": "960x1460", "name": "isometric_thumbnail_960x1460.png"}
   ],
   "zip_files": [
     "print.gcode",

@@ -97,6 +97,16 @@ struct form_file
     {}
 };
 
+// Buffer structure for PUT with raw memory buffer (not file)
+struct put_buffer
+{
+    const char* data;
+    size_t size;
+    size_t pos;
+
+    put_buffer() : data(nullptr), size(0), pos(0) {}
+};
+
 struct Http::priv
 {
 	enum {
@@ -124,6 +134,7 @@ struct Http::priv
 	size_t limit;
 	bool cancel;
     std::unique_ptr<form_file> putFile;
+    std::unique_ptr<put_buffer> putBuf;  // For PUT with raw buffer
 
 	std::thread io_thread;
 	Http::CompleteFn completefn;
@@ -140,6 +151,7 @@ struct Http::priv
 	static int xfercb(void *userp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow);
 	static int xfercb_legacy(void *userp, double dltotal, double dlnow, double ultotal, double ulnow);
 	static size_t form_file_read_cb(char *buffer, size_t size, size_t nitems, void *userp);
+	static size_t put_buffer_read_cb(char *buffer, size_t size, size_t nitems, void *userp);
     static size_t headers_cb(char *buffer, size_t size, size_t nitems, void *userp);
 
 	void set_timeout_connect(long timeout);
@@ -151,6 +163,7 @@ struct Http::priv
 	void set_post_body(const fs::path &path);
 	void set_post_body(const std::string &body);
 	void set_put_body(const fs::path &path);
+	void set_put_body_raw(const std::string &body);
 	void set_del_body(const std::string& body);
     void set_range(const std::string &range);
 
@@ -307,6 +320,31 @@ size_t Http::priv::form_file_read_cb(char *buffer, size_t size, size_t nitems, v
 	return f->ifs.gcount();
 }
 
+// Read callback for PUT with raw memory buffer
+size_t Http::priv::put_buffer_read_cb(char *buffer, size_t size, size_t nitems, void *userp)
+{
+    if (!userp) {
+        return CURL_READFUNC_ABORT;
+    }
+
+    auto pb = static_cast<put_buffer*>(userp);
+    
+    if (!pb || !pb->data) {
+        return CURL_READFUNC_ABORT;
+    }
+
+    size_t max_read = size * nitems;
+    size_t remaining = pb->size - pb->pos;
+    size_t to_read = (remaining < max_read) ? remaining : max_read;
+    
+    if (to_read > 0) {
+        memcpy(buffer, pb->data + pb->pos, to_read);
+        pb->pos += to_read;
+    }
+    
+    return to_read;
+}
+
 size_t Http::priv::headers_cb(char *buffer, size_t size, size_t nitems, void *userp)
 {
 	auto self = static_cast<priv*>(userp);
@@ -422,10 +460,16 @@ void Http::priv::set_put_body(const fs::path &path)
 
 void Http::priv::set_put_body_raw(const std::string &body)
 {
-    postfields = body;
-    // Use CURLOPT_CUSTOMREQUEST to force PUT method
-    // This bypasses CURLOPT_UPLOAD which is for file stream uploads
-    ::curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+    // Store body data in putBuf for reading via callback
+    // Note: we rely on the caller to keep the body string alive during the request
+    putBuf = std::make_unique<put_buffer>();
+    putBuf->data = body.data();
+    putBuf->size = body.size();
+    putBuf->pos = 0;
+    
+    // Use CURLOPT_UPLOAD for proper PUT semantics with body
+    ::curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+    ::curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE, static_cast<curl_off_t>(body.size()));
 }
 
 void Http::priv::set_del_body(const std::string& body)
@@ -460,10 +504,13 @@ void Http::priv::http_perform()
 	::curl_easy_setopt(curl, CURLOPT_WRITEDATA, static_cast<void*>(this));
 	
 	// Only set read callback when we have a file to upload via set_put_body()
-	// This prevents crashes when using PUT with set_post_body() (memory buffer)
+	// OR when we have a buffer via set_put_body_raw()
 	if (putFile) {
 		::curl_easy_setopt(curl, CURLOPT_READFUNCTION, form_file_read_cb);
 		::curl_easy_setopt(curl, CURLOPT_READDATA, static_cast<void*>(putFile.get()));
+	} else if (putBuf) {
+		::curl_easy_setopt(curl, CURLOPT_READFUNCTION, put_buffer_read_cb);
+		::curl_easy_setopt(curl, CURLOPT_READDATA, static_cast<void*>(putBuf.get()));
 	}
 	//BBS set header functions
 	::curl_easy_setopt(curl, CURLOPT_HEADERDATA, static_cast<void *>(this));
@@ -503,6 +550,7 @@ void Http::priv::http_perform()
 	CURLcode res = ::curl_easy_perform(curl);
 
     putFile.reset();
+    putBuf.reset();
 
 	if (res != CURLE_OK) {
 		if (res == CURLE_ABORTED_BY_CALLBACK) {
@@ -558,6 +606,7 @@ Http::Http(Http &&other) : p(std::move(other.p)) {}
 Http::~Http()
 {
     assert(! p || ! p->putFile);
+    assert(! p || ! p->putBuf);
 	if (p && p->io_thread.joinable()) {
 		p->io_thread.detach();
 	}
@@ -869,9 +918,11 @@ void Http::print() const
 		cmd << " \\\n  -d '" << escaped_body << "'";
 	}
 
-	// Put file
+	// Put file or buffer
 	if (p->putFile) {
 		cmd << " \\\n  --upload-file <file-stream>";
+	} else if (p->putBuf) {
+		cmd << " \\\n  --upload-data <memory-buffer>";
 	}
 
 	BOOST_LOG_TRIVIAL(info) << "Http request:\n" << cmd.str();
