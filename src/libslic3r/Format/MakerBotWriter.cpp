@@ -1,7 +1,10 @@
 #include "MakerBotWriter.hpp"
 #include "../miniz_extension.hpp"
+#include "../Utils.hpp"
 #include <boost/algorithm/string.hpp>
 #include <boost/nowide/fstream.hpp>
+#include <boost/filesystem.hpp>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -97,18 +100,23 @@ void MakerBotWriter::add_thumbnails_to_archive(mz_zip_archive& archive, const GC
     }
     
     // Determine naming convention based on printer type
-    // sketch_small: 120/320/640 -> isometric_thumbnail, others -> thumbnail
-    // sketch_sprint: ALL -> isometric_thumbnail
-    bool all_isometric = (m_config.header_template == "marlin");  // Sprint uses all isometric
+    // sketch_small (griffin): 120/320/640 -> isometric_thumbnail, others -> thumbnail
+    // sketch_sprint (marlin): ALL -> isometric_thumbnail
+    bool is_sprint = (m_config.header_template == "marlin");
     
     for (const auto& thumb : meta.thumbnails) {
         const std::string& size = thumb.first;
         const std::string& base64_data = thumb.second;
         
         std::string filename;
-        if (all_isometric || size == "120x120" || size == "320x320" || size == "640x640") {
+        if (is_sprint) {
+            // Sprint: ALL thumbnails use isometric naming
+            filename = "isometric_thumbnail_" + size + ".png";
+        } else if (size == "120x120" || size == "320x320" || size == "640x640") {
+            // Small: only specific sizes use isometric
             filename = "isometric_thumbnail_" + size + ".png";
         } else {
+            // Small: other sizes use regular thumbnail naming
             filename = "thumbnail_" + size + ".png";
         }
         
@@ -209,7 +217,93 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
 }
 
 std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
-    // Determine if material.length should be in meters (Sprint) or mm (Sketch)
+    namespace fs = boost::filesystem;
+    using json = nlohmann::json;
+    
+    // Determine template based on printer type
+    // Sprint (marlin) needs full Cura settings, Small (griffin) is minimal
+    std::string template_filename = (m_config.header_template == "marlin") 
+        ? "slicemetadata_sprint_template.json" 
+        : "slicemetadata_small_template.json";
+    
+    // Find template file - try multiple locations
+    std::vector<std::string> template_paths = {
+        (fs::path(Slic3r::resources_dir()) / "formats" / "makerbot" / template_filename).string(),
+        (fs::path("resources") / "formats" / "makerbot" / template_filename).string(),
+        template_filename
+    };
+    
+    std::string template_content;
+    bool found = false;
+    for (const auto& path : template_paths) {
+        boost::nowide::ifstream file(path);
+        if (file.is_open()) {
+            template_content = std::string((std::istreambuf_iterator<char>(file)),
+                                           std::istreambuf_iterator<char>());
+            found = true;
+            break;
+        }
+    }
+    
+    // If template not found, fall back to minimal generation
+    if (!found) {
+        return generate_slicemetadata_json_minimal(meta);
+    }
+    
+    try {
+        // Parse template
+        json root = json::parse(template_content);
+        
+        // Patch material values
+        if (root.contains("material")) {
+            bool use_meters = (m_config.header_template == "marlin");
+            double length_value = use_meters ? (meta.filament_mm / 1000.0) : meta.filament_mm;
+            
+            if (root["material"].contains("length") && root["material"]["length"].is_array() && root["material"]["length"].size() > 0) {
+                root["material"]["length"][0] = length_value;
+            }
+            if (root["material"].contains("weight") && root["material"]["weight"].is_array() && root["material"]["weight"].size() > 0) {
+                root["material"]["weight"][0] = meta.filament_g;
+            }
+        }
+        
+        // Patch quality settings
+        if (root.contains("quality")) {
+            root["quality"]["layer_height"] = meta.layer_height;
+        }
+        
+        // Patch global settings
+        if (root.contains("global") && root["global"].contains("all_settings")) {
+            auto& settings = root["global"]["all_settings"];
+            settings["material_guid"] = meta.material_guid;
+            settings["material_type"] = meta.material_type;
+            settings["layer_height"] = meta.layer_height;
+            settings["infill_sparse_density"] = meta.infill_percent;
+            settings["material_bed_temperature"] = meta.bed_temp;
+            settings["material_print_temperature"] = meta.extruder_temp;
+            settings["machine_name"] = m_config.target_machine;
+        }
+        
+        // Patch extruder_0 settings
+        if (root.contains("extruder_0") && root["extruder_0"].contains("all_settings")) {
+            auto& settings = root["extruder_0"]["all_settings"];
+            settings["material_guid"] = meta.material_guid;
+            settings["material_type"] = meta.material_type;
+            settings["layer_height"] = meta.layer_height;
+            settings["infill_sparse_density"] = meta.infill_percent;
+            settings["machine_name"] = m_config.target_machine;
+        }
+        
+        return root.dump();
+        
+    } catch (const std::exception& e) {
+        // Fall back to minimal if parsing fails
+        return generate_slicemetadata_json_minimal(meta);
+    }
+}
+
+// Minimal slicemetadata generation (fallback)
+std::string MakerBotWriter::generate_slicemetadata_json_minimal(const GCodeMetadata& meta) {
     bool use_meters = (m_config.header_template == "marlin");
     double length_value = use_meters ? (meta.filament_mm / 1000.0) : meta.filament_mm;
     int precision = use_meters ? 5 : 1;

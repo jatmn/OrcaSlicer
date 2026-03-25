@@ -17,6 +17,7 @@ protected:
 private:
     std::string generate_meta_json(const GCodeMetadata& meta);
     std::string generate_slicemetadata_json(const GCodeMetadata& meta);
+    std::string generate_slicemetadata_json_minimal(const GCodeMetadata& meta);
     void add_thumbnails_to_archive(mz_zip_archive& archive, const GCodeMetadata& meta);
     std::vector<uint8_t> base64_decode(const std::string& encoded);
 };

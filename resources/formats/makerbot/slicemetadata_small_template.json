@@ -1,0 +1,40 @@
+{
+    "material": {
+        "length": [
+            605.87
+        ],
+        "weight": [
+            1.81
+        ],
+        "cost": [
+            0.0
+        ]
+    },
+    "quality": {
+        "intent_category": "default",
+        "intent_name": "Balanced",
+        "profile": "Normal",
+        "custom_profile": null,
+        "layer_height": 0.2,
+        "is_experimental": false
+    },
+    "global": {
+        "changes": {},
+        "all_settings": {
+            "material_guid": "abb9c58e-1f56-48d1-bd8f-055fde3a5b56",
+            "material_type": "PLA",
+            "layer_height": 0.2,
+            "infill_sparse_density": 15
+        }
+    },
+    "extruder_0": {
+        "changes": {},
+        "all_settings": {
+            "machine_name": "MakerBot Sketch",
+            "material_guid": "abb9c58e-1f56-48d1-bd8f-055fde3a5b56",
+            "material_type": "PLA",
+            "layer_height": 0.2,
+            "infill_sparse_density": 15
+        }
+    }
+}
