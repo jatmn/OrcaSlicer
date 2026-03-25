@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "UltiMaker ABS @System",
+    "inherits": "UltiMaker ABS @base",
+    "from": "system",
+    "setting_id": "UFABS01",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "12"
+    ],
+    "compatible_printers": []
+}

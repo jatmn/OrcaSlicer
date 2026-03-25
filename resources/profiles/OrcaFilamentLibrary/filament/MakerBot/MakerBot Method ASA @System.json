@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "MakerBot Method ASA @System",
+    "inherits": "MakerBot Method ASA @base",
+    "from": "system",
+    "setting_id": "MKASA01",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "12"
+    ],
+    "compatible_printers": []
+}

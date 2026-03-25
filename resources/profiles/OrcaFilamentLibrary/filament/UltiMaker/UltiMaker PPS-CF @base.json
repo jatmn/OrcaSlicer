@@ -1,0 +1,38 @@
+{
+    "type": "filament",
+    "name": "UltiMaker PPS-CF @base",
+    "inherits": "fdm_filament_pps",
+    "from": "system",
+    "filament_id": "UFPPS00",
+    "instantiation": "false",
+    "filament_cost": [
+        "89.99"
+    ],
+    "filament_density": [
+        "1.35"
+    ],
+    "filament_flow_ratio": [
+        "0.92"
+    ],
+    "filament_max_volumetric_speed": [
+        "6"
+    ],
+    "filament_vendor": [
+        "UltiMaker"
+    ],
+    "filament_diameter": [
+        "2.85"
+    ],
+    "filament_scarf_seam_type": [
+        "none"
+    ],
+    "filament_scarf_height": [
+        "10%"
+    ],
+    "filament_scarf_gap": [
+        "0%"
+    ],
+    "filament_scarf_length": [
+        "10"
+    ]
+}

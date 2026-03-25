@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "UltiMaker PPS-CF @System",
+    "inherits": "UltiMaker PPS-CF @base",
+    "from": "system",
+    "setting_id": "UFPPS01",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "8"
+    ],
+    "compatible_printers": []
+}

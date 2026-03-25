@@ -1415,6 +1415,102 @@
         {
             "name": "COEX PLA+Silk @System",
             "sub_path": "filament/COEX/COEX PLA+Silk @System.json"
+        },
+        {
+            "name": "UltiMaker PLA @base",
+            "sub_path": "filament/UltiMaker/UltiMaker PLA @base.json"
+        },
+        {
+            "name": "UltiMaker Tough PLA @base",
+            "sub_path": "filament/UltiMaker/UltiMaker Tough PLA @base.json"
+        },
+        {
+            "name": "UltiMaker PETG @base",
+            "sub_path": "filament/UltiMaker/UltiMaker PETG @base.json"
+        },
+        {
+            "name": "UltiMaker PET-CF @base",
+            "sub_path": "filament/UltiMaker/UltiMaker PET-CF @base.json"
+        },
+        {
+            "name": "UltiMaker ABS @base",
+            "sub_path": "filament/UltiMaker/UltiMaker ABS @base.json"
+        },
+        {
+            "name": "UltiMaker PPS-CF @base",
+            "sub_path": "filament/UltiMaker/UltiMaker PPS-CF @base.json"
+        },
+        {
+            "name": "UltiMaker PLA @System",
+            "sub_path": "filament/UltiMaker/UltiMaker PLA @System.json"
+        },
+        {
+            "name": "UltiMaker Tough PLA @System",
+            "sub_path": "filament/UltiMaker/UltiMaker Tough PLA @System.json"
+        },
+        {
+            "name": "UltiMaker PETG @System",
+            "sub_path": "filament/UltiMaker/UltiMaker PETG @System.json"
+        },
+        {
+            "name": "UltiMaker PET-CF @System",
+            "sub_path": "filament/UltiMaker/UltiMaker PET-CF @System.json"
+        },
+        {
+            "name": "UltiMaker ABS @System",
+            "sub_path": "filament/UltiMaker/UltiMaker ABS @System.json"
+        },
+        {
+            "name": "UltiMaker PPS-CF @System",
+            "sub_path": "filament/UltiMaker/UltiMaker PPS-CF @System.json"
+        },
+        {
+            "name": "MakerBot Sketch PLA @base",
+            "sub_path": "filament/MakerBot/MakerBot Sketch PLA @base.json"
+        },
+        {
+            "name": "MakerBot Sketch Tough PLA @base",
+            "sub_path": "filament/MakerBot/MakerBot Sketch Tough PLA @base.json"
+        },
+        {
+            "name": "MakerBot Method Tough PLA @base",
+            "sub_path": "filament/MakerBot/MakerBot Method Tough PLA @base.json"
+        },
+        {
+            "name": "MakerBot Method ASA @base",
+            "sub_path": "filament/MakerBot/MakerBot Method ASA @base.json"
+        },
+        {
+            "name": "MakerBot Method ABS-R @base",
+            "sub_path": "filament/MakerBot/MakerBot Method ABS-R @base.json"
+        },
+        {
+            "name": "MakerBot Method ABS-CF @base",
+            "sub_path": "filament/MakerBot/MakerBot Method ABS-CF @base.json"
+        },
+        {
+            "name": "MakerBot Sketch PLA @System",
+            "sub_path": "filament/MakerBot/MakerBot Sketch PLA @System.json"
+        },
+        {
+            "name": "MakerBot Sketch Tough PLA @System",
+            "sub_path": "filament/MakerBot/MakerBot Sketch Tough PLA @System.json"
+        },
+        {
+            "name": "MakerBot Method Tough PLA @System",
+            "sub_path": "filament/MakerBot/MakerBot Method Tough PLA @System.json"
+        },
+        {
+            "name": "MakerBot Method ASA @System",
+            "sub_path": "filament/MakerBot/MakerBot Method ASA @System.json"
+        },
+        {
+            "name": "MakerBot Method ABS-R @System",
+            "sub_path": "filament/MakerBot/MakerBot Method ABS-R @System.json"
+        },
+        {
+            "name": "MakerBot Method ABS-CF @System",
+            "sub_path": "filament/MakerBot/MakerBot Method ABS-CF @System.json"
         }
     ],
     "process_list": [],

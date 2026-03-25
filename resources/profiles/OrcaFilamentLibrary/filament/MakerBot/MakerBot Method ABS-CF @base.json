@@ -1,0 +1,38 @@
+{
+    "type": "filament",
+    "name": "MakerBot Method ABS-CF @base",
+    "inherits": "fdm_filament_abs",
+    "from": "system",
+    "filament_id": "MKABSCF00",
+    "instantiation": "false",
+    "filament_cost": [
+        "59.99"
+    ],
+    "filament_density": [
+        "1.15"
+    ],
+    "filament_flow_ratio": [
+        "0.95"
+    ],
+    "filament_max_volumetric_speed": [
+        "8"
+    ],
+    "filament_vendor": [
+        "MakerBot"
+    ],
+    "filament_diameter": [
+        "1.75"
+    ],
+    "filament_scarf_seam_type": [
+        "none"
+    ],
+    "filament_scarf_height": [
+        "10%"
+    ],
+    "filament_scarf_gap": [
+        "0%"
+    ],
+    "filament_scarf_length": [
+        "10"
+    ]
+}

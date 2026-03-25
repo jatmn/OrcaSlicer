@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "UltiMaker PETG @System",
+    "inherits": "UltiMaker PETG @base",
+    "from": "system",
+    "setting_id": "UFPET01",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "12"
+    ],
+    "compatible_printers": []
+}

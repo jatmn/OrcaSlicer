@@ -1,0 +1,38 @@
+{
+    "type": "filament",
+    "name": "MakerBot Sketch Tough PLA @base",
+    "inherits": "fdm_filament_pla",
+    "from": "system",
+    "filament_id": "MKSKTPLA00",
+    "instantiation": "false",
+    "filament_cost": [
+        "29.99"
+    ],
+    "filament_density": [
+        "1.26"
+    ],
+    "filament_flow_ratio": [
+        "0.98"
+    ],
+    "filament_max_volumetric_speed": [
+        "10"
+    ],
+    "filament_vendor": [
+        "MakerBot"
+    ],
+    "filament_diameter": [
+        "1.75"
+    ],
+    "filament_scarf_seam_type": [
+        "none"
+    ],
+    "filament_scarf_height": [
+        "10%"
+    ],
+    "filament_scarf_gap": [
+        "0%"
+    ],
+    "filament_scarf_length": [
+        "10"
+    ]
+}

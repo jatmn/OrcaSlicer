@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "UltiMaker Tough PLA @System",
+    "inherits": "UltiMaker Tough PLA @base",
+    "from": "system",
+    "setting_id": "UFPLA02",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "12"
+    ],
+    "compatible_printers": []
+}

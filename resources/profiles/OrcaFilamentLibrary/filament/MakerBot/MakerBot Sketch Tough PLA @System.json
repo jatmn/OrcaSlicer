@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "MakerBot Sketch Tough PLA @System",
+    "inherits": "MakerBot Sketch Tough PLA @base",
+    "from": "system",
+    "setting_id": "MKSKTPLA01",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "12"
+    ],
+    "compatible_printers": []
+}

@@ -1,0 +1,38 @@
+{
+    "type": "filament",
+    "name": "UltiMaker PETG @base",
+    "inherits": "fdm_filament_petg",
+    "from": "system",
+    "filament_id": "UFPET00",
+    "instantiation": "false",
+    "filament_cost": [
+        "32.99"
+    ],
+    "filament_density": [
+        "1.27"
+    ],
+    "filament_flow_ratio": [
+        "0.98"
+    ],
+    "filament_max_volumetric_speed": [
+        "10"
+    ],
+    "filament_vendor": [
+        "UltiMaker"
+    ],
+    "filament_diameter": [
+        "2.85"
+    ],
+    "filament_scarf_seam_type": [
+        "none"
+    ],
+    "filament_scarf_height": [
+        "10%"
+    ],
+    "filament_scarf_gap": [
+        "0%"
+    ],
+    "filament_scarf_length": [
+        "10"
+    ]
+}

@@ -1,0 +1,12 @@
+{
+    "type": "filament",
+    "name": "MakerBot Method ABS-R @System",
+    "inherits": "MakerBot Method ABS-R @base",
+    "from": "system",
+    "setting_id": "MKABSR01",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "12"
+    ],
+    "compatible_printers": []
+}
