@@ -74,6 +74,7 @@
 #include "3DScene.hpp"
 #include "MainFrame.hpp"
 #include "Plater.hpp"
+#include "ExtruderVariantWidget.hpp"
 #include "GLCanvas3D.hpp"
 #include "EncodedFilament.hpp"
 #include "GeneratedConfig.hpp"
@@ -7117,6 +7118,12 @@ void GUI_App::load_current_presets(bool active_preset_combox/*= false*/, bool ch
 		if (tab->supports_printer_technology(printer_technology)) {
             tab->rebuild_page_tree();
         }
+
+    // Update extruder variant widget visibility based on current printer
+    auto* plater = this->plater();
+    if (plater) {
+        plater->sidebar().show_extruder_variant_widget(ExtruderVariantWidget::printer_has_variants());
+    }
 }
 
 static std::mutex mutex_delete_cache_presets;
