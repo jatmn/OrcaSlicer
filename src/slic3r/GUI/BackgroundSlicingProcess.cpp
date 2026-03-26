@@ -857,10 +857,17 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
         
         BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Creating container at temp path: " << container_path;
         
+        // Extract extruder variants from print config for multi-extruder support
+        std::vector<std::string> extruder_variants;
+        if (const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("printer_extruder_variant")) {
+            extruder_variants = variant_opt->values;
+            BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Found " << extruder_variants.size() << " extruder variants";
+        }
+        
         // Export to container format
         BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Converting G-code to container format: " << format_type;
         std::string container_error;
-        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, container_error)) {
+        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, extruder_variants, container_error)) {
             BOOST_LOG_TRIVIAL(error) << "export_to_final_path: ERROR - Container conversion FAILED: " << container_error;
             error_message = "Failed to export in container format.\n" + container_error;
             return false;

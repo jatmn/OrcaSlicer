@@ -105,6 +105,16 @@ public:
                                      const std::string& printer_notes,
                                      std::string& error_message);
     
+    // Export G-code to container format with extruder variants
+    // extruder_variants: List of printer extruder variant names (e.g., ["AA 0.4", "BB 0.4"])
+    // Used for multi-extruder printers to set correct nozzle diameter/name in UFP header
+    static bool export_to_container(const std::string& format_type,
+                                     const std::string& input_gcode_path,
+                                     const std::string& output_path,
+                                     const std::string& printer_notes,
+                                     const std::vector<std::string>& extruder_variants,
+                                     std::string& error_message);
+    
 private:
     static boost::filesystem::path get_formats_directory();
     static std::string load_template_file(const boost::filesystem::path& template_path);

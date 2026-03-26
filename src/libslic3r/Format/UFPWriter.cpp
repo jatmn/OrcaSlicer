@@ -240,6 +240,78 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
     }
 }
 
+std::pair<std::string, std::string> UFPWriter::get_nozzle_info(const std::string& variant_name) {
+    // Try to load nozzle variants from JSON
+    static std::map<std::string, std::pair<std::string, std::string>> cached_variants;
+    static bool loaded = false;
+    
+    if (!loaded) {
+        cached_variants = load_nozzle_variants();
+        loaded = true;
+    }
+    
+    // Look up in cached variants
+    auto it = cached_variants.find(variant_name);
+    if (it != cached_variants.end()) {
+        return it->second;
+    }
+    
+    // Fallback: extract diameter from variant name (e.g., "AA 0.4" -> "0.4")
+    std::string diameter = "0.4";  // default
+    size_t space_pos = variant_name.rfind(' ');
+    if (space_pos != std::string::npos && space_pos + 1 < variant_name.length()) {
+        std::string potential_diameter = variant_name.substr(space_pos + 1);
+        // Verify it looks like a diameter (contains only digits and .)
+        bool looks_like_diameter = true;
+        for (char c : potential_diameter) {
+            if (!std::isdigit(c) && c != '.') {
+                looks_like_diameter = false;
+                break;
+            }
+        }
+        if (looks_like_diameter) {
+            diameter = potential_diameter;
+        }
+    }
+    
+    // Return diameter and the variant name as display name
+    return std::make_pair(diameter, variant_name);
+}
+
+std::map<std::string, std::pair<std::string, std::string>> UFPWriter::load_nozzle_variants() {
+    std::map<std::string, std::pair<std::string, std::string>> variants;
+    
+    namespace fs = boost::filesystem;
+    std::vector<std::string> paths = {
+        (fs::path(Slic3r::resources_dir()) / "formats" / "ufp" / "nozzle_variants.json").string(),
+        (fs::path("resources") / "formats" / "ufp" / "nozzle_variants.json").string(),
+        "nozzle_variants.json"
+    };
+    
+    for (const auto& path : paths) {
+        boost::nowide::ifstream file(path);
+        if (file.is_open()) {
+            try {
+                nlohmann::json j = nlohmann::json::parse(file);
+                if (j.contains("variants")) {
+                    for (auto& [key, value] : j["variants"].items()) {
+                        std::string diameter = value.value("diameter", "0.4");
+                        std::string display_name = value.value("display_name", key);
+                        variants[key] = std::make_pair(diameter, display_name);
+                    }
+                    BOOST_LOG_TRIVIAL(info) << "UFPWriter: Loaded " << variants.size() << " nozzle variants from " << path;
+                    return variants;
+                }
+            } catch (const std::exception& e) {
+                BOOST_LOG_TRIVIAL(warning) << "UFPWriter: Failed to parse nozzle_variants.json: " << e.what();
+            }
+        }
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "UFPWriter: Could not find nozzle_variants.json, using fallback parsing";
+    return variants;
+}
+
 std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     std::map<std::string, std::string> values;
     values["flavor"] = m_config.gcode_metadata.flavor;
@@ -257,8 +329,6 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     if (filament_str.back() == '.') filament_str.pop_back();
     values["filament_volume"] = filament_str;
     values["material_guid"] = meta.material_guid;
-    values["nozzle_diameter"] = "0.4";
-    values["nozzle_name"] = "AA+ 0.4";
     values["bed_temp"] = std::to_string(meta.bed_temp);
     values["print_time"] = std::to_string(meta.duration_s);
     // Use fixed machine bounds for Ultimaker S6 instead of computed print bounds
@@ -271,6 +341,23 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["build_volume_temp"] = "28";
     values["print_groups"] = "1";
     values["slice_uuid"] = meta.slice_uuid;
+    
+    // Generate extruder block based on configured extruder variants
+    std::string extruder_block;
+    if (!m_extruder_variants.empty()) {
+        for (size_t i = 0; i < m_extruder_variants.size(); ++i) {
+            const std::string& variant = m_extruder_variants[i];
+            auto nozzle_info = get_nozzle_info(variant);
+            extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
+            extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second + "\n";
+        }
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter: Generated extruder block for " << m_extruder_variants.size() << " extruders";
+    } else {
+        // Fallback for backward compatibility - use default values
+        extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:0.4\n;EXTRUDER_TRAIN.0.NOZZLE.NAME:AA 0.4\n";
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter: No extruder variants configured, using default extruder 0";
+    }
+    values["extruder_block"] = extruder_block;
     
     return substitute_template(m_config.header_template_content, values);
 }

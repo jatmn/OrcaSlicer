@@ -5,11 +5,10 @@
 ;GENERATOR.VERSION:{{generator_version}}
 ;GENERATOR.BUILD_DATE:{{build_date}}
 ;TARGET_MACHINE.NAME:{{target_machine}}
+{{extruder_block}}
 ;EXTRUDER_TRAIN.0.INITIAL_TEMPERATURE:{{extruder_temp}}
 ;EXTRUDER_TRAIN.0.MATERIAL.VOLUME_USED:{{filament_volume}}
 ;EXTRUDER_TRAIN.0.MATERIAL.GUID:{{material_guid}}
-;EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:{{nozzle_diameter}}
-;EXTRUDER_TRAIN.0.NOZZLE.NAME:{{nozzle_name}}
 ;BUILD_PLATE.INITIAL_TEMPERATURE:{{bed_temp}}
 ;BUILD_VOLUME.TEMPERATURE:{{build_volume_temp}}
 ;PRINT.TIME:{{print_time}}

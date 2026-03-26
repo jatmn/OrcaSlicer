@@ -1,0 +1,18 @@
+{
+  "variants": {
+    "AA 0.4": { "diameter": "0.4", "display_name": "AA 0.4" },
+    "AA 0.25": { "diameter": "0.25", "display_name": "AA 0.25" },
+    "AA 0.8": { "diameter": "0.8", "display_name": "AA 0.8" },
+    "AA+ 0.4": { "diameter": "0.4", "display_name": "AA+ 0.4" },
+    "AA": { "diameter": "0.4", "display_name": "AA" },
+    "BB 0.4": { "diameter": "0.4", "display_name": "BB 0.4" },
+    "BB 0.8": { "diameter": "0.8", "display_name": "BB 0.8" },
+    "BB+ 0.4": { "diameter": "0.4", "display_name": "BB+ 0.4" },
+    "BB+ 0.8": { "diameter": "0.8", "display_name": "BB+ 0.8" },
+    "CC 0.4": { "diameter": "0.4", "display_name": "CC 0.4" },
+    "CC 0.6": { "diameter": "0.6", "display_name": "CC 0.6" },
+    "CC+ 0.6": { "diameter": "0.6", "display_name": "CC+ 0.6" },
+    "CC RED 0.6": { "diameter": "0.6", "display_name": "CC RED 0.6" },
+    "HT 0.6": { "diameter": "0.6", "display_name": "HT 0.6" }
+  }
+}

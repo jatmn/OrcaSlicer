@@ -277,6 +277,16 @@ bool FormatConfig::export_to_container(const std::string& format_type,
                                       const std::string& output_path,
                                       const std::string& printer_notes,
                                       std::string& error_message) {
+    // Call the overload with empty extruder variants (backward compatible)
+    return export_to_container(format_type, input_gcode_path, output_path, printer_notes, {}, error_message);
+}
+
+bool FormatConfig::export_to_container(const std::string& format_type,
+                                      const std::string& input_gcode_path,
+                                      const std::string& output_path,
+                                      const std::string& printer_notes,
+                                      const std::vector<std::string>& extruder_variants,
+                                      std::string& error_message) {
     // Parse the FORMAT_CONFIG_ID from printer notes
     std::string config_id = parse_format_config_id(printer_notes, "");
     
@@ -306,6 +316,11 @@ bool FormatConfig::export_to_container(const std::string& format_type,
     bool success = false;
     if (format_type == "ufp") {
         UFPWriter writer(format_config);
+        // Pass extruder variants for multi-extruder support (nozzle diameter/name)
+        if (!extruder_variants.empty()) {
+            writer.set_extruder_variants(extruder_variants);
+            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting " << extruder_variants.size() << " extruder variants for UFP export";
+        }
         success = writer.write(input_gcode_path, output_path);
         if (!success) {
             error_message = "Failed to create UltiMaker Format Package (.ufp). "
