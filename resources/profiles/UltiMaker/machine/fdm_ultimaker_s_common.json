@@ -58,10 +58,6 @@
         "Direct Drive",
         "Direct Drive"
     ],
-    "extruder_variant_list": [
-        "AA,AA+,BB,CC,CC+,CC Red,HT",
-        "AA,AA+,BB,CC,CC+,CC Red,HT"
-    ],
     "retract_before_wipe": [
         "70%",
         "70%"
@@ -157,8 +153,12 @@
         "2"
     ],
     "printer_extruder_variant": [
-        "AA",
-        "AA"
+        "AA 0.4",
+        "AA 0.4"
+    ],
+    "extruder_variant_list": [
+        "Direct Drive Standard",
+        "Direct Drive Standard"
     ],
     "nozzle_diameter": [
         "0.4",
@@ -176,9 +176,7 @@
     "purge_in_prime_tower": "0",
     "z_offset": "0.2",
     "default_print_profile": "",
-    "default_filament_profile": [
-        "UltiMaker PLA @System"
-    ],
+
     "scan_first_layer": "0",
     "thumbnails": "300x300/PNG"
 }

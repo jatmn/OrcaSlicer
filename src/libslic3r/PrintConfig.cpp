@@ -8177,6 +8177,11 @@ size_t DynamicPrintConfig::get_parameter_size(const std::string& param_name, siz
 // we need to set up these parameters automatically, otherwise per-extruder options won't work properly.
 static void extend_extruder_variant(DynamicPrintConfig& config, const unsigned int num_extruders)
 {
+    // Check if printer_extruder_variant is already set (e.g., from system preset like UltiMaker)
+    // If so, preserve it and only ensure extruder_variant_list matches the extruder count
+    auto printer_extruder_variant_opt = dynamic_cast<ConfigOptionStrings*>(config.option("printer_extruder_variant"));
+    const bool has_preset_variants = printer_extruder_variant_opt && !printer_extruder_variant_opt->values.empty();
+    
     // 1. Make sure the `extruder_variant_list` is the same length as extruder cnt
     if (!config.has("extruder_variant_list")) {
         config.set_key_value("extruder_variant_list",
@@ -8187,22 +8192,36 @@ static void extend_extruder_variant(DynamicPrintConfig& config, const unsigned i
     extruder_variant_opt->resize(num_extruders, extruder_variant_opt); // Use the first option as the default value, so all extruders have the same variant
 
     // 2. Update `printer_extruder_variant` and `printer_extruder_id` based on `extruder_variant_list`
+    // BUT only if printer_extruder_variant is not already set (preserve preset values for UltiMaker etc.)
     auto printer_extruder_id_opt = dynamic_cast<ConfigOptionInts*>(config.option("printer_extruder_id"));
     assert(printer_extruder_id_opt != nullptr);
-    printer_extruder_id_opt->values.clear();
-    auto printer_extruder_variant_opt = dynamic_cast<ConfigOptionStrings*>(config.option("printer_extruder_variant"));
-    assert(printer_extruder_variant_opt != nullptr);
-    printer_extruder_variant_opt->values.clear();
-    for (int i = 0; i < num_extruders; i++) {
-        // `extruder_variant_list` specifies supported variant of each nozzle/extruder,
-        // each item is a comma separated list of variants (extruder type + nozzle flow type) this extruder supported
-        std::string variant = extruder_variant_opt->get_at(i);
-        std::vector<std::string> variants_list;
-        boost::split(variants_list, variant, boost::is_any_of(","), boost::token_compress_on);
+    
+    if (!has_preset_variants) {
+        // For printers without preset variants (e.g., custom multi-extruder), populate from variant list
+        printer_extruder_id_opt->values.clear();
+        printer_extruder_variant_opt->values.clear();
+        for (int i = 0; i < num_extruders; i++) {
+            // `extruder_variant_list` specifies supported variant of each nozzle/extruder,
+            // each item is a comma separated list of variants (extruder type + nozzle flow type) this extruder supported
+            std::string variant = extruder_variant_opt->get_at(i);
+            std::vector<std::string> variants_list;
+            boost::split(variants_list, variant, boost::is_any_of(","), boost::token_compress_on);
 
-        if (!variants_list.empty()) {
-            printer_extruder_id_opt->values.insert(printer_extruder_id_opt->values.end(), variants_list.size(), i + 1);
-            printer_extruder_variant_opt->values.insert(printer_extruder_variant_opt->values.end(), variants_list.begin(), variants_list.end());
+            if (!variants_list.empty()) {
+                printer_extruder_id_opt->values.insert(printer_extruder_id_opt->values.end(), variants_list.size(), i + 1);
+                printer_extruder_variant_opt->values.insert(printer_extruder_variant_opt->values.end(), variants_list.begin(), variants_list.end());
+            }
+        }
+    } else {
+        // Preserve existing printer_extruder_variant but ensure printer_extruder_id matches extruder count
+        printer_extruder_id_opt->values.clear();
+        for (int i = 0; i < num_extruders; i++) {
+            printer_extruder_id_opt->values.push_back(i + 1);
+        }
+        // Resize printer_extruder_variant to match num_extruders if needed
+        if (printer_extruder_variant_opt->values.size() != num_extruders) {
+            std::string first_variant = printer_extruder_variant_opt->values.empty() ? "" : printer_extruder_variant_opt->values[0];
+            printer_extruder_variant_opt->values.resize(num_extruders, first_variant);
         }
     }
 }

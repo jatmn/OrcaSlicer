@@ -28,6 +28,7 @@
 #include "libslic3r/calib.hpp"
 #include "libslic3r/CutUtils.hpp"
 #include "libslic3r/FlushVolCalc.hpp"
+#include "ExtruderVariantWidget.hpp"
 
 #define FILAMENT_SYSTEM_COLORS_NUM      16
 
@@ -139,8 +140,13 @@ class Sidebar : public wxPanel
     int                                     m_last_combo_bedtype_count{0};
     bool                                    m_begin_sync_printer_status{false};
     SyncAmsInfoDialog*                      m_sync_dlg{nullptr};
+    ExtruderVariantWidget*                  m_extruder_variant_widget{nullptr};
 
     void update_sync_ams_btn_enable(wxUpdateUIEvent &e);
+
+public:
+    void update_extruder_variant_widget();
+    void show_extruder_variant_widget(bool show);
 
 public:
     enum DockingState

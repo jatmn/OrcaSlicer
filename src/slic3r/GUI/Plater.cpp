@@ -2135,6 +2135,14 @@ Sidebar::Sidebar(Plater *parent)
     update_filaments_area_height(); // ORCA
 
     scrolled_sizer->Add(p->m_panel_filament_content, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(SidebarProps::ContentMarginV())); // ORCA use vertical margin on parent otherwise it shows scrollbar even on 1 filament
+
+    // BBS: add extruder variant widget for UltiMaker printers
+    // Always create widget, show/hide based on printer type
+    m_extruder_variant_widget = new ExtruderVariantWidget(p->scrolled);
+    scrolled_sizer->Add(m_extruder_variant_widget, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(SidebarProps::ContentMarginV()));
+    if (!ExtruderVariantWidget::printer_has_variants()) {
+        m_extruder_variant_widget->Hide();
+    }
     }
 
     {
@@ -3956,6 +3964,26 @@ std::string& Sidebar::get_search_line()
 }
 
 static std::map<std::string, std::string> printer_thumbnails = {};
+
+void Sidebar::update_extruder_variant_widget()
+{
+    if (m_extruder_variant_widget) {
+        m_extruder_variant_widget->update_from_config();
+    }
+}
+
+void Sidebar::show_extruder_variant_widget(bool show)
+{
+    if (m_extruder_variant_widget) {
+        if (show) {
+            m_extruder_variant_widget->Show();
+            m_extruder_variant_widget->update_from_config();
+        } else {
+            m_extruder_variant_widget->Hide();
+        }
+        Layout();
+    }
+}
 
 void Sidebar::update_printer_thumbnail()
 {
@@ -9284,6 +9312,9 @@ void Plater::priv::on_select_preset(wxCommandEvent &evt)
         for (size_t idx = 0; idx < filament_size; ++idx)
             wxGetApp().plater()->sidebar().auto_calc_flushing_volumes(idx);
 #endif
+
+        // Update extruder variant widget visibility for UltiMaker printers
+        sidebar->show_extruder_variant_widget(ExtruderVariantWidget::printer_has_variants());
     }
 
 #ifdef __WXMSW__

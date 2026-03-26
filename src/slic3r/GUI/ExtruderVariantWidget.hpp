@@ -22,13 +22,11 @@ private:
     struct ExtruderRow {
         wxStaticText* label;
         wxChoice* variant_choice;
-        wxChoice* nozzle_choice;
     };
     
     std::vector<ExtruderRow> m_extruder_rows;
     
     void on_variant_changed(int extruder_idx, const wxString& variant);
-    void on_nozzle_changed(int extruder_idx, const wxString& nozzle);
 };
 
 }} // namespace Slic3r::GUI

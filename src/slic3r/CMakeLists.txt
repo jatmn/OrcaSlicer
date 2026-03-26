@@ -115,6 +115,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/ExtraRenderers.hpp
     GUI/ExtrusionCalibration.cpp
     GUI/ExtrusionCalibration.hpp
+    GUI/ExtruderVariantWidget.cpp
+    GUI/ExtruderVariantWidget.hpp
     GUI/Field.cpp
     GUI/Field.hpp
     GUI/FileArchiveDialog.cpp
@@ -502,7 +504,7 @@ set(SLIC3R_GUI_SOURCES
     GUI/Widgets/ImageSwitchButton.hpp
     GUI/Widgets/Label.cpp
     GUI/Widgets/LabeledStaticBox.cpp
-    GUI/Widgets/LabeledStaticBox.hpp
+    GUI/Widgets/LabeledStaticBox.cpp
     GUI/Widgets/Label.hpp
     GUI/Widgets/PopupWindow.cpp
     GUI/Widgets/PopupWindow.hpp

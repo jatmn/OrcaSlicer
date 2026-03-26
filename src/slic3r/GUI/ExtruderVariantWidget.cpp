@@ -5,8 +5,30 @@
 #include "libslic3r/Config.hpp"
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/join.hpp>
+#include <sstream>
+#include <iomanip>
 
 namespace Slic3r { namespace GUI {
+
+// Parse combined variant string like "AA 0.4" into core type and nozzle size
+static std::pair<std::string, std::string> parse_variant(const std::string& variant)
+{
+    // Find the last space to separate core type from nozzle size
+    auto pos = variant.find_last_of(' ');
+    if (pos == std::string::npos) {
+        return {variant, ""};
+    }
+    return {variant.substr(0, pos), variant.substr(pos + 1)};
+}
+
+// Build combined variant string from core type and nozzle size
+static std::string make_variant(const std::string& core_type, const std::string& nozzle)
+{
+    if (nozzle.empty()) {
+        return core_type;
+    }
+    return core_type + " " + nozzle;
+}
 
 ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
     : wxPanel(parent, wxID_ANY)
@@ -14,7 +36,7 @@ ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     
     // Title
-    auto* title = new wxStaticText(this, wxID_ANY, _L("Print Core Setup"));
+    auto* title = new wxStaticText(this, wxID_ANY, _L("Print Core Configuration"));
     title->SetFont(wxFont(wxFontInfo().Bold()));
     sizer->Add(title, 0, wxBOTTOM, 5);
     
@@ -24,33 +46,30 @@ ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
 
 void ExtruderVariantWidget::update_from_config()
 {
-    // Get current printer preset
-    auto& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
-    
-    // Check if printer has variant list
-    if (!printer_preset.config.has("extruder_variant_list")) {
+    // Guard against null preset_bundle
+    if (!wxGetApp().preset_bundle) {
         Hide();
         return;
     }
     
-    auto variant_list_opt = printer_preset.config.option<ConfigOptionStrings>("extruder_variant_list");
-    if (!variant_list_opt || variant_list_opt->values.empty()) {
-        Hide();
-        return;
-    }
+    auto* preset_bundle = wxGetApp().preset_bundle;
+    auto& printer_preset = preset_bundle->printers.get_edited_preset();
+    std::string preset_name = printer_preset.name;
     
-    // Check if this is a UltiMaker variant list (has AA, BB, CC)
-    bool has_custom_variants = false;
-    for (const auto& v : variant_list_opt->values) {
-        if (v.find("AA") != std::string::npos || 
-            v.find("BB") != std::string::npos ||
-            v.find("CC") != std::string::npos) {
-            has_custom_variants = true;
-            break;
-        }
-    }
-    
-    if (!has_custom_variants) {
+    // Determine which variant list to use based on printer model
+    std::vector<std::string> variant_list;
+    if (preset_name.find("UltiMaker S3") != std::string::npos ||
+        preset_name.find("UltiMaker S5") != std::string::npos ||
+        preset_name.find("UltiMaker S7") != std::string::npos) {
+        // S3/S5/S7 - basic cores only (AA, BB, CC)
+        variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6"};
+    } else if (preset_name.find("UltiMaker S6") != std::string::npos ||
+               preset_name.find("UltiMaker S8") != std::string::npos ||
+               preset_name.find("UltiMaker Factor 4") != std::string::npos) {
+        // S6/S8/Factor 4 - all cores including HT
+        variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "AA+ 0.4", "BB 0.4", "BB 0.8", 
+                        "CC 0.4", "CC 0.6", "CC+ 0.4", "CC+ 0.6", "CC Red 0.6", "HT 0.6"};
+    } else {
         Hide();
         return;
     }
@@ -60,89 +79,102 @@ void ExtruderVariantWidget::update_from_config()
     for (auto& row : m_extruder_rows) {
         if (row.label) row.label->Destroy();
         if (row.variant_choice) row.variant_choice->Destroy();
-        if (row.nozzle_choice) row.nozzle_choice->Destroy();
     }
     m_extruder_rows.clear();
     
-    // Get nozzle diameter count (determines extruder count)
-    auto nozzle_diameters = printer_preset.config.option<ConfigOptionFloats>("nozzle_diameter");
+    // Get nozzle diameter count from full_config (determines extruder count)
+    auto& full_config = preset_bundle->full_config();
+    auto nozzle_diameters = full_config.option<ConfigOptionFloats>("nozzle_diameter");
     if (!nozzle_diameters) {
         Hide();
         return;
     }
     
+    // Get current printer_extruder_variant from the PRESET (not full_config)
+    // This ensures we get the default values from the preset file
+    auto current_variants = printer_preset.config.option<ConfigOptionStrings>("printer_extruder_variant");
+    if (!current_variants || current_variants->values.empty()) {
+        // Fallback to full_config if not in preset directly
+        current_variants = full_config.option<ConfigOptionStrings>("printer_extruder_variant");
+    }
+    
     size_t num_extruders = nozzle_diameters->values.size();
     
-    // Create row for each extruder
+    // Ensure filament count matches extruder count BEFORE creating UI
+    // This fixes the timing issue where filament dropdowns don't show
+    size_t current_filaments = preset_bundle->filament_presets.size();
+    if (current_filaments != num_extruders) {
+        preset_bundle->set_num_filaments((unsigned int)num_extruders);
+    }
+    
+    // Create a single horizontal row with both print cores side by side
+    auto* row_sizer = new wxBoxSizer(wxHORIZONTAL);
+    
+    // Create dropdown for each extruder
     for (size_t i = 0; i < num_extruders; i++) {
-        auto* row_sizer = new wxBoxSizer(wxHORIZONTAL);
-        
-        // Extruder label
-        wxString label_text = wxString::Format(_L("Extruder %d:"), (int)(i + 1));
+        // Print Core label
+        wxString label_text = wxString::Format(_L("Print Core %d"), (int)(i + 1));
         auto* label = new wxStaticText(this, wxID_ANY, label_text);
-        row_sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+        row_sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
         
-        // Core type choice
+        // Combined variant choice (e.g., "AA 0.4", "BB 0.4", "CC 0.6")
         auto* variant_choice = new wxChoice(this, wxID_ANY);
         
-        // Parse variant list for this extruder
-        std::string variant_str = variant_list_opt->get_at(i);
-        std::vector<std::string> variants;
-        boost::split(variants, variant_str, boost::is_any_of(","), boost::token_compress_on);
-        
-        for (const auto& variant : variants) {
+        // Add variants to dropdown
+        for (const auto& variant : variant_list) {
             variant_choice->Append(wxString::FromUTF8(variant));
         }
         
-        // Set current selection from printer_extruder_variant
-        auto current_variants = printer_preset.config.option<ConfigOptionStrings>("printer_extruder_variant");
+        // Set current selection based on current printer_extruder_variant (now in combined format)
+        std::string expected_variant;
         if (current_variants && i < current_variants->values.size()) {
-            int sel = variant_choice->FindString(wxString::FromUTF8(current_variants->values[i]));
-            if (sel != wxNOT_FOUND) {
-                variant_choice->SetSelection(sel);
+            std::string stored_variant = current_variants->values[i];
+            // If already in combined format (contains space), use directly
+            if (stored_variant.find(' ') != std::string::npos) {
+                expected_variant = stored_variant;
+            } else {
+                // Legacy format - build combined string from core type and nozzle diameter
+                double current_nozzle = (i < nozzle_diameters->values.size()) ? nozzle_diameters->values[i] : 0.4;
+                // Format nozzle without trailing zeros
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(2) << current_nozzle;
+                std::string nozzle_str = oss.str();
+                // Remove trailing zeros
+                nozzle_str.erase(nozzle_str.find_last_not_of('0') + 1, std::string::npos);
+                if (!nozzle_str.empty() && nozzle_str.back() == '.') nozzle_str.pop_back();
+                expected_variant = make_variant(stored_variant, nozzle_str);
             }
+        }
+        
+        int sel = variant_choice->FindString(wxString::FromUTF8(expected_variant));
+        if (sel != wxNOT_FOUND) {
+            variant_choice->SetSelection(sel);
         }
         
         variant_choice->Bind(wxEVT_CHOICE, [this, i, variant_choice](wxCommandEvent&) {
             on_variant_changed(i, variant_choice->GetStringSelection());
         });
         
-        row_sizer->Add(variant_choice, 1, wxRIGHT, 10);
+        row_sizer->Add(variant_choice, 0, wxALIGN_CENTER_VERTICAL, 0);
         
-        // Nozzle size choice (dynamic based on model)
-        auto* nozzle_choice = new wxChoice(this, wxID_ANY);
-        
-        // Get available nozzle sizes from model
-        auto* model = wxGetApp().preset_bundle->printers.get_preset(printer_preset.name).get_model();
-        if (model && model->nozzle_diameter.size() > 0) {
-            for (const auto& nd : model->nozzle_diameter) {
-                nozzle_choice->Append(wxString::FromUTF8(nd));
-            }
-        } else {
-            // Fallback to common sizes
-            nozzle_choice->Append("0.25");
-            nozzle_choice->Append("0.4");
-            nozzle_choice->Append("0.6");
-            nozzle_choice->Append("0.8");
+        // Add spacer between dropdowns (except after last one)
+        if (i < num_extruders - 1) {
+            row_sizer->AddSpacer(10);
         }
         
-        // Set current nozzle size
-        wxString current_nozzle = wxString::Format("%.2f", nozzle_diameters->values[i]);
-        int nozzle_sel = nozzle_choice->FindString(current_nozzle);
-        if (nozzle_sel != wxNOT_FOUND) {
-            nozzle_choice->SetSelection(nozzle_sel);
-        }
-        
-        nozzle_choice->Bind(wxEVT_CHOICE, [this, i, nozzle_choice](wxCommandEvent&) {
-            on_nozzle_changed(i, nozzle_choice->GetStringSelection());
-        });
-        
-        row_sizer->Add(nozzle_choice, 0);
-        
-        sizer->Add(row_sizer, 0, wxEXPAND | wxBOTTOM, 5);
-        
-        m_extruder_rows.push_back({label, variant_choice, nozzle_choice});
+        m_extruder_rows.push_back({label, variant_choice});
     }
+    
+    sizer->Add(row_sizer, 0, wxEXPAND | wxBOTTOM, 5);
+    
+    // Update filament presets in sidebar after widget is shown
+    // Use CallAfter to ensure UI is ready
+    wxTheApp->CallAfter([]() {
+        auto* plater = wxGetApp().plater();
+        if (plater) {
+            plater->sidebar().update_presets(Preset::TYPE_FILAMENT);
+        }
+    });
     
     Show();
     sizer->Layout();
@@ -151,59 +183,63 @@ void ExtruderVariantWidget::update_from_config()
 
 void ExtruderVariantWidget::on_variant_changed(int extruder_idx, const wxString& variant)
 {
-    // Update printer_extruder_variant in config
-    auto& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
-    auto opt = printer_preset.config.option<ConfigOptionStrings>("printer_extruder_variant");
-    
-    if (opt && extruder_idx < (int)opt->values.size()) {
-        opt->values[extruder_idx] = variant.ToUTF8().data();
-        
-        // Mark preset as dirty
-        wxGetApp().preset_bundle->printers.get_edited_preset().set_dirty();
-        
-        // Update UI
-        wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINTER);
+    // Guard against null preset_bundle
+    if (!wxGetApp().preset_bundle) {
+        return;
     }
-}
-
-void ExtruderVariantWidget::on_nozzle_changed(int extruder_idx, const wxString& nozzle)
-{
-    // Update nozzle_diameter in config
-    auto& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
-    auto opt = printer_preset.config.option<ConfigOptionFloats>("nozzle_diameter");
     
-    if (opt && extruder_idx < (int)opt->values.size()) {
-        double value;
-        if (nozzle.ToDouble(&value)) {
-            opt->values[extruder_idx] = value;
-            wxGetApp().preset_bundle->printers.get_edited_preset().set_dirty();
-            
-            // Refresh the widget to update nozzle-dependent options
-            update_from_config();
+    auto* preset_bundle = wxGetApp().preset_bundle;
+    auto& printer_preset = preset_bundle->printers.get_edited_preset();
+    
+    // Parse combined variant string (e.g., "AA 0.4" -> core_type="AA", nozzle="0.4")
+    auto [core_type, nozzle] = parse_variant(variant.ToStdString());
+    
+    // Update printer_extruder_variant with combined format (e.g., "AA 0.4")
+    auto variant_opt = printer_preset.config.option<ConfigOptionStrings>("printer_extruder_variant");
+    if (variant_opt && extruder_idx < (int)variant_opt->values.size()) {
+        variant_opt->values[extruder_idx] = variant.ToStdString();  // Store combined format
+    }
+    
+    // Update nozzle_diameter if nozzle size was specified
+    if (!nozzle.empty()) {
+        auto nozzle_opt = printer_preset.config.option<ConfigOptionFloats>("nozzle_diameter");
+        if (nozzle_opt && extruder_idx < (int)nozzle_opt->values.size()) {
+            double nozzle_value;
+            if (std::istringstream(nozzle) >> nozzle_value) {
+                nozzle_opt->values[extruder_idx] = nozzle_value;
+            }
         }
     }
+    
+    // Mark preset as dirty
+    preset_bundle->printers.get_edited_preset().set_dirty();
+    
+    // Update printer-related UI elements
+    wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINTER);
+    
+    // Update printer thumbnail to reflect changes
+    wxGetApp().plater()->sidebar().update_printer_thumbnail();
 }
 
 bool ExtruderVariantWidget::printer_has_variants()
 {
+    // Check if current printer is UltiMaker S-series or Factor 4
+    if (!wxGetApp().preset_bundle) {
+        return false;
+    }
+    
     auto& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
+    std::string preset_name = printer_preset.name;
     
-    if (!printer_preset.config.has("extruder_variant_list")) {
-        return false;
-    }
-    
-    auto variant_list = printer_preset.config.option<ConfigOptionStrings>("extruder_variant_list");
-    if (!variant_list || variant_list->values.empty()) {
-        return false;
-    }
-    
-    // Check for custom variants (AA, BB, CC)
-    for (const auto& v : variant_list->values) {
-        if (v.find("AA") != std::string::npos || 
-            v.find("BB") != std::string::npos ||
-            v.find("CC") != std::string::npos) {
-            return true;
-        }
+    // Check if it's an UltiMaker printer with swappable cores
+    // S3, S5, S6, S7, S8, Factor 4 have swappable cores
+    if (preset_name.find("UltiMaker S3") != std::string::npos ||
+        preset_name.find("UltiMaker S5") != std::string::npos ||
+        preset_name.find("UltiMaker S6") != std::string::npos ||
+        preset_name.find("UltiMaker S7") != std::string::npos ||
+        preset_name.find("UltiMaker S8") != std::string::npos ||
+        preset_name.find("UltiMaker Factor 4") != std::string::npos) {
+        return true;
     }
     
     return false;
