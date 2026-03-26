@@ -5,6 +5,7 @@
     "from": "system",
     "instantiation": "false",
     "printer_technology": "FFF",
+    "printer_notes": "",
     "deretraction_speed": [
         "35"
     ],

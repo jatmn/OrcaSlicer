@@ -5,9 +5,39 @@
   "content_type": "application/x-ufp",
   "printers": [
     {
+      "id": "ultimaker_s3",
+      "name": "UltiMaker S3",
+      "config_file": "ultimaker_s3.json"
+    },
+    {
+      "id": "ultimaker_s5",
+      "name": "UltiMaker S5",
+      "config_file": "ultimaker_s5.json"
+    },
+    {
       "id": "ultimaker_s6",
       "name": "UltiMaker S6",
       "config_file": "ultimaker_s6.json"
+    },
+    {
+      "id": "ultimaker_s7",
+      "name": "UltiMaker S7",
+      "config_file": "ultimaker_s7.json"
+    },
+    {
+      "id": "ultimaker_s8",
+      "name": "UltiMaker S8",
+      "config_file": "ultimaker_s8.json"
+    },
+    {
+      "id": "ultimaker_factor4",
+      "name": "UltiMaker Factor 4",
+      "config_file": "ultimaker_factor4.json"
+    },
+    {
+      "id": "ultimaker2_plus_connect",
+      "name": "UltiMaker 2+ Connect",
+      "config_file": "ultimaker_2pc.json"
     }
   ]
 }

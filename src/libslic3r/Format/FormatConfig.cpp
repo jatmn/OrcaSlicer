@@ -232,9 +232,11 @@ std::string FormatConfig::get_format_type_for_printer(const std::string& printer
         return "";
     }
     
-    // UltiMaker formats (.ufp)
-    if (config_id == "ultimaker_s6" || config_id == "ultimaker_s5" ||
-        config_id == "ultimaker_2pc" || config_id == "ultimaker_f4") {
+    // UltiMaker formats (.ufp) - IDs match Cura's machine definition filenames
+    if (config_id == "ultimaker_s3" || config_id == "ultimaker_s5" ||
+        config_id == "ultimaker_s6" || config_id == "ultimaker_s7" ||
+        config_id == "ultimaker_s8" || config_id == "ultimaker_factor4" ||
+        config_id == "ultimaker2_plus_connect") {
         return "ufp";
     }
     
@@ -281,7 +283,7 @@ bool FormatConfig::export_to_container(const std::string& format_type,
     if (config_id.empty()) {
         error_message = "No FORMAT_CONFIG_ID found in printer notes. "
                        "To export in container format, add FORMAT_CONFIG_ID:<id> to your printer notes. "
-                       "Valid IDs for .ufp: ultimaker_s6, ultimaker_s5, ultimaker_2pc, ultimaker_f4. "
+                       "Valid IDs for .ufp: ultimaker_s3, ultimaker_s5, ultimaker_s6, ultimaker_s7, ultimaker_s8, ultimaker_factor4, ultimaker2_plus_connect. "
                        "Valid IDs for .makerbot: sketch_small, sketch_sprint, sketch_large, method_x, method_xl.";
         BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
         return false;

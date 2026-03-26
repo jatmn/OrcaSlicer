@@ -1,0 +1,50 @@
+{
+  "printer_name": "Ultimaker S7",
+  "target_machine": "Ultimaker S7",
+  "header_template": "ultimaker",
+  "opc_structure": true,
+  "content_types": {
+    "rels": "application/vnd.openxmlformats-package.relationships+xml",
+    "gcode": "text/x-gcode",
+    "json": "application/json",
+    "png": "image/png",
+    "xml.fdm_material": "application/x-ultimaker-material-profile"
+  },
+  "thumbnail": {
+    "filename": "thumbnail.png",
+    "sizes": ["320x320"],
+    "location": "/Metadata/thumbnail.png"
+  },
+  "gcode_metadata": {
+    "flavor": "Cheetah",
+    "generator_name": "OrcaSlicer",
+    "generator_version": "5.11.0",
+    "required_fields": [
+      "TARGET_MACHINE.NAME",
+      "EXTRUDER_TRAIN.0.INITIAL_TEMPERATURE",
+      "EXTRUDER_TRAIN.0.MATERIAL.VOLUME_USED",
+      "EXTRUDER_TRAIN.0.MATERIAL.GUID",
+      "EXTRUDER_TRAIN.0.NOZZLE.DIAMETER",
+      "EXTRUDER_TRAIN.0.NOZZLE.NAME",
+      "BUILD_PLATE.INITIAL_TEMPERATURE",
+      "PRINT.TIME",
+      "PRINT.SIZE.MIN.X",
+      "PRINT.SIZE.MIN.Y",
+      "PRINT.SIZE.MIN.Z",
+      "PRINT.SIZE.MAX.X",
+      "PRINT.SIZE.MAX.Y",
+      "PRINT.SIZE.MAX.Z"
+    ]
+  },
+  "zip_structure": {
+    "files": [
+      "/3D/model.gcode",
+      "/Cura/slicemetadata.json",
+      "/Metadata/UFP_Global.json",
+      "/Materials/material.xml.fdm_material",
+      "/[Content_Types].xml",
+      "/_rels/.rels",
+      "/3D/_rels/model.gcode.rels"
+    ]
+  }
+}

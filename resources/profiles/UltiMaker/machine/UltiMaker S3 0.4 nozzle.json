@@ -26,5 +26,6 @@
     "default_filament_profile": [
         "UltiMaker Tough PLA @System",
         "UltiMaker Tough PLA @System"
-    ]
+    ],
+    "printer_notes": "FORMAT_CONFIG_ID:ultimaker_s3"
 }

@@ -26,7 +26,7 @@
   "device_type": "printer",
   "max_layer_height": "0.32",
   "min_layer_height": "0.05",
-  "printer_notes": "UltiMaker 2+ Connect with 0.40mm nozzle",
+  "printer_notes": "UltiMaker 2+ Connect with 0.40mm nozzle FORMAT_CONFIG_ID:ultimaker2_plus_connect",
   "inherits": "fdm_ultimaker_s_common",
   "instantiation": "true"
 }
