@@ -1,6 +1,7 @@
 #include "ExtruderVariantWidget.hpp"
 #include "GUI_App.hpp"
 #include "Plater.hpp"
+#include "Widgets/Label.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Config.hpp"
 #include <boost/algorithm/string/split.hpp>
@@ -35,9 +36,8 @@ ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
 {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     
-    // Title - use same font as rest of UI
-    auto* title = new wxStaticText(this, wxID_ANY, _L("Print Core Configuration"));
-    title->SetFont(wxGetApp().bold_font());
+    // Title - use Label class with Body_10 font to match sidebar style
+    auto* title = new Label(this, Label::Body_10, _L("Print Core Configuration"));
     sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
     
     SetSizer(sizer);
@@ -60,15 +60,17 @@ void ExtruderVariantWidget::update_from_config()
     std::vector<std::string> variant_list;
     if (preset_name.find("UltiMaker S3") != std::string::npos ||
         preset_name.find("UltiMaker S5") != std::string::npos ||
-        preset_name.find("UltiMaker S7") != std::string::npos ||
-        preset_name.find("UltiMaker Factor 4") != std::string::npos) {
-        // S3/S5/S7/Factor 4 - basic cores only (AA, BB, CC)
+        preset_name.find("UltiMaker S7") != std::string::npos) {
+        // S3/S5/S7 - basic cores only (AA, BB, CC)
         variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6"};
     } else if (preset_name.find("UltiMaker S6") != std::string::npos ||
                preset_name.find("UltiMaker S8") != std::string::npos) {
         // S6/S8 - all cores including HT and (+) variants
         variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "AA+ 0.4", "BB 0.4", "BB 0.8", 
                         "CC 0.4", "CC 0.6", "CC+ 0.4", "CC+ 0.6", "CC Red 0.6", "HT 0.6"};
+    } else if (preset_name.find("UltiMaker Factor 4") != std::string::npos) {
+        // Factor 4 - basic cores plus HT, but no (+) variants
+        variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6", "HT 0.6"};
     } else {
         Hide();
         return;
@@ -103,7 +105,8 @@ void ExtruderVariantWidget::update_from_config()
     // Ensure filament count matches extruder count BEFORE creating UI
     // This fixes the timing issue where filament dropdowns don't show
     size_t current_filaments = preset_bundle->filament_presets.size();
-    if (current_filaments != num_extruders) {
+    bool filament_count_mismatch = (current_filaments != num_extruders);
+    if (filament_count_mismatch) {
         preset_bundle->set_num_filaments((unsigned int)num_extruders);
     }
     
@@ -112,10 +115,9 @@ void ExtruderVariantWidget::update_from_config()
     
     // Create dropdown for each extruder
     for (size_t i = 0; i < num_extruders; i++) {
-        // Print Core label - use same font as rest of UI
+        // Print Core label - use Label class with Body_10 to match sidebar style
         wxString label_text = wxString::Format(_L("Print Core %d"), (int)(i + 1));
-        auto* label = new wxStaticText(this, wxID_ANY, label_text);
-        label->SetFont(wxGetApp().normal_font());
+        auto* label = new Label(this, Label::Body_10, label_text);
         row_sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
         
         // Combined variant choice (e.g., "AA 0.4", "BB 0.4", "CC 0.6")
@@ -175,7 +177,8 @@ void ExtruderVariantWidget::update_from_config()
     
     // Update filament count in sidebar if needed
     // This ensures filament combos match extruder count on first launch
-    if (current_filaments != num_extruders) {
+    // Use CallAfter to ensure UI is fully initialized before updating
+    if (filament_count_mismatch) {
         wxTheApp->CallAfter([num_extruders]() {
             auto* plater = wxGetApp().plater();
             if (plater) {
