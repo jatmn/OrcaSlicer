@@ -1,0 +1,26 @@
+{
+    "type": "machine",
+    "name": "UltiMaker S3 0.6 nozzle",
+    "inherits": "fdm_ultimaker_s_common",
+    "from": "system",
+    "setting_id": "GM001",
+    "instantiation": "true",
+    "printer_model": "UltiMaker S3",
+    "printer_variant": "0.6",
+    "default_print_profile": "0.20mm Standard @UltiMaker S3",
+    "nozzle_diameter": [
+        "0.6",
+        "0.6"
+    ],
+    "printer_extruder_variant": [
+        "AA",
+        "AA"
+    ],
+    "printable_area": [
+        "0x0",
+        "330x0",
+        "330x240",
+        "0x240"
+    ],
+    "printable_height": "300"
+}

@@ -1,0 +1,26 @@
+{
+    "type": "machine",
+    "name": "UltiMaker Factor 4 0.8 nozzle",
+    "inherits": "fdm_ultimaker_s_common",
+    "from": "system",
+    "setting_id": "GM001",
+    "instantiation": "true",
+    "printer_model": "UltiMaker Factor 4",
+    "printer_variant": "0.8",
+    "default_print_profile": "0.20mm Standard @UltiMaker Factor 4",
+    "nozzle_diameter": [
+        "0.8",
+        "0.8"
+    ],
+    "printer_extruder_variant": [
+        "AA",
+        "AA"
+    ],
+    "printable_area": [
+        "0x0",
+        "330x0",
+        "330x240",
+        "0x240"
+    ],
+    "printable_height": "300"
+}
