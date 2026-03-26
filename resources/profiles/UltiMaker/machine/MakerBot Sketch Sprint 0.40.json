@@ -11,7 +11,7 @@
   "machine_tech": "FDM",
   "family": "MakerBot",
   "printer_model": "MakerBot Sketch Sprint",
-  "printer_variant": "0.40",
+  "printer_variant": "0.4",
   "nozzle_diameter": ["0.4"],
   "default_setting_id": "makerbot_sketch_sprint_0.40",
   "prefered_quality": "0.20",

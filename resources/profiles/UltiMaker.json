@@ -103,6 +103,14 @@
             "sub_path": "machine/fdm_machine_common.json"
         },
         {
+            "name": "fdm_ultimaker_s_common",
+            "sub_path": "machine/fdm_ultimaker_s_common.json"
+        },
+        {
+            "name": "fdm_makerbot_common",
+            "sub_path": "machine/fdm_makerbot_common.json"
+        },
+        {
             "name": "UltiMaker 2 0.4 nozzle",
             "sub_path": "machine/UltiMaker 2 0.4 nozzle.json"
         },
@@ -397,10 +405,6 @@
         {
             "name": "UltiMaker 2+ Connect 0.40",
             "sub_path": "machine/UltiMaker 2+ Connect 0.40.json"
-        },
-        {
-            "name": "fdm_makerbot_common",
-            "sub_path": "machine/fdm_makerbot_common.json"
         },
         {
             "name": "MakerBot Sketch 0.40",

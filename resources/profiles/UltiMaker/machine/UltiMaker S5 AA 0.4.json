@@ -10,7 +10,11 @@
   "machine_tech": "FDM",
   "family": "UltiMaker",
   "printer_model": "UltiMaker S5",
-  "printer_variant": "AA 0.4",
+  "printer_variant": "0.4",
+  "printer_extruder_variant": [
+    "AA",
+    "AA"
+  ],
   "nozzle_diameter": [
     "0.4"
   ],

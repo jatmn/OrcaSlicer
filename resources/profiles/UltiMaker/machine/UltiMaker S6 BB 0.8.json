@@ -8,8 +8,11 @@
     "printer_model": "UltiMaker S6",
     "default_print_profile": "0.30mm Draft @UltiMaker S6 BB 0.8",
     "nozzle_diameter": ["0.8"],
-    "printer_variant": "BB 0.8",
-    "max_layer_height": ["0.64"],
+    "printer_variant": "0.8",
+  "printer_extruder_variant": [
+    "BB",
+    "BB"
+  ],    "max_layer_height": ["0.64"],
     "min_layer_height": ["0.16"],
     "nozzle_type": "brass",
     "printable_area": ["0x0", "330x0", "330x240", "0x240"],

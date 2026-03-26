@@ -10,7 +10,11 @@
   "machine_tech": "FDM",
   "family": "UltiMaker",
   "printer_model": "UltiMaker S3",
-  "printer_variant": "BB 0.8",
+  "printer_variant": "0.8",
+  "printer_extruder_variant": [
+    "BB",
+    "BB"
+  ],
   "nozzle_diameter": [
     "0.8"
   ],

@@ -10,7 +10,11 @@
   "machine_tech": "FDM",
   "family": "UltiMaker",
   "printer_model": "UltiMaker 2+ Connect",
-  "printer_variant": "0.40",
+  "printer_variant": "0.4",
+  "printer_extruder_variant": [
+    "AA",
+    "AA"
+  ],
   "nozzle_diameter": [
     "0.4"
   ],

@@ -59,8 +59,8 @@
         "Direct Drive"
     ],
     "extruder_variant_list": [
-        "Direct Drive Standard",
-        "Direct Drive Standard"
+        "AA,AA+,BB,CC,CC+,CC Red,HT",
+        "AA,AA+,BB,CC,CC+,CC Red,HT"
     ],
     "retract_before_wipe": [
         "70%",
@@ -157,8 +157,8 @@
         "2"
     ],
     "printer_extruder_variant": [
-        "Direct Drive Standard",
-        "Direct Drive Standard"
+        "AA",
+        "AA"
     ],
     "nozzle_diameter": [
         "0.4",

@@ -8,8 +8,11 @@
     "printer_model": "UltiMaker S6",
     "default_print_profile": "0.20mm Standard @UltiMaker S6 CC+ 0.4",
     "nozzle_diameter": ["0.4"],
-    "printer_variant": "CC+ 0.4",
-    "max_layer_height": ["0.32"],
+    "printer_variant": "0.4",
+  "printer_extruder_variant": [
+    "CC+",
+    "CC+"
+  ],    "max_layer_height": ["0.32"],
     "min_layer_height": ["0.08"],
     "nozzle_type": "hardened_steel",
     "printable_area": ["0x0", "330x0", "330x240", "0x240"],

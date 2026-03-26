@@ -10,7 +10,11 @@
   "machine_tech": "FDM",
   "family": "UltiMaker",
   "printer_model": "UltiMaker S3",
-  "printer_variant": "CC RED 0.6",
+  "printer_variant": "0.6",
+  "printer_extruder_variant": [
+    "CC Red",
+    "CC Red"
+  ],
   "nozzle_diameter": [
     "0.6"
   ],

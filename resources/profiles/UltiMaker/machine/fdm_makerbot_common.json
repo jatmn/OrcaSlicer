@@ -1,7 +1,7 @@
 {
   "type": "machine",
   "setting_id": "fdm_makerbot_common",
-  "name": "MakerBot Common",
+  "name": "fdm_makerbot_common",
   "from": "system",
   "instantiation": "false",
   "vendor": "MakerBot",
