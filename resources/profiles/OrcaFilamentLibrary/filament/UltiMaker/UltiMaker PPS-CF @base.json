@@ -34,5 +34,6 @@
     ],
     "filament_scarf_length": [
         "10"
-    ]
+    ],
+    "filament_notes": "MATERIAL_GUID: unknown (not available in Cura AnyColor profiles)"
 }

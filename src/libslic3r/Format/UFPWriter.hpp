@@ -5,6 +5,16 @@
 
 namespace Slic3r {
 
+// Per-extruder metadata for multi-extruder UFP export
+struct ExtruderData {
+    std::string material_guid;
+    std::string material_name;
+    int extruder_temp = 0;
+    double filament_mm = 0.0;
+    double filament_g = 0.0;
+    bool empty() const { return material_guid.empty() && extruder_temp == 0 && filament_mm == 0.0; }
+};
+
 class UFPWriter : public GCodeContainerWriter {
 public:
     UFPWriter(const PrinterFormatConfig& config) : GCodeContainerWriter(config) {}
@@ -23,6 +33,19 @@ public:
         m_extruder_variants = variants;
     }
     
+    // Set per-extruder data for multi-extruder UFP export
+    // idx: 0 for first extruder, 1 for second extruder
+    void set_extruder_data(int idx, const ExtruderData& data) {
+        if (idx >= 0 && idx < 2) {
+            m_extruders[idx] = data;
+        }
+    }
+    
+    // Check if any extruder data has been set
+    bool has_extruder_data() const {
+        return !m_extruders[0].empty() || !m_extruders[1].empty();
+    }
+    
 protected:
     void override_metadata(GCodeMetadata& meta) override;
     std::string generate_header(const GCodeMetadata& meta) override;
@@ -34,6 +57,7 @@ private:
     double m_filament_g = 0.0;
     bool m_has_stats = false;
     std::vector<std::string> m_extruder_variants;
+    ExtruderData m_extruders[2];  // Support for 2 extruders
     
 private:
     // Helper to load nozzle variants from JSON file
@@ -48,6 +72,9 @@ private:
     std::string generate_rels_xml();
     std::string generate_gcode_rels_xml(bool has_thumbnail = false);
     std::string generate_build_date();
+    
+    // Helper to generate extruder metadata block
+    std::string generate_extruder_block(int idx, const ExtruderData& data);
 };
 
 } // namespace Slic3r

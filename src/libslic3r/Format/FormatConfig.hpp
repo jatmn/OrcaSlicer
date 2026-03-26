@@ -8,6 +8,9 @@
 
 namespace Slic3r {
 
+// Forward declaration to avoid circular dependencies
+struct ExtruderData;
+
 struct ThumbnailConfig {
     std::string size;
     std::string filename;
@@ -113,6 +116,16 @@ public:
                                      const std::string& output_path,
                                      const std::string& printer_notes,
                                      const std::vector<std::string>& extruder_variants,
+                                     std::string& error_message);
+    
+    // Export G-code to container format with per-extruder metadata (GUIDs, temps, volumes)
+    // extruder_data: Vector of ExtruderData containing material GUID, temperature, and filament volume per extruder
+    static bool export_to_container(const std::string& format_type,
+                                     const std::string& input_gcode_path,
+                                     const std::string& output_path,
+                                     const std::string& printer_notes,
+                                     const std::vector<std::string>& extruder_variants,
+                                     const std::vector<ExtruderData>& extruder_data,
                                      std::string& error_message);
     
 private:

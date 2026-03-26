@@ -22,12 +22,15 @@
 #include "libslic3r/GCode/PostProcessor.hpp"
 #include "libslic3r/Format/SL1.hpp"
 #include "libslic3r/Format/FormatConfig.hpp"
+#include "libslic3r/Format/UFPWriter.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/libslic3r.h"
 
 #include <cassert>
 #include <stdexcept>
 #include <cctype>
+#include <sstream>
+#include <iomanip>
 
 #include <boost/format/format_fwd.hpp>
 #include <boost/filesystem/operations.hpp>
@@ -37,6 +40,30 @@
 //#include "RemovableDriveManager.hpp"
 
 #include "slic3r/GUI/Plater.hpp"
+
+// Generate a consistent GUID from material type for fallback
+// This creates a deterministic UUID v5-like hash from the material name
+static std::string generate_material_guid(const std::string& material_type) {
+    if (material_type.empty()) {
+        return "00000000-0000-0000-0000-000000000000";
+    }
+    
+    // Simple hash function to generate a deterministic GUID
+    // Using a basic string hash to create consistent UUIDs for the same material
+    std::hash<std::string> hasher;
+    size_t hash = hasher(material_type);
+    
+    // Format as UUID v4-like string (using hash for first 32 bits)
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0') << std::uppercase;
+    oss << std::setw(8) << (hash & 0xFFFFFFFF) << "-";
+    oss << std::setw(4) << ((hash >> 32) & 0xFFFF) << "-";
+    oss << std::setw(4) << (0x4000 | ((hash >> 48) & 0x0FFF)) << "-";  // Version 4 variant
+    oss << std::setw(4) << (0x8000 | ((hash >> 16) & 0x3FFF)) << "-";   // RFC 4122 variant
+    oss << std::setw(12) << ((hash & 0xFFFFFFFFFFFF) ^ 0x123456789ABC);
+    
+    return oss.str();
+}
 
 namespace Slic3r {
 
@@ -864,10 +891,103 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
             BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Found " << extruder_variants.size() << " extruder variants";
         }
         
+        // Extract extruder data (GUIDs, temps, volumes) for multi-extruder UFP export
+        std::vector<Slic3r::ExtruderData> extruder_data;
+        const DynamicPrintConfig& full_config = m_fff_print->full_print_config();
+        
+        // Get filament presets
+        if (const ConfigOptionStrings* filament_opts = full_config.option<ConfigOptionStrings>("filament_type")) {
+            const std::vector<std::string>& filament_values = filament_opts->values;
+            
+            // Get filament temps if available
+            std::vector<int> extruder_temps;
+            if (const ConfigOptionInts* temp_opts = full_config.option<ConfigOptionInts>("nozzle_temperature")) {
+                extruder_temps = temp_opts->values;
+            }
+            
+            // Get filament presets to extract GUIDs
+            const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
+            std::vector<std::string> filament_preset_values;
+            if (filament_preset_opts) {
+                filament_preset_values = filament_preset_opts->values;
+            }
+            
+            // Build extruder data for each active extruder (up to 2)
+            for (size_t i = 0; i < filament_values.size() && i < 2; ++i) {
+                Slic3r::ExtruderData edata;
+                
+                // Extract material GUID from filament preset notes
+                std::string material_guid;
+                if (i < filament_preset_values.size()) {
+                    // Look up the preset and get its notes
+                    // The preset name format is typically "Material @Printer" or just "Material"
+                    std::string preset_name = filament_preset_values[i];
+                    
+                    // Look up the filament preset in the preset bundle
+                    const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+                    if (preset_bundle) {
+                        const Slic3r::Preset* preset = preset_bundle->filaments.find_preset(preset_name, false);
+                        if (preset) {
+                            // Get material GUID from preset notes (stored in config)
+                            std::string notes;
+                            if (const ConfigOptionString* notes_opt = preset->config.option<ConfigOptionString>("filament_notes")) {
+                                notes = notes_opt->value;
+                            }
+                            const std::string guid_tag = "MATERIAL_GUID:";
+                            size_t guid_pos = notes.find(guid_tag);
+                            if (guid_pos != std::string::npos) {
+                                size_t guid_start = guid_pos + guid_tag.length();
+                                size_t guid_end = notes.find_first_of("\n\r", guid_start);
+                                if (guid_end == std::string::npos) guid_end = notes.length();
+                                material_guid = notes.substr(guid_start, guid_end - guid_start);
+                                boost::algorithm::trim(material_guid);
+                            }
+                        }
+                    }
+                }
+                
+                // If no GUID found, try to generate a consistent one from material type
+                if (material_guid.empty() && i < filament_values.size()) {
+                    material_guid = generate_material_guid(filament_values[i]);
+                }
+                
+                edata.material_guid = material_guid;
+                edata.material_name = (i < filament_values.size()) ? filament_values[i] : "Unknown";
+                edata.extruder_temp = (i < extruder_temps.size()) ? extruder_temps[i] : 0;
+                edata.filament_mm = 0.0;  // Will be computed from print stats
+                edata.filament_g = 0.0;
+                
+                extruder_data.push_back(edata);
+                BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Extruder " << i 
+                                        << " - GUID: " << edata.material_guid
+                                        << ", temp: " << edata.extruder_temp
+                                        << ", name: " << edata.material_name;
+            }
+        }
+        
+        // Get filament volume from print statistics
+        if (!extruder_data.empty()) {
+            double total_filament_mm = m_fff_print->print_statistics().total_extruded_volume * 1000.0;  // cm3 to mm3
+            double total_filament_g = m_fff_print->print_statistics().total_weight;
+            
+            // Distribute volume across extruders (if single material, all goes to extruder 0)
+            if (extruder_data.size() == 1) {
+                extruder_data[0].filament_mm = total_filament_mm;
+                extruder_data[0].filament_g = total_filament_g;
+            } else if (extruder_data.size() == 2) {
+                // For dual extrusion, assume equal distribution for now
+                // TODO: Could be refined by parsing actual filament used per extruder
+                extruder_data[0].filament_mm = total_filament_mm / 2.0;
+                extruder_data[0].filament_g = total_filament_g / 2.0;
+                extruder_data[1].filament_mm = total_filament_mm / 2.0;
+                extruder_data[1].filament_g = total_filament_g / 2.0;
+            }
+        }
+        
         // Export to container format
         BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Converting G-code to container format: " << format_type;
         std::string container_error;
-        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, extruder_variants, container_error)) {
+        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, extruder_variants, extruder_data, container_error)) {
             BOOST_LOG_TRIVIAL(error) << "export_to_final_path: ERROR - Container conversion FAILED: " << container_error;
             error_message = "Failed to export in container format.\n" + container_error;
             return false;

@@ -312,6 +312,28 @@ std::map<std::string, std::pair<std::string, std::string>> UFPWriter::load_nozzl
     return variants;
 }
 
+std::string UFPWriter::generate_extruder_block(int idx, const ExtruderData& data) {
+    std::ostringstream block;
+    if (data.empty()) {
+        return "";  // Return empty string if no data for this extruder
+    }
+    
+    block << ";EXTRUDER_TRAIN." << idx << ".INITIAL_TEMPERATURE:" << data.extruder_temp << "\n";
+    
+    // Format filament with decimals
+    std::ostringstream filament_stream;
+    filament_stream << std::fixed << std::setprecision(2) << data.filament_mm;
+    std::string filament_str = filament_stream.str();
+    // Remove trailing zeros after decimal point
+    filament_str.erase(filament_str.find_last_not_of('0') + 1, std::string::npos);
+    if (filament_str.back() == '.') filament_str.pop_back();
+    block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.VOLUME_USED:" << filament_str << "\n";
+    
+    block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.GUID:" << data.material_guid << "\n";
+    
+    return block.str();
+}
+
 std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     std::map<std::string, std::string> values;
     values["flavor"] = m_config.gcode_metadata.flavor;
@@ -319,16 +341,6 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["generator_version"] = m_config.gcode_metadata.generator_version;
     values["build_date"] = generate_build_date();
     values["target_machine"] = m_config.target_machine;
-    values["extruder_temp"] = std::to_string(meta.extruder_temp);
-    // Format filament with decimals if there are any
-    std::ostringstream filament_stream;
-    filament_stream << std::fixed << std::setprecision(2) << meta.filament_mm;
-    std::string filament_str = filament_stream.str();
-    // Remove trailing zeros after decimal point
-    filament_str.erase(filament_str.find_last_not_of('0') + 1, std::string::npos);
-    if (filament_str.back() == '.') filament_str.pop_back();
-    values["filament_volume"] = filament_str;
-    values["material_guid"] = meta.material_guid;
     values["bed_temp"] = std::to_string(meta.bed_temp);
     values["print_time"] = std::to_string(meta.duration_s);
     // Use fixed machine bounds for Ultimaker S6 instead of computed print bounds
@@ -342,7 +354,7 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["print_groups"] = "1";
     values["slice_uuid"] = meta.slice_uuid;
     
-    // Generate extruder block based on configured extruder variants
+    // Generate extruder block based on configured extruder variants (nozzle info)
     std::string extruder_block;
     if (!m_extruder_variants.empty()) {
         for (size_t i = 0; i < m_extruder_variants.size(); ++i) {
@@ -358,6 +370,10 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
         BOOST_LOG_TRIVIAL(info) << "UFPWriter: No extruder variants configured, using default extruder 0";
     }
     values["extruder_block"] = extruder_block;
+    
+    // Generate per-extruder metadata blocks (temperature, material GUID, volume)
+    values["extruder0_block"] = generate_extruder_block(0, m_extruders[0]);
+    values["extruder1_block"] = generate_extruder_block(1, m_extruders[1]);
     
     return substitute_template(m_config.header_template_content, values);
 }
