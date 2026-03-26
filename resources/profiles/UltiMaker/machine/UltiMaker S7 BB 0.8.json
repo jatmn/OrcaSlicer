@@ -11,7 +11,9 @@
   "family": "UltiMaker",
   "printer_model": "UltiMaker S7",
   "printer_variant": "BB 0.8",
-  "nozzle_diameter": "0.8",
+  "nozzle_diameter": [
+    "0.8"
+  ],
   "default_setting_id": "ultimaker_s7_bb_0.8",
   "prefered_quality": "0.40",
   "machine_area": "330x240x300",
@@ -21,5 +23,6 @@
   "max_layer_height": "0.64",
   "min_layer_height": "0.10",
   "printer_notes": "UltiMaker S7 with BB 0.8 nozzle",
-  "inherits": "fdm_ultimaker_s_common"
+  "inherits": "fdm_ultimaker_s_common",
+  "instantiation": "true"
 }

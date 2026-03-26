@@ -10,32 +10,44 @@
             "sub_path": "machine/UltiMaker 2.json"
         },
         {
-            "name": "UltiMaker S6",
-            "sub_path": "machine/UltiMaker S6.json"
-        },
-        {
-            "name": "UltiMaker S8",
-            "sub_path": "machine/UltiMaker S8.json"
-        },
-        {
-            "name": "UltiMaker S5",
-            "sub_path": "machine/UltiMaker S5.json"
-        },
-        {
-            "name": "UltiMaker S7",
-            "sub_path": "machine/UltiMaker S7.json"
+            "name": "UltiMaker 2+ Connect",
+            "sub_path": "machine/UltiMaker 2+ Connect.json"
         },
         {
             "name": "UltiMaker S3",
             "sub_path": "machine/UltiMaker S3.json"
         },
         {
+            "name": "UltiMaker S5",
+            "sub_path": "machine/UltiMaker S5.json"
+        },
+        {
+            "name": "UltiMaker S6",
+            "sub_path": "machine/UltiMaker S6.json"
+        },
+        {
+            "name": "UltiMaker S7",
+            "sub_path": "machine/UltiMaker S7.json"
+        },
+        {
+            "name": "UltiMaker S8",
+            "sub_path": "machine/UltiMaker S8.json"
+        },
+        {
             "name": "UltiMaker Factor 4",
             "sub_path": "machine/UltiMaker Factor 4.json"
         },
         {
-            "name": "UltiMaker 2+ Connect",
-            "sub_path": "machine/UltiMaker 2+ Connect.json"
+            "name": "MakerBot Sketch",
+            "sub_path": "machine/MakerBot Sketch.json"
+        },
+        {
+            "name": "MakerBot Sketch Large",
+            "sub_path": "machine/MakerBot Sketch Large.json"
+        },
+        {
+            "name": "MakerBot Sketch Sprint",
+            "sub_path": "machine/MakerBot Sketch Sprint.json"
         }
     ],
     "process_list": [
@@ -54,6 +66,34 @@
         {
             "name": "0.25mm Draft @UltiMaker 2",
             "sub_path": "process/0.25mm Darft @UltiMaker 2.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S5",
+            "sub_path": "process/0.20mm Standard @UltiMaker S5.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S7",
+            "sub_path": "process/0.20mm Standard @UltiMaker S7.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S3",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S8",
+            "sub_path": "process/0.20mm Standard @UltiMaker S8.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker Factor 4",
+            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker 2+ Connect",
+            "sub_path": "process/0.20mm Standard @UltiMaker 2+ Connect.json"
         }
     ],
     "filament_list": [],
@@ -65,10 +105,6 @@
         {
             "name": "UltiMaker 2 0.4 nozzle",
             "sub_path": "machine/UltiMaker 2 0.4 nozzle.json"
-        },
-        {
-            "name": "UltiMaker S6",
-            "sub_path": "machine/UltiMaker S6.json"
         },
         {
             "name": "UltiMaker S6 AA 0.4",
@@ -119,10 +155,6 @@
             "sub_path": "machine/UltiMaker S6 HT 0.6.json"
         },
         {
-            "name": "UltiMaker S8",
-            "sub_path": "machine/UltiMaker S8.json"
-        },
-        {
             "name": "UltiMaker S8 AA 0.4",
             "sub_path": "machine/UltiMaker S8 AA 0.4.json"
         },
@@ -169,10 +201,6 @@
         {
             "name": "UltiMaker S8 HT 0.6",
             "sub_path": "machine/UltiMaker S8 HT 0.6.json"
-        },
-        {
-            "name": "UltiMaker S5",
-            "sub_path": "machine/UltiMaker S5.json"
         },
         {
             "name": "UltiMaker S5 AA 0.4",
@@ -223,10 +251,6 @@
             "sub_path": "machine/UltiMaker S5 HT 0.6.json"
         },
         {
-            "name": "UltiMaker S7",
-            "sub_path": "machine/UltiMaker S7.json"
-        },
-        {
             "name": "UltiMaker S7 AA 0.4",
             "sub_path": "machine/UltiMaker S7 AA 0.4.json"
         },
@@ -273,10 +297,6 @@
         {
             "name": "UltiMaker S7 HT 0.6",
             "sub_path": "machine/UltiMaker S7 HT 0.6.json"
-        },
-        {
-            "name": "UltiMaker S3",
-            "sub_path": "machine/UltiMaker S3.json"
         },
         {
             "name": "UltiMaker S3 AA 0.4",
@@ -327,10 +347,6 @@
             "sub_path": "machine/UltiMaker S3 HT 0.6.json"
         },
         {
-            "name": "UltiMaker Factor 4",
-            "sub_path": "machine/UltiMaker Factor 4.json"
-        },
-        {
             "name": "UltiMaker Factor 4 AA 0.4",
             "sub_path": "machine/UltiMaker Factor 4 AA 0.4.json"
         },
@@ -379,12 +395,24 @@
             "sub_path": "machine/UltiMaker Factor 4 HT 0.6.json"
         },
         {
-            "name": "UltiMaker 2+ Connect",
-            "sub_path": "machine/UltiMaker 2+ Connect.json"
-        },
-        {
             "name": "UltiMaker 2+ Connect 0.40",
             "sub_path": "machine/UltiMaker 2+ Connect 0.40.json"
+        },
+        {
+            "name": "fdm_makerbot_common",
+            "sub_path": "machine/fdm_makerbot_common.json"
+        },
+        {
+            "name": "MakerBot Sketch 0.40",
+            "sub_path": "machine/MakerBot Sketch 0.40.json"
+        },
+        {
+            "name": "MakerBot Sketch Large 0.40",
+            "sub_path": "machine/MakerBot Sketch Large 0.40.json"
+        },
+        {
+            "name": "MakerBot Sketch Sprint 0.40",
+            "sub_path": "machine/MakerBot Sketch Sprint 0.40.json"
         }
     ]
 }

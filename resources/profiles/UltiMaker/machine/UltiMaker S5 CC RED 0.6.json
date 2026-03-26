@@ -11,7 +11,9 @@
   "family": "UltiMaker",
   "printer_model": "UltiMaker S5",
   "printer_variant": "CC RED 0.6",
-  "nozzle_diameter": "0.6",
+  "nozzle_diameter": [
+    "0.6"
+  ],
   "default_setting_id": "ultimaker_s5_cc_red_0.6",
   "prefered_quality": "0.28",
   "machine_area": "330x240x300",
@@ -21,5 +23,6 @@
   "max_layer_height": "0.48",
   "min_layer_height": "0.06",
   "printer_notes": "UltiMaker S5 with CC RED 0.6 nozzle",
-  "inherits": "fdm_ultimaker_s_common"
+  "inherits": "fdm_ultimaker_s_common",
+  "instantiation": "true"
 }

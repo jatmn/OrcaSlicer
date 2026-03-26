@@ -1261,46 +1261,72 @@ int GuideFrame::LoadProfileFamily(std::string strVendor, std::string strFilePath
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(",  got %1% machine models") % nsize;
 
         for (int n = 0; n < nsize; n++) {
-            json OneModel = pmodels.at(n);
+            try {
+                json OneModel = pmodels.at(n);
 
-            OneModel["model"] = OneModel["name"];
-            OneModel.erase("name");
+                OneModel["model"] = OneModel["name"];
+                OneModel.erase("name");
 
-            std::string s1 = OneModel["model"];
-            std::string s2 = OneModel["sub_path"];
+                std::string s1 = OneModel["model"];
+                std::string s2 = OneModel["sub_path"];
 
-            boost::filesystem::path sub_path = boost::filesystem::absolute(vendor_dir / s2).make_preferred();
-            if (!boost::filesystem::exists(sub_path)) continue;
+                BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " Processing model: " << s1 << ", sub_path: " << s2;
 
-            std::string             sub_file = sub_path.string();
+                boost::filesystem::path sub_path = boost::filesystem::absolute(vendor_dir / s2).make_preferred();
+                if (!boost::filesystem::exists(sub_path)) {
+                    BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << " Model file not found: " << sub_path.string();
+                    continue;
+                }
 
-            // wxLogMessage("GUIDE: json_path2  %s", w2s(ModelFilePath));
-            LoadFile(sub_file, contents);
-            // wxLogMessage("GUIDE: json_path2 content: %s", contents);
-            json pm = json::parse(contents);
-            // wxLogMessage("GUIDE: json_path2  loaded");
+                std::string             sub_file = sub_path.string();
+                // BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " Loading model file: " << sub_file;
 
-            OneModel["name"]      = pm["name"];
-            OneModel["vendor"]    = strVendor;
-            std::string NozzleOpt = pm["nozzle_diameter"];
-            StringReplace(NozzleOpt, " ", "");
-            OneModel["nozzle_diameter"] = NozzleOpt;
-            OneModel["materials"]       = pm["default_materials"];
+                LoadFile(sub_file, contents);
+                json pm = json::parse(contents);
+                // BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " JSON parsed successfully for: " << s1;
 
-            // wxString strCoverPath = wxString::Format("%s\\%s\\%s_cover.png", strFolder, strVendor, std::string(s1.mb_str()));
-            std::string             cover_file = s1 + "_cover.png";
-            boost::filesystem::path cover_path = boost::filesystem::absolute(boost::filesystem::path(resources_dir()) / "/profiles/" / strVendor / cover_file).make_preferred();
-            if (!boost::filesystem::exists(cover_path)) {
-                cover_path =
-                    (boost::filesystem::absolute(boost::filesystem::path(resources_dir()) / "/web/image/printer/") /
-                     cover_file)
-                        .make_preferred();
+                // Check fields before accessing
+                if (!pm.contains("name")) {
+                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Missing 'name' field in: " << sub_file;
+                    continue;
+                }
+                if (!pm.contains("nozzle_diameter")) {
+                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Missing 'nozzle_diameter' field in: " << sub_file;
+                    continue;
+                }
+                if (!pm.contains("default_materials")) {
+                    BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Missing 'default_materials' field in: " << sub_file;
+                    continue;
+                }
+
+                OneModel["name"]      = pm["name"];
+                OneModel["vendor"]    = strVendor;
+                std::string NozzleOpt = pm["nozzle_diameter"];
+                StringReplace(NozzleOpt, " ", "");
+                OneModel["nozzle_diameter"] = NozzleOpt;
+                OneModel["materials"]       = pm["default_materials"];
+
+                // BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " Model " << s1 << " loaded OK, nozzle: " << NozzleOpt;
+
+                // wxString strCoverPath = wxString::Format("%s\\%s\\%s_cover.png", strFolder, strVendor, std::string(s1.mb_str()));
+                std::string             cover_file = s1 + "_cover.png";
+                boost::filesystem::path cover_path = boost::filesystem::absolute(boost::filesystem::path(resources_dir()) / "/profiles/" / strVendor / cover_file).make_preferred();
+                if (!boost::filesystem::exists(cover_path)) {
+                    cover_path =
+                        (boost::filesystem::absolute(boost::filesystem::path(resources_dir()) / "/web/image/printer/") /
+                         cover_file)
+                            .make_preferred();
+                }
+                OneModel["cover"]                  = cover_path.string();
+
+                OneModel["nozzle_selected"] = "";
+
+                m_ProfileJson["model"].push_back(OneModel);
+                // BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << " Model " << s1 << " added to profile";
+            } catch (std::exception &e) {
+                BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << " Failed to load model at index " << n << ": " << e.what();
+                continue;
             }
-            OneModel["cover"]                  = cover_path.string();
-
-            OneModel["nozzle_selected"] = "";
-
-            m_ProfileJson["model"].push_back(OneModel);
         }
 
         // BBS:Machine

@@ -6,7 +6,7 @@
     "setting_id": "GM001",
     "instantiation": "true",
     "printer_model": "UltiMaker S6",
-    "default_print_profile": "0.20mm Standard @UltiMaker S6 AA 0.4",
+    "default_print_profile": "0.20mm Standard @UltiMaker S6",
     "nozzle_diameter": [
         "0.4"
     ],

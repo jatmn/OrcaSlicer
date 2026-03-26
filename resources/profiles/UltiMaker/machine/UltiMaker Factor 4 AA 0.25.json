@@ -11,7 +11,9 @@
   "family": "UltiMaker",
   "printer_model": "UltiMaker Factor 4",
   "printer_variant": "AA 0.25",
-  "nozzle_diameter": "0.25",
+  "nozzle_diameter": [
+    "0.25"
+  ],
   "default_setting_id": "ultimaker_factor_4_aa_0.25",
   "prefered_quality": "0.12",
   "machine_area": "330x240x300",
@@ -21,5 +23,6 @@
   "max_layer_height": "0.20",
   "min_layer_height": "0.04",
   "printer_notes": "UltiMaker Factor 4 with AA 0.25 nozzle",
-  "inherits": "fdm_ultimaker_s_common"
+  "inherits": "fdm_ultimaker_s_common",
+  "instantiation": "true"
 }

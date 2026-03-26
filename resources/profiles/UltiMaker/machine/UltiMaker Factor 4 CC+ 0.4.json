@@ -11,7 +11,9 @@
   "family": "UltiMaker",
   "printer_model": "UltiMaker Factor 4",
   "printer_variant": "CC+ 0.4",
-  "nozzle_diameter": "0.4",
+  "nozzle_diameter": [
+    "0.4"
+  ],
   "default_setting_id": "ultimaker_factor_4_cc_plus_0.4",
   "prefered_quality": "0.20",
   "machine_area": "330x240x300",
@@ -21,5 +23,6 @@
   "max_layer_height": "0.32",
   "min_layer_height": "0.05",
   "printer_notes": "UltiMaker Factor 4 with CC+ 0.4 nozzle",
-  "inherits": "fdm_ultimaker_s_common"
+  "inherits": "fdm_ultimaker_s_common",
+  "instantiation": "true"
 }
