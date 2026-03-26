@@ -35,10 +35,10 @@ ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
 {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     
-    // Title
+    // Title - use same font as rest of UI
     auto* title = new wxStaticText(this, wxID_ANY, _L("Print Core Configuration"));
-    title->SetFont(wxFont(wxFontInfo().Bold()));
-    sizer->Add(title, 0, wxBOTTOM, 5);
+    title->SetFont(wxGetApp().bold_font());
+    sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
     
     SetSizer(sizer);
     Hide(); // Hidden by default, shown only for compatible printers
@@ -60,13 +60,13 @@ void ExtruderVariantWidget::update_from_config()
     std::vector<std::string> variant_list;
     if (preset_name.find("UltiMaker S3") != std::string::npos ||
         preset_name.find("UltiMaker S5") != std::string::npos ||
-        preset_name.find("UltiMaker S7") != std::string::npos) {
-        // S3/S5/S7 - basic cores only (AA, BB, CC)
+        preset_name.find("UltiMaker S7") != std::string::npos ||
+        preset_name.find("UltiMaker Factor 4") != std::string::npos) {
+        // S3/S5/S7/Factor 4 - basic cores only (AA, BB, CC)
         variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6"};
     } else if (preset_name.find("UltiMaker S6") != std::string::npos ||
-               preset_name.find("UltiMaker S8") != std::string::npos ||
-               preset_name.find("UltiMaker Factor 4") != std::string::npos) {
-        // S6/S8/Factor 4 - all cores including HT
+               preset_name.find("UltiMaker S8") != std::string::npos) {
+        // S6/S8 - all cores including HT and (+) variants
         variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "AA+ 0.4", "BB 0.4", "BB 0.8", 
                         "CC 0.4", "CC 0.6", "CC+ 0.4", "CC+ 0.6", "CC Red 0.6", "HT 0.6"};
     } else {
@@ -112,9 +112,10 @@ void ExtruderVariantWidget::update_from_config()
     
     // Create dropdown for each extruder
     for (size_t i = 0; i < num_extruders; i++) {
-        // Print Core label
+        // Print Core label - use same font as rest of UI
         wxString label_text = wxString::Format(_L("Print Core %d"), (int)(i + 1));
         auto* label = new wxStaticText(this, wxID_ANY, label_text);
+        label->SetFont(wxGetApp().normal_font());
         row_sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
         
         // Combined variant choice (e.g., "AA 0.4", "BB 0.4", "CC 0.6")
@@ -165,16 +166,23 @@ void ExtruderVariantWidget::update_from_config()
         m_extruder_rows.push_back({label, variant_choice});
     }
     
-    sizer->Add(row_sizer, 0, wxEXPAND | wxBOTTOM, 5);
+    // Center the row sizer horizontally
+    auto* center_sizer = new wxBoxSizer(wxHORIZONTAL);
+    center_sizer->AddStretchSpacer(1);
+    center_sizer->Add(row_sizer, 0, wxALIGN_CENTER_VERTICAL);
+    center_sizer->AddStretchSpacer(1);
+    sizer->Add(center_sizer, 0, wxEXPAND | wxBOTTOM, 5);
     
-    // Update filament presets in sidebar after widget is shown
-    // Use CallAfter to ensure UI is ready
-    wxTheApp->CallAfter([]() {
-        auto* plater = wxGetApp().plater();
-        if (plater) {
-            plater->sidebar().update_presets(Preset::TYPE_FILAMENT);
-        }
-    });
+    // Update filament count in sidebar if needed
+    // This ensures filament combos match extruder count on first launch
+    if (current_filaments != num_extruders) {
+        wxTheApp->CallAfter([num_extruders]() {
+            auto* plater = wxGetApp().plater();
+            if (plater) {
+                plater->on_filament_count_change(num_extruders);
+            }
+        });
+    }
     
     Show();
     sizer->Layout();
