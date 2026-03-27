@@ -4,6 +4,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <boost/filesystem.hpp>
+#include <boost/log/core.hpp>
+#include <boost/log/trivial.hpp>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <iomanip>
@@ -48,6 +50,7 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     mz_zip_zero_struct(&archive);
     
     if (!open_zip_writer(&archive, output_path)) {
+        BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: Failed to open zip writer";
         return false;
     }
     
@@ -59,6 +62,7 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     if (!mz_zip_writer_add_mem(&archive, "print.gcode",
                               gcode_content.c_str(), gcode_content.length(),
                               MZ_DEFAULT_COMPRESSION)) {
+        BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: Failed to add print.gcode";
         cleanup();
         return false;
     }
@@ -68,6 +72,7 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     if (!mz_zip_writer_add_mem(&archive, "meta.json",
                               meta_json.c_str(), meta_json.length(),
                               MZ_DEFAULT_COMPRESSION)) {
+        BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: Failed to add meta.json";
         cleanup();
         return false;
     }
@@ -77,91 +82,51 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     if (!mz_zip_writer_add_mem(&archive, "slicemetadata.json",
                               slicemetadata.c_str(), slicemetadata.length(),
                               MZ_DEFAULT_COMPRESSION)) {
+        BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: Failed to add slicemetadata.json";
         cleanup();
         return false;
     }
     
-    // 4. Thumbnails
-    add_thumbnails_to_archive(archive, meta);
+    // 4. Thumbnails (passed directly via set_thumbnail_data(), never extracted from gcode)
+    // IMPORTANT: Thumbnails should NEVER be embedded in gcode comments - they are passed separately
+    if (has_thumbnail_data()) {
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding thumbnail, size=" << m_thumbnail_data.size();
+        
+        // Determine naming convention based on printer type
+        // sketch_small (griffin): 120/320/640 -> isometric_thumbnail, others -> thumbnail
+        // sketch_sprint (marlin): ALL -> isometric_thumbnail
+        bool is_sprint = (m_config.header_template == "marlin");
+        
+        std::string filename;
+        if (is_sprint) {
+            // Sprint: use isometric naming
+            filename = "isometric_thumbnail_320x320.png";
+        } else {
+            // Small: use regular thumbnail naming
+            filename = "thumbnail_320x320.png";
+        }
+        
+        if (!mz_zip_writer_add_mem(&archive, filename.c_str(),
+                                   m_thumbnail_data.data(), m_thumbnail_data.size(),
+                                   MZ_DEFAULT_COMPRESSION)) {
+            BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter::write_container: Failed to add thumbnail";
+        } else {
+            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Added thumbnail as " << filename;
+        }
+    } else {
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: No thumbnail data available";
+    }
     
     // Finalize archive
     if (!mz_zip_writer_finalize_archive(&archive)) {
+        BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: Failed to finalize archive";
         cleanup();
         return false;
     }
     
     cleanup();
+    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESS";
     return true;
-}
-
-void MakerBotWriter::add_thumbnails_to_archive(mz_zip_archive& archive, const GCodeMetadata& meta) {
-    if (meta.thumbnails.empty()) {
-        return;
-    }
-    
-    // Determine naming convention based on printer type
-    // sketch_small (griffin): 120/320/640 -> isometric_thumbnail, others -> thumbnail
-    // sketch_sprint (marlin): ALL -> isometric_thumbnail
-    bool is_sprint = (m_config.header_template == "marlin");
-    
-    for (const auto& thumb : meta.thumbnails) {
-        const std::string& size = thumb.first;
-        const std::string& base64_data = thumb.second;
-        
-        std::string filename;
-        if (is_sprint) {
-            // Sprint: ALL thumbnails use isometric naming
-            filename = "isometric_thumbnail_" + size + ".png";
-        } else if (size == "120x120" || size == "320x320" || size == "640x640") {
-            // Small: only specific sizes use isometric
-            filename = "isometric_thumbnail_" + size + ".png";
-        } else {
-            // Small: other sizes use regular thumbnail naming
-            filename = "thumbnail_" + size + ".png";
-        }
-        
-        // Decode base64 and add to archive
-        try {
-            std::string cleaned = base64_data;
-            boost::algorithm::trim(cleaned);
-            cleaned.erase(std::remove_if(cleaned.begin(), cleaned.end(), ::isspace), cleaned.end());
-            
-            // Simple base64 decode
-            std::vector<uint8_t> png_data = base64_decode(cleaned);
-            if (!png_data.empty()) {
-                mz_zip_writer_add_mem(&archive, filename.c_str(),
-                                     png_data.data(), png_data.size(),
-                                     MZ_DEFAULT_COMPRESSION);
-            }
-        } catch (...) {
-            // Skip failed thumbnails
-        }
-    }
-}
-
-// Simple base64 decoder for MakerBot
-std::vector<uint8_t> MakerBotWriter::base64_decode(const std::string& encoded) {
-    static const std::string base64_chars = 
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    
-    std::vector<uint8_t> result;
-    int i = 0;
-    uint32_t val = 0;
-    int valb = -8;
-    
-    for (unsigned char c : encoded) {
-        if (c == '=') break;
-        size_t pos = base64_chars.find(c);
-        if (pos == std::string::npos) continue;
-        val = (val << 6) + pos;
-        valb += 6;
-        if (valb >= 0) {
-            result.push_back(static_cast<uint8_t>((val >> valb) & 0xFF));
-            valb -= 8;
-        }
-    }
-    
-    return result;
 }
 
 std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {

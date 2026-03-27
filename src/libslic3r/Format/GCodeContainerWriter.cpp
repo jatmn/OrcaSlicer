@@ -67,8 +67,7 @@ bool GCodeContainerWriter::write_from_lines(const std::vector<std::string>& line
                           << ", filament_g=" << meta.filament_g
                           << ", material_type=" << meta.material_type
                           << ", material_guid=" << meta.material_guid
-                          << ", gcode_body lines=" << meta.gcode_body.size()
-                          << ", thumbnails count=" << meta.thumbnails.size();
+                          << ", gcode_body lines=" << meta.gcode_body.size();
     
     // Allow subclasses to override metadata with injected values
     override_metadata(meta);
@@ -215,9 +214,6 @@ GCodeMetadata GCodeContainerWriter::parse_gcode(const std::vector<std::string>& 
         meta.min_z = min_z; meta.max_z = max_z;
     }
     
-    // Extract thumbnails
-    extract_thumbnails(lines, meta);
-    
     // Find G-code body start (purge sequence or printing object)
     size_t body_start = 0;
     for (size_t i = 0; i < lines.size(); ++i) {
@@ -233,57 +229,6 @@ GCodeMetadata GCodeContainerWriter::parse_gcode(const std::vector<std::string>& 
     }
     
     return meta;
-}
-
-void GCodeContainerWriter::extract_thumbnails(const std::vector<std::string>& lines, GCodeMetadata& meta) {
-    std::string current_size;
-    std::vector<std::string> current_data;
-    bool in_thumbnail = false;
-    
-    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::extract_thumbnails: Starting extraction from " << lines.size() << " lines";
-    
-    for (const auto& line : lines) {
-        // Support both "PNG begin" (OrcaSlicer) and "thumbnail begin" (Cura/Generic)
-        if (line.find("PNG begin") != std::string::npos || 
-            line.find("thumbnail begin") != std::string::npos) {
-            in_thumbnail = true;
-            BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::extract_thumbnails: Found thumbnail start in: " << line.substr(0, 100);
-            // Try to extract size from formats like "PNG begin 320x320" or "thumbnail begin 320x320"
-            boost::regex size_regex(R"((?:PNG|thumbnail) begin (\d+x\d+))");
-            boost::smatch match;
-            if (boost::regex_search(line, match, size_regex)) {
-                current_size = match[1];
-                BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::extract_thumbnails: Detected thumbnail size: " << current_size;
-            }
-        } else if (line.find("PNG end") != std::string::npos || 
-                   line.find("thumbnail end") != std::string::npos) {
-            if (!current_size.empty() && !current_data.empty()) {
-                std::string data;
-                for (const auto& l : current_data) {
-                    std::string cleaned = l;
-                    boost::algorithm::trim(cleaned);
-                    if (!cleaned.empty() && cleaned[0] == ';') {
-                        cleaned = cleaned.substr(1);
-                    }
-                    boost::algorithm::trim(cleaned);
-                    data += cleaned;
-                }
-                meta.thumbnails[current_size] = data;
-                BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::extract_thumbnails: Stored thumbnail size=" << current_size 
-                                       << ", data_length=" << data.length();
-            } else {
-                BOOST_LOG_TRIVIAL(warning) << "GCodeContainerWriter::extract_thumbnails: Found thumbnail end but size=" << current_size 
-                                          << ", data_count=" << current_data.size();
-            }
-            in_thumbnail = false;
-            current_size.clear();
-            current_data.clear();
-        } else if (in_thumbnail) {
-            current_data.push_back(line);
-        }
-    }
-    
-    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::extract_thumbnails: Extracted " << meta.thumbnails.size() << " thumbnails total";
 }
 
 std::string GCodeContainerWriter::substitute_template(const std::string& templ, 
@@ -332,8 +277,7 @@ int GCodeContainerWriter::parse_time_string(const std::string& time_str) {
 }
 
 std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta, const std::vector<std::string>& original_lines) {
-    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::build_gcode_content: Starting with " << original_lines.size() << " original lines"
-                           << ", meta has " << meta.thumbnails.size() << " thumbnails";
+    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::build_gcode_content: Starting with " << original_lines.size() << " original lines";
     
     // Find body start: everything after the original ;END_OF_HEADER line
     // The new header replaces START_OF_HEADER..END_OF_HEADER, body is everything after
@@ -399,7 +343,7 @@ std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta,
         final_lines.push_back(line + "\n");
     }
     
-    // Add body lines (which now include thumbnail comments if they were in the original)
+    // Add body lines
     for (size_t i = 0; i < lines.size(); ++i) {
         final_lines.push_back(lines[i]);
     }
@@ -506,13 +450,6 @@ std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta,
     }
     
     BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::build_gcode_content: Result length=" << result_str.length();
-    
-    // Check if thumbnail lines made it through
-    if (result_str.find("thumbnail begin") != std::string::npos) {
-        BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::build_gcode_content: SUCCESS - thumbnail lines preserved!";
-    } else {
-        BOOST_LOG_TRIVIAL(warning) << "GCodeContainerWriter::build_gcode_content: WARNING - NO thumbnail lines found in result!";
-    }
     
     return result_str;
 }

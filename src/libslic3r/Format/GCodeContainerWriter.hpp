@@ -30,9 +30,6 @@ struct GCodeMetadata {
     double min_x, min_y, min_z;
     double max_x, max_y, max_z;
     
-    // Thumbnails (size -> base64 data)
-    std::map<std::string, std::string> thumbnails;
-    
     // Slice UUID
     std::string slice_uuid;
     
@@ -81,9 +78,6 @@ protected:
     
     // Build final G-code content (takes original lines for Python-script-style processing)
     virtual std::string build_gcode_content(const GCodeMetadata& meta, const std::vector<std::string>& original_lines);
-    
-    // Extract thumbnails from G-code comments
-    void extract_thumbnails(const std::vector<std::string>& lines, GCodeMetadata& meta);
     
     // Template substitution
     std::string substitute_template(const std::string& templ, const std::map<std::string, std::string>& values);

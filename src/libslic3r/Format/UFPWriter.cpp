@@ -5,7 +5,6 @@
 #include <boost/nowide/fstream.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
-#include <boost/beast/core/detail/base64.hpp>
 #include <boost/filesystem.hpp>
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -14,20 +13,6 @@
 #include <fstream>
 
 namespace Slic3r {
-
-// Base64 decode using Boost.Beast
-static std::vector<uint8_t> base64_decode(const std::string& encoded) {
-    std::string cleaned = encoded;
-    boost::algorithm::trim(cleaned);
-    // Remove whitespace that might be in the base64
-    cleaned.erase(std::remove_if(cleaned.begin(), cleaned.end(), ::isspace), cleaned.end());
-    
-    std::vector<uint8_t> result;
-    result.resize(boost::beast::detail::base64::decoded_size(cleaned.size()));
-    auto [len, ec] = boost::beast::detail::base64::decode(result.data(), cleaned.data(), cleaned.size());
-    result.resize(len);
-    return result;
-}
 
 bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gcode_content, const std::string& output_path) {
     BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: output=" << output_path;
@@ -66,17 +51,11 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Archive is ready for writing";
     
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Zip writer opened successfully";
-    
     auto cleanup = [&]() {
         close_zip_writer(&archive);
     };
     
     BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: gcode_content size=" << gcode_content.length();
-    
-    // Debug: check archive state
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: archive m_zip_mode=" << archive.m_zip_mode 
-                           << ", m_archive_size=" << archive.m_archive_size;
     
     if (gcode_content.empty()) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: gcode_content is EMPTY!";
@@ -128,32 +107,8 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
             has_thumbnail = true;
             BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail from passed data";
         }
-    } else if (!meta.thumbnails.empty()) {
-        // Fallback: try to use thumbnails extracted from gcode (legacy path)
-        // This should rarely happen as thumbnails should NEVER be in gcode comments
-        BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Using legacy thumbnail from gcode (should not happen!)";
-        auto it = meta.thumbnails.find("320x320");
-        if (it == meta.thumbnails.end()) {
-            it = meta.thumbnails.begin();
-        }
-        
-        if (it != meta.thumbnails.end()) {
-            try {
-                std::vector<uint8_t> png_data = base64_decode(it->second);
-                if (!png_data.empty()) {
-                    if (!mz_zip_writer_add_mem_ex(&archive, "/Metadata/thumbnail.png",
-                                              png_data.data(), png_data.size(),
-                                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
-                        BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to add thumbnail";
-                    } else {
-                        has_thumbnail = true;
-                        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail from legacy path";
-                    }
-                }
-            } catch (const std::exception& e) {
-                BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to decode thumbnail: " << e.what();
-            }
-        }
+    } else {
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: No thumbnail data available";
     }
     
     // Prepare material filename (needed for UFP_Global, material, and gcode.rels)
@@ -515,10 +470,10 @@ std::string UFPWriter::generate_ufp_global_json(const GCodeMetadata& meta) {
 
 std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
     std::ostringstream xml;
-    xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n";
-    xml << "<fdmmaterial version=\"1.3\" xmlns=\"http://www.ultimaker.com/material\"\u003e\n";
-    xml << "  <metadata\u003e\n";
-    xml << "    <name\u003e\n";
+    xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    xml << "<fdmmaterial version=\"1.3\" xmlns=\"http://www.ultimaker.com/material\">\n";
+    xml << "  <metadata>\n";
+    xml << "    <name>\n";
     
     // Use brand from extruder data if available, otherwise default to "Generic"
     std::string brand = "Generic";
@@ -526,22 +481,22 @@ std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
         brand = m_extruders[0].brand;
         BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_material_xml: Using brand from extruder data: " << brand;
     }
-    xml << "      <brand\u003e" << brand << "</brand\u003e\n";
+    xml << "      <brand>" << brand << "</brand>\n";
     
     // Use material_type from extruder data if available, otherwise from metadata
     std::string material_type = meta.material_type;
     if (!m_extruders[0].material_name.empty()) {
         material_type = m_extruders[0].material_name;
     }
-    xml << "      <material\u003e" << material_type << "</material\u003e\n";
+    xml << "      <material>" << material_type << "</material>\n";
     
     // Color is not available in extruder data, use "Generic" as default
-    xml << "      <color\u003eGeneric</color\u003e\n";
-    xml << "    </name\u003e\n";
-    xml << "    <GUID\u003e" << meta.material_guid << "</GUID\u003e\n";
-    xml << "    <version\u003e1</version\u003e\n";
-    xml << "  </metadata\u003e\n";
-    xml << "</fdmmaterial\u003e";
+    xml << "      <color>Generic</color>\n";
+    xml << "    </name>\n";
+    xml << "    <GUID>" << meta.material_guid << "</GUID>\n";
+    xml << "    <version>1</version>\n";
+    xml << "  </metadata>\n";
+    xml << "</fdmmaterial>";
     return xml.str();
 }
 
