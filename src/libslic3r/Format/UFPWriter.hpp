@@ -9,6 +9,7 @@ namespace Slic3r {
 struct ExtruderData {
     std::string material_guid;
     std::string material_name;
+    std::string brand;  // Material brand (e.g., "Bambu Lab", "eSUN") - used for material.xml
     int extruder_temp = 0;
     double filament_mm = 0.0;
     double filament_g = 0.0;

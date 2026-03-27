@@ -17,7 +17,7 @@
   },
   "gcode_metadata": {
     "flavor": "Cheetah",
-    "generator_name": "Cura_SteamEngine",
+    "generator_name": "OrcaSlicer",
     "generator_version": "5.12.0",
     "required_fields": [
       "TARGET_MACHINE.NAME",

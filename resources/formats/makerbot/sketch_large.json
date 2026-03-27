@@ -6,7 +6,7 @@
   "version": "3.0.0",
   "header_template": "griffin",
   "gcode_flavor": "Griffin",
-  "generator_name": "Cura_SteamEngine",
+  "generator_name": "OrcaSlicer",
   "generator_version": "5.12.0",
   "machine_bounds": [110.75, 110.75, -110.75, -110.75],
   "build_plane_temperature": 28,

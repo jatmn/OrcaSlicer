@@ -359,6 +359,7 @@ std::string UFPWriter::generate_extruder_block(int idx, const ExtruderData& data
     block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.VOLUME_USED:" << filament_str << "\n";
     
     block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.GUID:" << data.material_guid;
+    // No trailing \n - template continues with {{extruder_block}} which provides NOZZLE info
     
     return block.str();
 }
@@ -385,20 +386,29 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     
     // Generate extruder block based on active extruders only (nozzle info)
     std::string extruder_block;
+    BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: m_extruder_variants.size()=" << m_extruder_variants.size()
+                           << ", extruder0 filament_mm=" << m_extruders[0].filament_mm
+                           << ", extruder1 filament_mm=" << m_extruders[1].filament_mm;
     if (!m_extruder_variants.empty()) {
         for (size_t i = 0; i < m_extruder_variants.size() && i < 2; ++i) {
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: Checking extruder " << i
+                                   << ", variant=" << m_extruder_variants[i]
+                                   << ", filament_mm=" << m_extruders[i].filament_mm;
             // Only include nozzle info if extruder was actually used
             if (m_extruders[i].filament_mm > 0.0) {
                 const std::string& variant = m_extruder_variants[i];
                 auto nozzle_info = get_nozzle_info(variant);
                 extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
-                extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second;
+                extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second + "\n";
+                BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: Added NOZZLE info for extruder " << i;
+            } else {
+                BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: Skipping NOZZLE info for inactive extruder " << i;
             }
         }
         BOOST_LOG_TRIVIAL(info) << "UFPWriter: Generated extruder block";
     } else {
         // Fallback for backward compatibility - use default values
-        extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:0.4\n;EXTRUDER_TRAIN.0.NOZZLE.NAME:AA 0.4";
+        extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:0.4\n;EXTRUDER_TRAIN.0.NOZZLE.NAME:AA 0.4\n";
         BOOST_LOG_TRIVIAL(info) << "UFPWriter: No extruder variants configured, using default extruder 0";
     }
     values["extruder_block"] = extruder_block;
@@ -509,8 +519,23 @@ std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
     xml << "<fdmmaterial version=\"1.3\" xmlns=\"http://www.ultimaker.com/material\"\u003e\n";
     xml << "  <metadata\u003e\n";
     xml << "    <name\u003e\n";
-    xml << "      <brand\u003eGeneric</brand\u003e\n";
-    xml << "      <material\u003e" << meta.material_type << "</material\u003e\n";
+    
+    // Use brand from extruder data if available, otherwise default to "Generic"
+    std::string brand = "Generic";
+    if (!m_extruders[0].brand.empty()) {
+        brand = m_extruders[0].brand;
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_material_xml: Using brand from extruder data: " << brand;
+    }
+    xml << "      <brand\u003e" << brand << "</brand\u003e\n";
+    
+    // Use material_type from extruder data if available, otherwise from metadata
+    std::string material_type = meta.material_type;
+    if (!m_extruders[0].material_name.empty()) {
+        material_type = m_extruders[0].material_name;
+    }
+    xml << "      <material\u003e" << material_type << "</material\u003e\n";
+    
+    // Color is not available in extruder data, use "Generic" as default
     xml << "      <color\u003eGeneric</color\u003e\n";
     xml << "    </name\u003e\n";
     xml << "    <GUID\u003e" << meta.material_guid << "</GUID\u003e\n";

@@ -56,8 +56,9 @@ static std::string generate_material_guid(const std::string& material_type) {
     size_t hash = hasher(material_type);
     
     // Format as UUID v4-like string (using hash for first 32 bits)
+    // Use lowercase hex to match UltiMaker format
     std::ostringstream oss;
-    oss << std::hex << std::setfill('0') << std::uppercase;
+    oss << std::hex << std::setfill('0') << std::nouppercase;
     oss << std::setw(8) << (hash & 0xFFFFFFFF) << "-";
     oss << std::setw(4) << ((hash >> 32) & 0xFFFF) << "-";
     oss << std::setw(4) << (0x4000 | ((hash >> 48) & 0x0FFF)) << "-";  // Version 4 variant
@@ -897,6 +898,13 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
         std::vector<Slic3r::ExtruderData> extruder_data;
         const DynamicPrintConfig& full_config = m_fff_print->full_print_config();
         
+        // Get filament presets to compare for single/multi-material detection
+        const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
+        std::vector<std::string> filament_preset_values;
+        if (filament_preset_opts) {
+            filament_preset_values = filament_preset_opts->values;
+        }
+        
         // Get filament presets
         if (const ConfigOptionStrings* filament_opts = full_config.option<ConfigOptionStrings>("filament_type")) {
             const std::vector<std::string>& filament_values = filament_opts->values;
@@ -907,44 +915,41 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
                 extruder_temps = temp_opts->values;
             }
             
-            // Get filament presets to extract GUIDs
-            const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
-            std::vector<std::string> filament_preset_values;
-            if (filament_preset_opts) {
-                filament_preset_values = filament_preset_opts->values;
-            }
-            
             // Build extruder data for each active extruder (up to 2)
             for (size_t i = 0; i < filament_values.size() && i < 2; ++i) {
                 Slic3r::ExtruderData edata;
                 
-                // Extract material GUID from filament preset notes
-                std::string material_guid;
+                // Look up the filament preset for GUID and brand extraction
+                const Slic3r::Preset* filament_preset = nullptr;
                 if (i < filament_preset_values.size()) {
-                    // Look up the preset and get its notes
-                    // The preset name format is typically "Material @Printer" or just "Material"
                     std::string preset_name = filament_preset_values[i];
-                    
-                    // Look up the filament preset in the preset bundle
                     const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
                     if (preset_bundle) {
-                        const Slic3r::Preset* preset = preset_bundle->filaments.find_preset(preset_name, false);
-                        if (preset) {
-                            // Get material GUID from preset notes (stored in config)
-                            std::string notes;
-                            if (const ConfigOptionString* notes_opt = preset->config.option<ConfigOptionString>("filament_notes")) {
-                                notes = notes_opt->value;
-                            }
-                            const std::string guid_tag = "MATERIAL_GUID:";
-                            size_t guid_pos = notes.find(guid_tag);
-                            if (guid_pos != std::string::npos) {
-                                size_t guid_start = guid_pos + guid_tag.length();
-                                size_t guid_end = notes.find_first_of("\n\r", guid_start);
-                                if (guid_end == std::string::npos) guid_end = notes.length();
-                                material_guid = notes.substr(guid_start, guid_end - guid_start);
-                                boost::algorithm::trim(material_guid);
-                            }
-                        }
+                        filament_preset = preset_bundle->filaments.find_preset(preset_name, false);
+                    }
+                }
+                
+                // Extract material GUID from filament preset notes
+                std::string material_guid;
+                if (filament_preset) {
+                    std::string notes;
+                    if (const ConfigOptionString* notes_opt = filament_preset->config.option<ConfigOptionString>("filament_notes")) {
+                        notes = notes_opt->value;
+                    }
+                    const std::string guid_tag = "MATERIAL_GUID:";
+                    size_t guid_pos = notes.find(guid_tag);
+                    if (guid_pos != std::string::npos) {
+                        size_t guid_start = guid_pos + guid_tag.length();
+                        size_t guid_end = notes.find_first_of("\n\r", guid_start);
+                        if (guid_end == std::string::npos) guid_end = notes.length();
+                        material_guid = notes.substr(guid_start, guid_end - guid_start);
+                        boost::algorithm::trim(material_guid);
+                    }
+                    
+                    // Extract brand from filament preset if available
+                    if (const ConfigOptionString* vendor_opt = filament_preset->config.option<ConfigOptionString>("filament_vendor")) {
+                        edata.brand = vendor_opt->value;
+                        BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Extruder " << i << " brand: " << edata.brand;
                     }
                 }
                 
@@ -952,6 +957,20 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
                 if (material_guid.empty() && i < filament_values.size()) {
                     material_guid = generate_material_guid(filament_values[i]);
                 }
+                
+                // Fallback brand extraction from print config if preset lookup failed
+                if (edata.brand.empty()) {
+                    const ConfigOptionStrings* vendor_opts = full_config.option<ConfigOptionStrings>("filament_vendor");
+                    if (vendor_opts && i < vendor_opts->values.size() && !vendor_opts->values[i].empty()) {
+                        edata.brand = vendor_opts->values[i];
+                        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Extruder " << i << " brand from config: " << edata.brand;
+                    }
+                }
+                
+                BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Extruder " << i << " preset lookup: " 
+                                          << (filament_preset ? "found" : "NOT FOUND")
+                                          << ", GUID: " << material_guid
+                                          << ", brand: " << edata.brand;
                 
                 edata.material_guid = material_guid;
                 edata.material_name = (i < filament_values.size()) ? filament_values[i] : "Unknown";
@@ -972,18 +991,47 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
             double total_filament_mm = m_fff_print->print_statistics().total_used_filament;
             double total_filament_g = m_fff_print->print_statistics().total_weight;
             
-            // Distribute across extruders (if single material, all goes to extruder 0)
-            if (extruder_data.size() == 1) {
+            // Check if both extruders use the same filament (single material print)
+            // Logic:
+            // - If only 1 filament in config -> single material
+            // - If both extruders have the SAME non-empty preset -> single material
+            // - If different non-empty presets -> multi material
+            // - If only 1 non-empty preset (other is empty) -> single material
+            bool is_single_material = true;
+            if (filament_preset_values.size() >= 2) {
+                const std::string& p0 = filament_preset_values[0];
+                const std::string& p1 = filament_preset_values[1];
+                if (!p0.empty() && !p1.empty() && p0 != p1) {
+                    // Different non-empty presets = multi material
+                    is_single_material = false;
+                    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Multi-material print detected (different filaments), splitting filament between extruders";
+                } else {
+                    // Same or one empty = single material
+                    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Single material print detected, extruder 1 will not get filament";
+                }
+            }
+            
+            // Distribute across extruders
+            if (extruder_data.size() == 1 || is_single_material) {
+                // Single material: all filament goes to extruder 0
                 extruder_data[0].filament_mm = total_filament_mm;
                 extruder_data[0].filament_g = total_filament_g;
-            } else if (extruder_data.size() == 2) {
-                // For dual extrusion, assume equal distribution for now
-                // TODO: Could be refined by parsing actual filament used per extruder
+                if (extruder_data.size() >= 2) {
+                    extruder_data[1].filament_mm = 0.0;
+                    extruder_data[1].filament_g = 0.0;
+                }
+            } else if (extruder_data.size() == 2 && !is_single_material) {
+                // Dual extrusion with different filaments: split filament
+                // For now, use equal distribution - could be refined with actual usage data
                 extruder_data[0].filament_mm = total_filament_mm / 2.0;
                 extruder_data[0].filament_g = total_filament_g / 2.0;
                 extruder_data[1].filament_mm = total_filament_mm / 2.0;
                 extruder_data[1].filament_g = total_filament_g / 2.0;
             }
+            
+            BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Final filament distribution - extruder 0: " 
+                                        << extruder_data[0].filament_mm << "mm, extruder 1: " 
+                                        << (extruder_data.size() > 1 ? extruder_data[1].filament_mm : 0.0) << "mm";
         }
         
         // Generate PNG thumbnail directly for UFP (not extracted from G-code comments)
@@ -1124,9 +1172,13 @@ void BackgroundSlicingProcess::prepare_upload()
                 
                 // Get extruder variants for UFP
                 std::vector<std::string> extruder_variants;
-                const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("extruder_variant");
+                // Use printer_extruder_variant to get the correct nozzle variants (matching export_to_final_path)
+                const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("printer_extruder_variant");
                 if (variant_opt) {
                     extruder_variants = variant_opt->values;
+                    BOOST_LOG_TRIVIAL(info) << "prepare_upload: Found " << extruder_variants.size() << " extruder variants from printer_extruder_variant";
+                } else {
+                    BOOST_LOG_TRIVIAL(warning) << "prepare_upload: printer_extruder_variant not found in config";
                 }
                 
                 // Build extruder data (simplified version for upload)
@@ -1139,41 +1191,57 @@ void BackgroundSlicingProcess::prepare_upload()
                         Slic3r::ExtruderData edata;
                         edata.material_name = filament_opts->values[i];
                         
-                        // Try to get material GUID from filament notes
+                        // Look up the filament preset for GUID and brand extraction
+                        const Slic3r::Preset* filament_preset = nullptr;
                         const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
                         if (filament_preset_opts && i < filament_preset_opts->values.size()) {
                             const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
                             if (preset_bundle) {
-                                const Slic3r::Preset* preset = preset_bundle->filaments.find_preset(filament_preset_opts->values[i], false);
-                                if (preset) {
-                                    if (const ConfigOptionString* notes_opt = preset->config.option<ConfigOptionString>("filament_notes")) {
-                                        std::string notes = notes_opt->value;
-                                        const std::string guid_tag = "MATERIAL_GUID:";
-                                        size_t guid_pos = notes.find(guid_tag);
-                                        if (guid_pos != std::string::npos) {
-                                            size_t guid_start = guid_pos + guid_tag.length();
-                                            size_t guid_end = notes.find_first_of("\n\r", guid_start);
-                                            if (guid_end == std::string::npos) guid_end = notes.length();
-                                            edata.material_guid = notes.substr(guid_start, guid_end - guid_start);
-                                            boost::algorithm::trim(edata.material_guid);
-                                        }
-                                    }
-                                }
+                                filament_preset = preset_bundle->filaments.find_preset(filament_preset_opts->values[i], false);
                             }
                         }
                         
-                        if (edata.material_guid.empty()) {
-                            // Generate fallback GUID from material name
-                            size_t hash = std::hash<std::string>{}(edata.material_name);
-                            std::ostringstream oss;
-                            oss << std::hex << std::setfill('0') << std::uppercase;
-                            oss << std::setw(8) << (hash & 0xFFFFFFFF) << "-";
-                            oss << std::setw(4) << ((hash >> 32) & 0xFFFF) << "-";
-                            oss << std::setw(4) << ((hash >> 48) & 0xFFFF) << "-";
-                            oss << std::setw(4) << (hash & 0xFFFF) << "-";
-                            oss << std::setw(12) << ((hash >> 16) & 0xFFFFFFFFFFFF);
-                            edata.material_guid = oss.str();
+                        // Try to get material GUID from filament notes
+                        std::string material_guid;
+                        if (filament_preset) {
+                            if (const ConfigOptionString* notes_opt = filament_preset->config.option<ConfigOptionString>("filament_notes")) {
+                                std::string notes = notes_opt->value;
+                                const std::string guid_tag = "MATERIAL_GUID:";
+                                size_t guid_pos = notes.find(guid_tag);
+                                if (guid_pos != std::string::npos) {
+                                    size_t guid_start = guid_pos + guid_tag.length();
+                                    size_t guid_end = notes.find_first_of("\n\r", guid_start);
+                                    if (guid_end == std::string::npos) guid_end = notes.length();
+                                    material_guid = notes.substr(guid_start, guid_end - guid_start);
+                                    boost::algorithm::trim(material_guid);
+                                }
+                            }
+                            
+                            // Extract brand from filament preset if available
+                            if (const ConfigOptionString* vendor_opt = filament_preset->config.option<ConfigOptionString>("filament_vendor")) {
+                                edata.brand = vendor_opt->value;
+                                BOOST_LOG_TRIVIAL(info) << "prepare_upload: Extruder " << i << " brand: " << edata.brand;
+                            }
                         }
+                        
+                        if (material_guid.empty()) {
+                            // Generate fallback GUID from material name using lowercase hex
+                            material_guid = generate_material_guid(edata.material_name);
+                        }
+                        
+                        // Fallback brand extraction from print config if preset lookup failed
+                        if (edata.brand.empty()) {
+                            const ConfigOptionStrings* vendor_opts = full_config.option<ConfigOptionStrings>("filament_vendor");
+                            if (vendor_opts && i < vendor_opts->values.size() && !vendor_opts->values[i].empty()) {
+                                edata.brand = vendor_opts->values[i];
+                                BOOST_LOG_TRIVIAL(warning) << "prepare_upload: Extruder " << i << " brand from config: " << edata.brand;
+                            }
+                        }
+                        
+                        BOOST_LOG_TRIVIAL(warning) << "prepare_upload: Extruder " << i << " preset lookup: " 
+                                                  << (filament_preset ? "found" : "NOT FOUND")
+                                                  << ", GUID: " << material_guid
+                                                  << ", brand: " << edata.brand;
                         
                         // Get temperature if available
                         if (const ConfigOptionInts* temp_opts = full_config.option<ConfigOptionInts>("nozzle_temperature")) {

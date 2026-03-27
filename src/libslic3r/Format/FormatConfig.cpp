@@ -342,14 +342,15 @@ bool FormatConfig::export_to_container(const std::string& format_type,
     if (format_type == "ufp") {
         UFPWriter writer(format_config);
         // Pass extruder variants for multi-extruder support (nozzle diameter/name)
+        BOOST_LOG_TRIVIAL(warning) << "FormatConfig: extruder_variants.size()=" << extruder_variants.size();
         if (!extruder_variants.empty()) {
             writer.set_extruder_variants(extruder_variants);
             BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting " << extruder_variants.size() << " extruder variants for UFP export";
         }
         // Pass extruder data (GUIDs, temps, volumes) for multi-extruder metadata
-        BOOST_LOG_TRIVIAL(info) << "FormatConfig: Passing " << extruder_data.size() << " extruder data entries to UFPWriter";
+        BOOST_LOG_TRIVIAL(warning) << "FormatConfig: Passing " << extruder_data.size() << " extruder data entries to UFPWriter";
         for (size_t i = 0; i < extruder_data.size() && i < 2; ++i) {
-            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Extruder " << i << " - empty()=" << extruder_data[i].empty() 
+            BOOST_LOG_TRIVIAL(warning) << "FormatConfig: Extruder " << i << " - empty()=" << extruder_data[i].empty() 
                                    << ", GUID: '" << extruder_data[i].material_guid << "', temp: " 
                                    << extruder_data[i].extruder_temp << ", filament_mm: " 
                                    << extruder_data[i].filament_mm;

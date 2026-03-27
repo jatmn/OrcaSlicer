@@ -1,7 +1,7 @@
 ;START_OF_HEADER
 ;HEADER_VERSION:0.1
 ;FLAVOR:{{flavor}}
-;GENERATOR.NAME:Cura_SteamEngine
+;GENERATOR.NAME:OrcaSlicer
 ;GENERATOR.VERSION:5.12.0
 ;GENERATOR.BUILD_DATE:{{build_date}}
 ;TARGET_MACHINE.NAME:{{target_machine}}
@@ -22,5 +22,4 @@
 ;PRINT.SIZE.MAX.Z:{{max_z}}
 ;SLICE_UUID:{{slice_uuid}}
 ;END_OF_HEADER
-;Generated with Cura_SteamEngine 5.12.0
 T0

@@ -371,6 +371,10 @@ std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta,
     // Generate new Cura-style header from template
     std::string header = generate_header(meta);
     
+    // Debug: Log the generated header (first 500 chars to avoid log spam)
+    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::build_gcode_content: Generated header (first 500 chars):\n" 
+                           << header.substr(0, std::min(header.length(), size_t(500)));
+    
     // Build body from original lines starting at body_start
     std::string body;
     for (size_t i = body_start; i < original_lines.size(); ++i) {
