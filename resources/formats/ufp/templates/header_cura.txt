@@ -1,8 +1,8 @@
 ;START_OF_HEADER
 ;HEADER_VERSION:0.1
 ;FLAVOR:{{flavor}}
-;GENERATOR.NAME:{{generator_name}}
-;GENERATOR.VERSION:{{generator_version}}
+;GENERATOR.NAME:Cura_SteamEngine
+;GENERATOR.VERSION:5.12.0
 ;GENERATOR.BUILD_DATE:{{build_date}}
 ;TARGET_MACHINE.NAME:{{target_machine}}
 ;EXTRUDER_TRAIN.0.INITIAL_TEMPERATURE:{{extruder_temp}}
@@ -22,4 +22,5 @@
 ;PRINT.SIZE.MAX.Z:{{max_z}}
 ;SLICE_UUID:{{slice_uuid}}
 ;END_OF_HEADER
-;Generated with {{generator_name}} {{generator_version}}
+;Generated with Cura_SteamEngine 5.12.0
+T0

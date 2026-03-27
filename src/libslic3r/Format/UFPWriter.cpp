@@ -104,17 +104,40 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    // 2. /Metadata/thumbnail.png (if available) - with leading slash
+    // 2. /Cura/slicemetadata.json - with leading slash (Cura puts this second)
+    std::string slicemetadata = generate_slicemetadata_json(meta);
+    if (!mz_zip_writer_add_mem_ex(&archive, "/Cura/slicemetadata.json",
+                              slicemetadata.c_str(), slicemetadata.length(),
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
+        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add slicemetadata.json";
+        cleanup();
+        return false;
+    }
+
+    // 3. /Metadata/thumbnail.png (if available) - with leading slash
+    // IMPORTANT: Thumbnail is passed directly via set_thumbnail_data(), NEVER extracted from gcode comments
+    // Thumbnails in gcode comments would cause firmware to reject the file
     bool has_thumbnail = false;
-    if (!meta.thumbnails.empty()) {
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Has thumbnails, size=" << meta.thumbnails.size();
+    if (has_thumbnail_data()) {
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Writing thumbnail from passed data, size=" << m_thumbnail_data.size();
+        if (!mz_zip_writer_add_mem_ex(&archive, "/Metadata/thumbnail.png",
+                                      m_thumbnail_data.data(), m_thumbnail_data.size(),
+                                      nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
+            BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to add thumbnail";
+        } else {
+            has_thumbnail = true;
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail from passed data";
+        }
+    } else if (!meta.thumbnails.empty()) {
+        // Fallback: try to use thumbnails extracted from gcode (legacy path)
+        // This should rarely happen as thumbnails should NEVER be in gcode comments
+        BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Using legacy thumbnail from gcode (should not happen!)";
         auto it = meta.thumbnails.find("320x320");
         if (it == meta.thumbnails.end()) {
             it = meta.thumbnails.begin();
         }
         
         if (it != meta.thumbnails.end()) {
-            // Decode base64 and write thumbnail
             try {
                 std::vector<uint8_t> png_data = base64_decode(it->second);
                 if (!png_data.empty()) {
@@ -124,7 +147,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
                         BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to add thumbnail";
                     } else {
                         has_thumbnail = true;
-                        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail, size=" << png_data.size();
+                        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail from legacy path";
                     }
                 }
             } catch (const std::exception& e) {
@@ -133,27 +156,12 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         }
     }
     
-    // 3. /3D/_rels/model.gcode.rels - with leading slash
-    std::string gcode_rels = generate_gcode_rels_xml(has_thumbnail);
-    if (!mz_zip_writer_add_mem_ex(&archive, "/3D/_rels/model.gcode.rels",
-                              gcode_rels.c_str(), gcode_rels.length(),
-                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
-        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add model.gcode.rels";
-        cleanup();
-        return false;
-    }
-    
-    // 4. /Cura/slicemetadata.json - with leading slash
-    std::string slicemetadata = generate_slicemetadata_json(meta);
-    if (!mz_zip_writer_add_mem_ex(&archive, "/Cura/slicemetadata.json",
-                              slicemetadata.c_str(), slicemetadata.length(),
-                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
-        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add slicemetadata.json";
-        cleanup();
-        return false;
-    }
-    
-    // 5. /Metadata/UFP_Global.json - with leading slash
+    // Prepare material filename (needed for UFP_Global, material, and gcode.rels)
+    std::string material_type_lower = meta.material_type;
+    std::transform(material_type_lower.begin(), material_type_lower.end(), material_type_lower.begin(), ::tolower);
+    std::string material_filename = "ultimaker_" + material_type_lower + ".xml.fdm_material";
+
+    // 4. /Metadata/UFP_Global.json - with leading slash
     std::string ufp_global = generate_ufp_global_json(meta);
     if (!mz_zip_writer_add_mem_ex(&archive, "/Metadata/UFP_Global.json",
                               ufp_global.c_str(), ufp_global.length(),
@@ -163,8 +171,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    // 6. /Materials/material.xml.fdm_material - fixed filename (not ultimaker_xxx)
-    std::string material_filename = "material.xml.fdm_material";
+    // 5. /Materials/ultimaker_{material_type}.xml.fdm_material - Cura-style filename format
     std::string material_xml = generate_material_xml(meta);
     if (!mz_zip_writer_add_mem_ex(&archive, ("/Materials/" + material_filename).c_str(),
                               material_xml.c_str(), material_xml.length(),
@@ -174,7 +181,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    // 7. /_rels/.rels - with leading slash
+    // 6. /_rels/.rels - with leading slash
     std::string rels = generate_rels_xml();
     if (!mz_zip_writer_add_mem_ex(&archive, "/_rels/.rels",
                               rels.c_str(), rels.length(),
@@ -184,12 +191,22 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    // 8. /[Content_Types].xml - with leading slash
+    // 7. /[Content_Types].xml - with leading slash
     std::string content_types = generate_content_types_xml();
     if (!mz_zip_writer_add_mem_ex(&archive, "/[Content_Types].xml",
                               content_types.c_str(), content_types.length(),
                               nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add [Content_Types].xml";
+        cleanup();
+        return false;
+    }
+
+    // 8. /3D/_rels/model.gcode.rels - LAST entry, matching Cura order
+    std::string gcode_rels = generate_gcode_rels_xml(has_thumbnail, material_filename);
+    if (!mz_zip_writer_add_mem_ex(&archive, "/3D/_rels/model.gcode.rels",
+                              gcode_rels.c_str(), gcode_rels.length(),
+                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
+        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add model.gcode.rels";
         cleanup();
         return false;
     }
@@ -223,6 +240,17 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
             meta.filament_mm = m_filament_mm;
         if (m_filament_g > 0)
             meta.filament_g = m_filament_g;
+    }
+    
+    // CRITICAL: Ensure material GUID in metadata matches the extruder GUID
+    // This ensures G-code header and material.xml have matching GUIDs
+    if (!m_extruders[0].material_guid.empty()) {
+        if (meta.material_guid != m_extruders[0].material_guid) {
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Overriding material_guid from '" 
+                                   << meta.material_guid << "' to '" << m_extruders[0].material_guid 
+                                   << "' to ensure consistency";
+            meta.material_guid = m_extruders[0].material_guid;
+        }
     }
     
     // Use machine bounds from config if available (6 values: min_x, min_y, min_z, max_x, max_y, max_z)
@@ -313,23 +341,24 @@ std::map<std::string, std::pair<std::string, std::string>> UFPWriter::load_nozzl
 }
 
 std::string UFPWriter::generate_extruder_block(int idx, const ExtruderData& data) {
-    std::ostringstream block;
-    if (data.empty()) {
-        return "";  // Return empty string if no data for this extruder
+    // Only generate block if extruder was actually used (has filament data)
+    if (data.empty() || data.filament_mm <= 0.0) {
+        return "";  // Return empty string if no data or not used
     }
     
+    std::ostringstream block;
     block << ";EXTRUDER_TRAIN." << idx << ".INITIAL_TEMPERATURE:" << data.extruder_temp << "\n";
     
-    // Format filament with decimals
+    // Format filament length (not volume - the field name is misleading)
     std::ostringstream filament_stream;
     filament_stream << std::fixed << std::setprecision(2) << data.filament_mm;
     std::string filament_str = filament_stream.str();
     // Remove trailing zeros after decimal point
     filament_str.erase(filament_str.find_last_not_of('0') + 1, std::string::npos);
-    if (filament_str.back() == '.') filament_str.pop_back();
+    if (!filament_str.empty() && filament_str.back() == '.') filament_str.pop_back();
     block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.VOLUME_USED:" << filament_str << "\n";
     
-    block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.GUID:" << data.material_guid << "\n";
+    block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.GUID:" << data.material_guid;
     
     return block.str();
 }
@@ -354,26 +383,31 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["print_groups"] = "1";
     values["slice_uuid"] = meta.slice_uuid;
     
-    // Generate extruder block based on configured extruder variants (nozzle info)
+    // Generate extruder block based on active extruders only (nozzle info)
     std::string extruder_block;
     if (!m_extruder_variants.empty()) {
-        for (size_t i = 0; i < m_extruder_variants.size(); ++i) {
-            const std::string& variant = m_extruder_variants[i];
-            auto nozzle_info = get_nozzle_info(variant);
-            extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
-            extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second + "\n";
+        for (size_t i = 0; i < m_extruder_variants.size() && i < 2; ++i) {
+            // Only include nozzle info if extruder was actually used
+            if (m_extruders[i].filament_mm > 0.0) {
+                const std::string& variant = m_extruder_variants[i];
+                auto nozzle_info = get_nozzle_info(variant);
+                extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
+                extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second;
+            }
         }
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter: Generated extruder block for " << m_extruder_variants.size() << " extruders";
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter: Generated extruder block";
     } else {
         // Fallback for backward compatibility - use default values
-        extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:0.4\n;EXTRUDER_TRAIN.0.NOZZLE.NAME:AA 0.4\n";
+        extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:0.4\n;EXTRUDER_TRAIN.0.NOZZLE.NAME:AA 0.4";
         BOOST_LOG_TRIVIAL(info) << "UFPWriter: No extruder variants configured, using default extruder 0";
     }
     values["extruder_block"] = extruder_block;
     
-    // Generate per-extruder metadata blocks (temperature, material GUID, volume)
+    // Generate per-extruder metadata blocks (temperature, material GUID, volume) - only for active extruders
     values["extruder0_block"] = generate_extruder_block(0, m_extruders[0]);
-    values["extruder1_block"] = generate_extruder_block(1, m_extruders[1]);
+    // Only include extruder 1 if it has filament data
+    std::string extruder1_block = generate_extruder_block(1, m_extruders[1]);
+    values["extruder1_block"] = extruder1_block;
     
     return substitute_template(m_config.header_template_content, values);
 }
@@ -471,7 +505,7 @@ std::string UFPWriter::generate_ufp_global_json(const GCodeMetadata& meta) {
 
 std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
     std::ostringstream xml;
-    xml << "<?xml version=\"1.0\" encoding=\"utf-8\"?\u003e\n";
+    xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?\u003e\n";
     xml << "<fdmmaterial version=\"1.3\" xmlns=\"http://www.ultimaker.com/material\"\u003e\n";
     xml << "  <metadata\u003e\n";
     xml << "    <name\u003e\n";
@@ -487,7 +521,7 @@ std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
 }
 
 std::string UFPWriter::generate_content_types_xml() {
-    return R"(<?xml version="1.0" encoding="utf-8"?>
+    return R"(<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
   <Default Extension="gcode" ContentType="text/x-gcode" />
@@ -499,16 +533,16 @@ std::string UFPWriter::generate_content_types_xml() {
 
 std::string UFPWriter::generate_rels_xml() {
     // Match native Cura: only 2 relationships (gcode and opc_metadata)
-    return R"(<?xml version="1.0" encoding="utf-8"?>
+    return R"(<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Target="/3D/model.gcode" Type="http://schemas.ultimaker.org/package/2018/relationships/gcode" Id="rel0" />
   <Relationship Target="/Metadata/UFP_Global.json" Type="http://schemas.ultimaker.org/package/2018/relationships/opc_metadata" Id="rel1" />
 </Relationships>)";
 }
 
-std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail) {
-    // Match native Cura format: Target first, then Type, utf-8 encoding
-    std::string rels = R"(<?xml version="1.0" encoding="utf-8"?>
+std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail, const std::string& material_filename) {
+    // Match native Cura format: Target first, then Type, UTF-8 encoding
+    std::string rels = R"(<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">)";
     
     int rel_id = 0;
@@ -517,8 +551,8 @@ std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail) {
         rel_id++;
     }
     
-    // Add material relationship(s) - match valid Cura format: material.xml.fdm_material
-    rels += "\n  <Relationship Target=\"/Materials/material.xml.fdm_material\" Type=\"http://schemas.ultimaker.org/package/2018/relationships/material\" Id=\"rel" + std::to_string(rel_id) + "\" />";
+    // Add material relationship(s) - match valid Cura format: ultimaker_{material}.xml.fdm_material
+    rels += "\n  <Relationship Target=\"/Materials/" + material_filename + "\" Type=\"http://schemas.ultimaker.org/package/2018/relationships/material\" Id=\"rel" + std::to_string(rel_id) + "\" />";
     
     rels += "\n</Relationships>";
     return rels;

@@ -70,7 +70,7 @@ private:
     std::string generate_material_xml(const GCodeMetadata& meta);
     std::string generate_content_types_xml();
     std::string generate_rels_xml();
-    std::string generate_gcode_rels_xml(bool has_thumbnail = false);
+    std::string generate_gcode_rels_xml(bool has_thumbnail = false, const std::string& material_filename = "");
     std::string generate_build_date();
     
     // Helper to generate extruder metadata block
