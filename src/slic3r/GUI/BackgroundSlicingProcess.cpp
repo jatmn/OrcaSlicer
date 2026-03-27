@@ -68,6 +68,41 @@ static std::string generate_material_guid(const std::string& material_type) {
     return oss.str();
 }
 
+// Helper function to extract MATERIAL_GUID from filament preset
+// Walks the inheritance chain to find the base preset that has the MATERIAL_GUID
+static std::string extract_material_guid_from_preset(const Slic3r::Preset* filament_preset, const Slic3r::PresetBundle* preset_bundle) {
+    if (!filament_preset || !preset_bundle) {
+        return "";
+    }
+    
+    // Try to get the base preset by walking the inheritance chain
+    const Slic3r::Preset* base_preset = preset_bundle->filaments.get_preset_base(*filament_preset);
+    
+    // If no base preset found, use the current preset
+    if (!base_preset) {
+        base_preset = filament_preset;
+    }
+    
+    // Extract MATERIAL_GUID from filament_notes
+    if (const Slic3r::ConfigOptionString* notes_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_notes")) {
+        std::string notes = notes_opt->value;
+        const std::string guid_tag = "MATERIAL_GUID:";
+        size_t guid_pos = notes.find(guid_tag);
+        if (guid_pos != std::string::npos) {
+            size_t guid_start = guid_pos + guid_tag.length();
+            size_t guid_end = notes.find_first_of("\n\r", guid_start);
+            if (guid_end == std::string::npos) guid_end = notes.length();
+            std::string material_guid = notes.substr(guid_start, guid_end - guid_start);
+            boost::algorithm::trim(material_guid);
+            if (!material_guid.empty()) {
+                return material_guid;
+            }
+        }
+    }
+    
+    return "";
+}
+
 namespace Slic3r {
 
 bool SlicingProcessCompletedEvent::critical_error() const
@@ -921,41 +956,30 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
                 
                 // Look up the filament preset for GUID and brand extraction
                 const Slic3r::Preset* filament_preset = nullptr;
-                if (i < filament_preset_values.size()) {
+                const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+                if (i < filament_preset_values.size() && preset_bundle) {
                     std::string preset_name = filament_preset_values[i];
-                    const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
-                    if (preset_bundle) {
-                        filament_preset = preset_bundle->filaments.find_preset(preset_name, false);
-                    }
+                    filament_preset = preset_bundle->filaments.find_preset(preset_name, false);
                 }
                 
-                // Extract material GUID from filament preset notes
-                std::string material_guid;
-                if (filament_preset) {
-                    std::string notes;
-                    if (const ConfigOptionString* notes_opt = filament_preset->config.option<ConfigOptionString>("filament_notes")) {
-                        notes = notes_opt->value;
-                    }
-                    const std::string guid_tag = "MATERIAL_GUID:";
-                    size_t guid_pos = notes.find(guid_tag);
-                    if (guid_pos != std::string::npos) {
-                        size_t guid_start = guid_pos + guid_tag.length();
-                        size_t guid_end = notes.find_first_of("\n\r", guid_start);
-                        if (guid_end == std::string::npos) guid_end = notes.length();
-                        material_guid = notes.substr(guid_start, guid_end - guid_start);
-                        boost::algorithm::trim(material_guid);
-                    }
-                    
-                    // Extract brand from filament preset if available
-                    if (const ConfigOptionString* vendor_opt = filament_preset->config.option<ConfigOptionString>("filament_vendor")) {
-                        edata.brand = vendor_opt->value;
-                        BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Extruder " << i << " brand: " << edata.brand;
-                    }
-                }
+                // Extract material GUID from filament preset (walks inheritance chain to find base preset)
+                std::string material_guid = extract_material_guid_from_preset(filament_preset, preset_bundle);
                 
                 // If no GUID found, try to generate a consistent one from material type
                 if (material_guid.empty() && i < filament_values.size()) {
                     material_guid = generate_material_guid(filament_values[i]);
+                }
+                
+                // Extract brand from filament preset if available (from base preset if needed)
+                if (filament_preset) {
+                    // Try to get brand from base preset first
+                    const Slic3r::Preset* base_preset = preset_bundle ? preset_bundle->filaments.get_preset_base(*filament_preset) : nullptr;
+                    if (!base_preset) base_preset = filament_preset;
+                    
+                    if (const Slic3r::ConfigOptionString* vendor_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_vendor")) {
+                        edata.brand = vendor_opt->value;
+                        BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Extruder " << i << " brand: " << edata.brand;
+                    }
                 }
                 
                 // Fallback brand extraction from print config if preset lookup failed
@@ -1187,46 +1211,39 @@ void BackgroundSlicingProcess::prepare_upload()
                 
                 if (const ConfigOptionStrings* filament_opts = full_config.option<ConfigOptionStrings>("filament_type")) {
                     BOOST_LOG_TRIVIAL(info) << "prepare_upload: Building extruder data for " << filament_opts->values.size() << " extruders";
+                    
+                    // Get filament preset names
+                    const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
+                    const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+                    
                     for (size_t i = 0; i < filament_opts->values.size() && i < 2; ++i) {
                         Slic3r::ExtruderData edata;
                         edata.material_name = filament_opts->values[i];
                         
                         // Look up the filament preset for GUID and brand extraction
                         const Slic3r::Preset* filament_preset = nullptr;
-                        const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
-                        if (filament_preset_opts && i < filament_preset_opts->values.size()) {
-                            const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
-                            if (preset_bundle) {
-                                filament_preset = preset_bundle->filaments.find_preset(filament_preset_opts->values[i], false);
-                            }
+                        if (filament_preset_opts && i < filament_preset_opts->values.size() && preset_bundle) {
+                            filament_preset = preset_bundle->filaments.find_preset(filament_preset_opts->values[i], false);
                         }
                         
-                        // Try to get material GUID from filament notes
-                        std::string material_guid;
-                        if (filament_preset) {
-                            if (const ConfigOptionString* notes_opt = filament_preset->config.option<ConfigOptionString>("filament_notes")) {
-                                std::string notes = notes_opt->value;
-                                const std::string guid_tag = "MATERIAL_GUID:";
-                                size_t guid_pos = notes.find(guid_tag);
-                                if (guid_pos != std::string::npos) {
-                                    size_t guid_start = guid_pos + guid_tag.length();
-                                    size_t guid_end = notes.find_first_of("\n\r", guid_start);
-                                    if (guid_end == std::string::npos) guid_end = notes.length();
-                                    material_guid = notes.substr(guid_start, guid_end - guid_start);
-                                    boost::algorithm::trim(material_guid);
-                                }
-                            }
-                            
-                            // Extract brand from filament preset if available
-                            if (const ConfigOptionString* vendor_opt = filament_preset->config.option<ConfigOptionString>("filament_vendor")) {
-                                edata.brand = vendor_opt->value;
-                                BOOST_LOG_TRIVIAL(info) << "prepare_upload: Extruder " << i << " brand: " << edata.brand;
-                            }
-                        }
+                        // Extract material GUID from filament preset (walks inheritance chain to find base preset)
+                        std::string material_guid = extract_material_guid_from_preset(filament_preset, preset_bundle);
                         
                         if (material_guid.empty()) {
                             // Generate fallback GUID from material name using lowercase hex
                             material_guid = generate_material_guid(edata.material_name);
+                        }
+                        
+                        // Extract brand from filament preset if available (from base preset if needed)
+                        if (filament_preset) {
+                            // Try to get brand from base preset first
+                            const Slic3r::Preset* base_preset = preset_bundle ? preset_bundle->filaments.get_preset_base(*filament_preset) : nullptr;
+                            if (!base_preset) base_preset = filament_preset;
+                            
+                            if (const Slic3r::ConfigOptionString* vendor_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_vendor")) {
+                                edata.brand = vendor_opt->value;
+                                BOOST_LOG_TRIVIAL(info) << "prepare_upload: Extruder " << i << " brand: " << edata.brand;
+                            }
                         }
                         
                         // Fallback brand extraction from print config if preset lookup failed
