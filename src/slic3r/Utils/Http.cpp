@@ -1,6 +1,7 @@
 #include "Http.hpp"
 
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <thread>
 #include <deque>
@@ -133,6 +134,7 @@ struct Http::priv
     std::string headers;
 	size_t limit;
 	bool cancel;
+	bool tls_flexible{false};  // When true, allows TLSv1.3+ (removes TLSv1.2 max restriction on Windows)
     std::unique_ptr<form_file> putFile;
     std::unique_ptr<put_buffer> putBuf;  // For PUT with raw buffer
 
@@ -371,8 +373,12 @@ void Http::priv::form_add_file(const char *name, const fs::path &path, const cha
 	// We can't use CURLFORM_FILECONTENT, because curl doesn't support Unicode filenames on Windows
 	// and so we use CURLFORM_STREAM with boost ifstream to read the file.
 
-	if (filename == nullptr) {
-		filename = path.string().c_str();
+	// Store filename in a string to avoid dangling pointer issues
+	std::string filename_storage;
+	const char* filename_to_use = filename;
+	if (filename_to_use == nullptr) {
+		filename_storage = path.string();
+		filename_to_use = filename_storage.c_str();
 	}
 
 	form_files.emplace_back(path, offset, length);
@@ -384,10 +390,10 @@ void Http::priv::form_add_file(const char *name, const fs::path &path, const cha
     }
     f.ifs.seekg(offset);
 
-	if (filename != nullptr) {
+	if (filename_to_use != nullptr) {
 		::curl_formadd(&form, &form_end,
 			CURLFORM_COPYNAME, name,
-			CURLFORM_FILENAME, filename,
+			CURLFORM_FILENAME, filename_to_use,
 			CURLFORM_CONTENTTYPE, "application/octet-stream",
 			CURLFORM_STREAM, static_cast<void*>(&f),
 			CURLFORM_CONTENTSLENGTH, static_cast<long>(size),
@@ -417,11 +423,29 @@ void Http::priv::mime_form_add_file(const char* name, const char* path)
 
 	curl_mimepart* part;
 	part = curl_mime_addpart(mime);
-	curl_mime_name(part, "file");
-	curl_mime_type(part, "multipart/form-data");
+	curl_mime_name(part, name);
+	// Set content type based on file extension
+	std::string path_str(path);
+	const char* content_type = "application/octet-stream";
+	if (path_str.size() > 4) {
+		std::string ext = path_str.substr(path_str.size() - 4);
+		if (ext == ".ufp") {
+			content_type = "application/x-ufp";
+		} else if (ext == ".gcode" || ext == ".g") {
+			content_type = "text/x-gcode";
+		} else if (ext == ".makerbot") {
+			content_type = "application/x-makerbot";
+		}
+	}
+	curl_mime_type(part, content_type);
 	curl_mime_filedata(part, path);
 	// BBS specify filename after filedata
-	curl_mime_filename(part, name);
+	// Extract filename from path
+	const char* filename = strrchr(path, '/');
+	if (!filename) filename = strrchr(path, '\\');
+	if (filename) filename++;
+	else filename = path;
+	curl_mime_filename(part, filename);
 }
 
 //FIXME may throw! Is the caller aware of it?
@@ -498,6 +522,16 @@ std::string Http::priv::body_size_error()
 
 void Http::priv::http_perform()
 {
+#ifdef __WINDOWS__
+	// Override TLS version restriction if tls_flexible is set
+	// This allows TLSv1.3+ for hosts that require it (e.g., UltiMaker OAuth)
+	if (tls_flexible) {
+		::curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3);
+	} else {
+		::curl_easy_setopt(curl, CURLOPT_SSLVERSION, CURL_SSLVERSION_MAX_TLSv1_2);
+	}
+#endif
+
 	::curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 	::curl_easy_setopt(curl, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
 	::curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writecb);
@@ -729,7 +763,9 @@ Http& Http::form_add(const std::string &name, const std::string &contents)
 
 Http& Http::form_add_file(const std::string &name, const fs::path &path, boost::filesystem::ifstream::off_type offset, size_t length)
 {
-	if (p) { p->form_add_file(name.c_str(), path.c_str(), nullptr, offset, length); }
+	// Pass path directly instead of path.c_str() to avoid issues on Windows
+	// where path.c_str() returns const wchar_t* but the function expects const fs::path&
+	if (p) { p->form_add_file(name.c_str(), path, nullptr, offset, length); }
 	return *this;
 }
 
@@ -749,13 +785,17 @@ Http& Http::mime_form_add_file(std::string &name, const char* path)
 
 Http& Http::form_add_file(const std::wstring& name, const fs::path& path, boost::filesystem::ifstream::off_type offset, size_t length)
 {
-	if (p) { p->form_add_file((char*)name.c_str(), path.c_str(), nullptr, offset, length); }
+	// Pass path directly instead of path.c_str() to avoid issues on Windows
+	// where path.c_str() returns const wchar_t* but the function expects const fs::path&
+	if (p) { p->form_add_file((char*)name.c_str(), path, nullptr, offset, length); }
 	return *this;
 }
 
 Http& Http::form_add_file(const std::string &name, const fs::path &path, const std::string &filename, boost::filesystem::ifstream::off_type offset, size_t length)
 {
-	if (p) { p->form_add_file(name.c_str(), path.c_str(), filename.c_str(), offset, length); }
+	// Pass path directly instead of path.c_str() to avoid issues on Windows
+	// where path.c_str() returns const wchar_t* but the function expects const fs::path&
+	if (p) { p->form_add_file(name.c_str(), path, filename.c_str(), offset, length); }
 	return *this;
 }
 
@@ -770,6 +810,18 @@ Http& Http::ssl_revoke_best_effort(bool set)
 		::curl_easy_setopt(p->curl, CURLOPT_SSL_OPTIONS, CURLSSLOPT_REVOKE_BEST_EFFORT);
 	}
 #endif
+	return *this;
+}
+
+// Allows flexible TLS version negotiation for specific hosts that require TLSv1.3 or higher.
+// By default, Windows builds enforce TLSv1.2 max, which causes some OAuth servers
+// (like UltiMaker's account.ultimaker.com) to reject connections.
+// This option removes the TLS version restriction for this specific request only.
+Http& Http::allow_tls_flexible(bool enable)
+{
+	if (p) {
+		p->tls_flexible = enable;
+	}
 	return *this;
 }
 #endif // WIN32

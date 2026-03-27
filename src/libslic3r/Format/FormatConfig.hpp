@@ -128,6 +128,19 @@ public:
                                      const std::vector<ExtruderData>& extruder_data,
                                      std::string& error_message);
     
+    // Export G-code to container format with thumbnail PNG data
+    // thumbnail_data: Raw PNG bytes for the preview thumbnail (e.g., 320x320)
+    // IMPORTANT: Thumbnail is passed directly as PNG bytes, NOT extracted from gcode comments
+    // Thumbnails should NEVER be embedded in gcode comments (firmware will reject them)
+    static bool export_to_container(const std::string& format_type,
+                                     const std::string& input_gcode_path,
+                                     const std::string& output_path,
+                                     const std::string& printer_notes,
+                                     const std::vector<std::string>& extruder_variants,
+                                     const std::vector<ExtruderData>& extruder_data,
+                                     const std::vector<uint8_t>& thumbnail_data,
+                                     std::string& error_message);
+    
 private:
     static boost::filesystem::path get_formats_directory();
     static std::string load_template_file(const boost::filesystem::path& template_path);

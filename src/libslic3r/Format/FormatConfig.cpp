@@ -299,6 +299,19 @@ bool FormatConfig::export_to_container(const std::string& format_type,
                                       const std::vector<std::string>& extruder_variants,
                                       const std::vector<ExtruderData>& extruder_data,
                                       std::string& error_message) {
+    // Call overload with empty thumbnail data
+    return export_to_container(format_type, input_gcode_path, output_path, printer_notes, 
+                              extruder_variants, extruder_data, std::vector<uint8_t>(), error_message);
+}
+
+bool FormatConfig::export_to_container(const std::string& format_type,
+                                      const std::string& input_gcode_path,
+                                      const std::string& output_path,
+                                      const std::string& printer_notes,
+                                      const std::vector<std::string>& extruder_variants,
+                                      const std::vector<ExtruderData>& extruder_data,
+                                      const std::vector<uint8_t>& thumbnail_data,
+                                      std::string& error_message) {
     // Parse the FORMAT_CONFIG_ID from printer notes
     std::string config_id = parse_format_config_id(printer_notes, "");
     
@@ -334,12 +347,18 @@ bool FormatConfig::export_to_container(const std::string& format_type,
             BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting " << extruder_variants.size() << " extruder variants for UFP export";
         }
         // Pass extruder data (GUIDs, temps, volumes) for multi-extruder metadata
+        BOOST_LOG_TRIVIAL(info) << "FormatConfig: Passing " << extruder_data.size() << " extruder data entries to UFPWriter";
         for (size_t i = 0; i < extruder_data.size() && i < 2; ++i) {
-            writer.set_extruder_data(static_cast<int>(i), extruder_data[i]);
-            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting extruder " << i << " data - GUID: " 
-                                   << extruder_data[i].material_guid << ", temp: " 
-                                   << extruder_data[i].extruder_temp << ", volume: " 
+            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Extruder " << i << " - empty()=" << extruder_data[i].empty() 
+                                   << ", GUID: '" << extruder_data[i].material_guid << "', temp: " 
+                                   << extruder_data[i].extruder_temp << ", filament_mm: " 
                                    << extruder_data[i].filament_mm;
+            writer.set_extruder_data(static_cast<int>(i), extruder_data[i]);
+        }
+        // Pass thumbnail data directly (NOT extracted from gcode - thumbnails should never be in gcode comments)
+        if (!thumbnail_data.empty()) {
+            writer.set_thumbnail_data(thumbnail_data);
+            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting thumbnail data for UFP export, size=" << thumbnail_data.size();
         }
         success = writer.write(input_gcode_path, output_path);
         if (!success) {

@@ -28,6 +28,7 @@
 #include "SimplyPrint.hpp"
 #include "ElegooLink.hpp"
 #include "UltiMaker.hpp"
+#include "UltiMakerLAN.hpp"
 
 namespace fs = boost::filesystem;
 using boost::optional;
@@ -69,6 +70,7 @@ PrintHost* PrintHost::get_print_host(DynamicPrintConfig *config)
             case htSimplyPrint: return new SimplyPrint(config);
             case htElegooLink: return new ElegooLink(config);
             case htUltiMaker: return new UltiMaker(config);
+            case htUltiMakerLAN: return new UltiMakerLAN(config);
             default:          return nullptr;
         }
     } else {

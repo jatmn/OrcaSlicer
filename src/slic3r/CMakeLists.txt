@@ -693,10 +693,12 @@ if (UNIX AND NOT APPLE)
     )
 endif ()
 
-# UltiMaker Digital Factory support
+# UltiMaker support (Digital Factory and LAN)
 list(APPEND SLIC3R_GUI_SOURCES
     Utils/UltiMaker.cpp
     Utils/UltiMaker.hpp
+    Utils/UltiMakerLAN.cpp
+    Utils/UltiMakerLAN.hpp
 )
 
 set(ORCA_UPDATER_SIG_KEY_B64 "${ORCA_UPDATER_SIG_KEY}")

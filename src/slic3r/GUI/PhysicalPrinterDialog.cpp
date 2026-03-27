@@ -40,6 +40,7 @@
 #include "OAuthDialog.hpp"
 #include "SimplyPrint.hpp"
 #include "UltiMaker.hpp"
+#include "UltiMakerLAN.hpp"
 
 namespace Slic3r {
 namespace GUI {
@@ -521,14 +522,17 @@ void PhysicalPrinterDialog::update_printhost_buttons()
 {
     std::unique_ptr<PrintHost> host(PrintHost::get_print_host(m_config));
     if (host) {
-        // For UltiMaker, the print_host field is hidden but we still need the test/login button enabled
+        // For UltiMaker Digital Factory, the print_host field is hidden but we still need the test/login button enabled
         const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
-        bool is_ultimaker = opt && opt->value == htUltiMaker;
+        bool is_ultimaker_cloud = opt && opt->value == htUltiMaker;
+        bool is_ultimaker_lan = opt && opt->value == htUltiMakerLAN;
+        bool is_ultimaker = is_ultimaker_cloud || is_ultimaker_lan;
         
         // Enable test button if:
-        // - Not UltiMaker AND print_host is not empty AND can test, OR
-        // - UltiMaker (always enable since it uses OAuth and print_host is hidden)
-        m_printhost_test_btn->Enable((!is_ultimaker && !m_config->opt_string("print_host").empty()) || is_ultimaker);
+        // - Not UltiMaker Cloud AND print_host is not empty AND can test, OR
+        // - UltiMaker Cloud (always enable since it uses OAuth and print_host is hidden), OR
+        // - UltiMaker LAN (requires print_host to be set)
+        m_printhost_test_btn->Enable((!is_ultimaker_cloud && !m_config->opt_string("print_host").empty()) || is_ultimaker_cloud);
         
         m_printhost_browse_btn->Show(host->has_auto_discovery());
         m_printhost_logout_btn->Show(host->is_logged_in());
@@ -649,7 +653,7 @@ void PhysicalPrinterDialog::update(bool printer_change)
         }
 
         // Show printer_agent for non-UltiMaker host types (it was added in build_printhost_settings but needs explicit showing)
-        if (opt->value != htUltiMaker) {
+        if (opt->value != htUltiMaker && opt->value != htUltiMakerLAN) {
             m_optgroup->show_field("printer_agent");
         }
 
@@ -657,7 +661,7 @@ void PhysicalPrinterDialog::update(bool printer_change)
         // The hint text at the bottom is a separate line added with full_width=1
         // We need to find and show/hide this specific line's sizer
         if (m_cafile_hint_widget) {
-            bool show_hint = (opt->value != htUltiMaker);
+            bool show_hint = (opt->value != htUltiMaker && opt->value != htUltiMakerLAN);
             // Get the sizer that contains the hint (added as line.widget at activation time)
             wxSizer* hint_sizer = m_cafile_hint_widget->GetContainingSizer();
             if (hint_sizer) {
@@ -759,6 +763,37 @@ void PhysicalPrinterDialog::update(bool printer_change)
                 }
                 if (m_printhost_cafile_browse_btn)
                     m_printhost_cafile_browse_btn->Disable();
+            } else if (opt->value == htUltiMakerLAN) {
+                // UltiMaker LAN - Local network printing (no authentication required)
+                // Based on Cura's UM3NetworkPrinting plugin - local API is open on LAN
+                // Show: print_host
+                // Hide: printer_agent, OAuth-related fields, auth fields (not needed for LAN)
+                m_optgroup->hide_field("printer_agent");
+                m_optgroup->show_field("print_host");
+                m_optgroup->hide_field("print_host_webui");
+                m_optgroup->hide_field("bbl_use_print_host_webui");
+                m_optgroup->hide_field("printhost_authorization_type");
+                m_optgroup->hide_field("printhost_apikey");
+                m_optgroup->hide_field("printhost_port");
+                m_optgroup->hide_field("printhost_cafile");
+                m_optgroup->hide_field("printhost_ssl_ignore_revoke");
+                m_optgroup->hide_field("printhost_user");     // Not needed for LAN
+                m_optgroup->hide_field("printhost_password"); // Not needed for LAN
+
+                // Show test button, hide browse/logout
+                if (m_printhost_browse_btn) {
+                    m_printhost_browse_btn->Hide();
+                }
+                if (m_printhost_test_btn) {
+                    m_printhost_test_btn->Show();
+                    m_printhost_test_btn->SetLabel(_L("Test"));
+                }
+                if (m_printhost_logout_btn) {
+                    m_printhost_logout_btn->Hide();
+                }
+                if (m_printhost_cafile_browse_btn) {
+                    m_printhost_cafile_browse_btn->Hide();
+                }
             } else {
                 // For all other host types (OctoPrint, Duet, Repetier, etc.), ensure buttons are enabled
                 if (m_printhost_cafile_browse_btn) {

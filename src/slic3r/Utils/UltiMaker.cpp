@@ -467,33 +467,49 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
     }
 
     std::string container_path;
+    std::string source_ext = upload_data.source_path.extension().string();
+    boost::to_lower(source_ext);
     
-    // Printer requires container format - create container from G-code
-    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Container format required: " << format_type;
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: Source extension detected: '" << source_ext << "'";
     
-    // Create temp file for container
-    fs::path temp_dir = boost::filesystem::temp_directory_path();
+    // Get extension for container format
     std::string extension = FormatConfig::get_file_extension_for_format(format_type);
     std::string base_filename = upload_data.upload_path.filename().stem().string();
-    container_path = (temp_dir / (base_filename + "_upload" + extension)).string();
     
-    BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Creating container at: " << container_path;
+    // Check if source is already a container format
+    bool source_is_container = (source_ext == ".ufp" || source_ext == ".makerbot");
+    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: source_is_container=" << source_is_container;
     
-    // Convert G-code to container format
-    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: About to call export_to_container()";
-    std::string error_message;
-    if (!FormatConfig::export_to_container(format_type, 
-                                           upload_data.source_path.string(), 
-                                           container_path, 
-                                           printer_notes, 
-                                           error_message)) {
-        // Hard stop - conversion failed, no fallback to raw G-code
-        BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - Container conversion FAILED: " << error_message;
-        error_fn(_L("Failed to create container file for upload: ") + error_message);
-        return false;
+    if (source_is_container) {
+        // Source is already a container - use it directly
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Source is already container format: " << upload_data.source_path;
+        container_path = upload_data.source_path.string();
+    } else {
+        // Printer requires container format - create container from G-code
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Container format required: " << format_type;
+        
+        // Create temp file for container
+        fs::path temp_dir = boost::filesystem::temp_directory_path();
+        container_path = (temp_dir / (base_filename + "_upload" + extension)).string();
+        
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Creating container at: " << container_path;
+        
+        // Convert G-code to container format
+        BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: About to call export_to_container()";
+        std::string error_message;
+        if (!FormatConfig::export_to_container(format_type, 
+                                               upload_data.source_path.string(), 
+                                               container_path, 
+                                               printer_notes, 
+                                               error_message)) {
+            // Hard stop - conversion failed, no fallback to raw G-code
+            BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: ERROR - Container conversion FAILED: " << error_message;
+            error_fn(_L("Failed to create container file for upload: ") + error_message);
+            return false;
+        }
+        
+        BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: Container created successfully at: " << container_path;
     }
-    
-    BOOST_LOG_TRIVIAL(error) << "ULTIMAKER_UPLOAD: Container created successfully at: " << container_path;
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: Container created successfully at: " << container_path;
     
     // Update source_path to upload the container instead of raw G-code
@@ -503,7 +519,7 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
                               (base_filename + extension);
 
     const auto filename = upload_data.upload_path.filename().string();
-    std::string source_ext = upload_data.source_path.extension().string();
+    source_ext = upload_data.source_path.extension().string();
     
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: filename=" << filename;
     BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: source_ext=" << source_ext;

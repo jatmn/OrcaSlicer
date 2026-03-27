@@ -142,6 +142,12 @@ public:
 	Http& ssl_revoke_best_effort(bool set);
 #endif // WIN32
 
+	// Allows flexible TLS version negotiation for specific hosts that require TLSv1.3 or higher.
+	// By default, Windows builds enforce TLSv1.2 max, which causes some OAuth servers
+	// (like UltiMaker's account.ultimaker.com) to reject connections.
+	// This option removes the TLS version restriction for this specific request only.
+	Http& allow_tls_flexible(bool enable);
+
 	// Set the file contents as a POST request body.
 	// The data is used verbatim, it is not additionally encoded in any way.
 	// This can be used for hosts which do not support multipart requests.

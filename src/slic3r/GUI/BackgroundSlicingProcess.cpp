@@ -20,6 +20,7 @@
 #include "libslic3r/SLAPrint.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/GCode/PostProcessor.hpp"
+#include "libslic3r/GCode/Thumbnails.hpp"
 #include "libslic3r/Format/SL1.hpp"
 #include "libslic3r/Format/FormatConfig.hpp"
 #include "libslic3r/Format/UFPWriter.hpp"
@@ -36,6 +37,7 @@
 #include <boost/filesystem/operations.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/nowide/cstdio.hpp>
+#include <boost/algorithm/string.hpp>
 #include "I18N.hpp"
 //#include "RemovableDriveManager.hpp"
 
@@ -965,12 +967,12 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
             }
         }
         
-        // Get filament volume from print statistics
+        // Get filament length from print statistics
         if (!extruder_data.empty()) {
-            double total_filament_mm = m_fff_print->print_statistics().total_extruded_volume * 1000.0;  // cm3 to mm3
+            double total_filament_mm = m_fff_print->print_statistics().total_used_filament;
             double total_filament_g = m_fff_print->print_statistics().total_weight;
             
-            // Distribute volume across extruders (if single material, all goes to extruder 0)
+            // Distribute across extruders (if single material, all goes to extruder 0)
             if (extruder_data.size() == 1) {
                 extruder_data[0].filament_mm = total_filament_mm;
                 extruder_data[0].filament_g = total_filament_g;
@@ -984,10 +986,26 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
             }
         }
         
+        // Generate PNG thumbnail directly for UFP (not extracted from G-code comments)
+        std::vector<uint8_t> thumbnail_data;
+        if (m_thumbnail_cb) {
+            ThumbnailsParams params{{Vec2d(320, 320)}, true, true, true, true, m_fff_print->get_plate_index()};
+            ThumbnailsList thumbnails = m_thumbnail_cb(params);
+            if (!thumbnails.empty() && thumbnails[0].is_valid()) {
+                auto compressed = GCodeThumbnails::compress_thumbnail(thumbnails[0], GCodeThumbnailsFormat::PNG);
+                if (compressed && compressed->data && compressed->size) {
+                    thumbnail_data.assign((uint8_t*)compressed->data, 
+                                          (uint8_t*)compressed->data + compressed->size);
+                    BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Generated PNG thumbnail, size=" << thumbnail_data.size();
+                }
+            }
+        }
+        
         // Export to container format
         BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Converting G-code to container format: " << format_type;
         std::string container_error;
-        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, extruder_variants, extruder_data, container_error)) {
+        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, 
+                                                       extruder_variants, extruder_data, thumbnail_data, container_error)) {
             BOOST_LOG_TRIVIAL(error) << "export_to_final_path: ERROR - Container conversion FAILED: " << container_error;
             error_message = "Failed to export in container format.\n" + container_error;
             return false;
@@ -1093,6 +1111,133 @@ void BackgroundSlicingProcess::prepare_upload()
 		
             // Make a copy of the source path, as run_post_process_scripts() is allowed to change it when making a copy of the source file
             // (not here, but when the final target is a file).
+            // Check if container format conversion is needed for print host upload
+            // (e.g., UltiMaker LAN requires .ufp format)
+            std::string printer_notes = m_fff_print->full_print_config().opt_string("printer_notes");
+            std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
+            
+            if (!format_type.empty()) {
+                // Need to convert to container format
+                std::string container_ext = Slic3r::FormatConfig::get_file_extension_for_format(format_type);
+                boost::filesystem::path container_path = source_path;
+                container_path.replace_extension(container_ext);
+                
+                // Get extruder variants for UFP
+                std::vector<std::string> extruder_variants;
+                const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("extruder_variant");
+                if (variant_opt) {
+                    extruder_variants = variant_opt->values;
+                }
+                
+                // Build extruder data (simplified version for upload)
+                std::vector<Slic3r::ExtruderData> extruder_data;
+                const DynamicPrintConfig& full_config = m_fff_print->full_print_config();
+                
+                if (const ConfigOptionStrings* filament_opts = full_config.option<ConfigOptionStrings>("filament_type")) {
+                    BOOST_LOG_TRIVIAL(info) << "prepare_upload: Building extruder data for " << filament_opts->values.size() << " extruders";
+                    for (size_t i = 0; i < filament_opts->values.size() && i < 2; ++i) {
+                        Slic3r::ExtruderData edata;
+                        edata.material_name = filament_opts->values[i];
+                        
+                        // Try to get material GUID from filament notes
+                        const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
+                        if (filament_preset_opts && i < filament_preset_opts->values.size()) {
+                            const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+                            if (preset_bundle) {
+                                const Slic3r::Preset* preset = preset_bundle->filaments.find_preset(filament_preset_opts->values[i], false);
+                                if (preset) {
+                                    if (const ConfigOptionString* notes_opt = preset->config.option<ConfigOptionString>("filament_notes")) {
+                                        std::string notes = notes_opt->value;
+                                        const std::string guid_tag = "MATERIAL_GUID:";
+                                        size_t guid_pos = notes.find(guid_tag);
+                                        if (guid_pos != std::string::npos) {
+                                            size_t guid_start = guid_pos + guid_tag.length();
+                                            size_t guid_end = notes.find_first_of("\n\r", guid_start);
+                                            if (guid_end == std::string::npos) guid_end = notes.length();
+                                            edata.material_guid = notes.substr(guid_start, guid_end - guid_start);
+                                            boost::algorithm::trim(edata.material_guid);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (edata.material_guid.empty()) {
+                            // Generate fallback GUID from material name
+                            size_t hash = std::hash<std::string>{}(edata.material_name);
+                            std::ostringstream oss;
+                            oss << std::hex << std::setfill('0') << std::uppercase;
+                            oss << std::setw(8) << (hash & 0xFFFFFFFF) << "-";
+                            oss << std::setw(4) << ((hash >> 32) & 0xFFFF) << "-";
+                            oss << std::setw(4) << ((hash >> 48) & 0xFFFF) << "-";
+                            oss << std::setw(4) << (hash & 0xFFFF) << "-";
+                            oss << std::setw(12) << ((hash >> 16) & 0xFFFFFFFFFFFF);
+                            edata.material_guid = oss.str();
+                        }
+                        
+                        // Get temperature if available
+                        if (const ConfigOptionInts* temp_opts = full_config.option<ConfigOptionInts>("nozzle_temperature")) {
+                            if (i < temp_opts->values.size()) {
+                                edata.extruder_temp = temp_opts->values[i];
+                            }
+                        }
+                        
+                        // Get print statistics
+                        double total_filament_mm = m_fff_print->print_statistics().total_used_filament;
+                        double total_filament_g = m_fff_print->print_statistics().total_weight;
+                        if (filament_opts->values.size() == 1) {
+                            edata.filament_mm = total_filament_mm;
+                            edata.filament_g = total_filament_g;
+                        } else if (filament_opts->values.size() == 2) {
+                            edata.filament_mm = total_filament_mm / 2.0;
+                            edata.filament_g = total_filament_g / 2.0;
+                        }
+                        
+                        extruder_data.push_back(edata);
+                        BOOST_LOG_TRIVIAL(info) << "prepare_upload: Extruder " << i << " final data - GUID: '" << edata.material_guid 
+                                                << "', temp: " << edata.extruder_temp 
+                                                << ", filament_mm: " << edata.filament_mm;
+                    }
+                }
+                
+                BOOST_LOG_TRIVIAL(info) << "prepare_upload: Total extruder_data count: " << extruder_data.size();
+                
+                // Generate PNG thumbnail directly for UFP (not extracted from G-code comments)
+                std::vector<uint8_t> thumbnail_data;
+                if (m_thumbnail_cb) {
+                    ThumbnailsParams params{{Vec2d(320, 320)}, true, true, true, true, m_fff_print->get_plate_index()};
+                    ThumbnailsList thumbnails = m_thumbnail_cb(params);
+                    if (!thumbnails.empty() && thumbnails[0].is_valid()) {
+                        auto compressed = GCodeThumbnails::compress_thumbnail(thumbnails[0], GCodeThumbnailsFormat::PNG);
+                        if (compressed && compressed->data && compressed->size) {
+                            thumbnail_data.assign((uint8_t*)compressed->data, 
+                                                  (uint8_t*)compressed->data + compressed->size);
+                            BOOST_LOG_TRIVIAL(info) << "prepare_upload: Generated PNG thumbnail, size=" << thumbnail_data.size();
+                        }
+                    }
+                }
+                
+                // Convert to container format
+                std::string container_error;
+                if (!Slic3r::FormatConfig::export_to_container(format_type, source_path.string(), 
+                                                               container_path.string(), printer_notes, 
+                                                               extruder_variants, extruder_data, thumbnail_data, container_error)) {
+                    BOOST_LOG_TRIVIAL(error) << "prepare_upload: Container conversion failed: " << container_error;
+                    throw Slic3r::RuntimeError("Failed to convert to container format: " + container_error);
+                }
+                
+                // Remove the original source file and use container
+                try {
+                    boost::filesystem::remove(source_path);
+                } catch (...) {}
+                source_path = container_path;
+                
+                // Update upload path extension to match container
+                m_upload_job.upload_data.upload_path.replace_extension(container_ext);
+                
+                BOOST_LOG_TRIVIAL(info) << "prepare_upload: Converted to container format: " << container_path.string();
+            }
+            
             if (!m_fff_print->is_BBL_printer()) {
                 std::string source_path_str = source_path.string();
                 std::string output_name_str = m_upload_job.upload_data.upload_path.string();

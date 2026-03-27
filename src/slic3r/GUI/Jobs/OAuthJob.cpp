@@ -161,6 +161,7 @@ void OAuthJob::process(Ctl& ctl)
             http.timeout_connect(5)
                 .timeout_max(5)
                 .set_user_agent("Cura/5.7.0 (Windows x86_64)")
+                .allow_tls_flexible(true)  // Allow TLSv1.3+ for UltiMaker OAuth servers
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .set_post_body(post_body)
                 .on_complete([&](std::string body, unsigned status) { 
