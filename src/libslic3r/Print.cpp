@@ -3562,6 +3562,15 @@ std::string PrintStatistics::finalize_output_path(const std::string &path_in) co
         PlaceholderParser pp;
         std::string new_stem = pp.process(path.stem().string(), 0, &cfg);
         final_path = (path.parent_path() / (new_stem + path.extension().string())).string();
+        
+        // FIX: Replace spaces with underscores in filenames for container formats
+        // .ufp and .makerbot files cannot have spaces in filenames
+        std::string ext_lower = boost::to_lower_copy(path.extension().string());
+        if (ext_lower == ".ufp" || ext_lower == ".makerbot") {
+            // Replace spaces in the final path (both stem and path)
+            std::replace(final_path.begin(), final_path.end(), ' ', '_');
+            BOOST_LOG_TRIVIAL(info) << "finalize_output_path: Sanitized container filename: " << final_path;
+        }
     } catch (const std::exception &ex) {
         BOOST_LOG_TRIVIAL(error) << "Failed to apply the print statistics to the export file name: " << ex.what();
         final_path = path_in;

@@ -70,6 +70,7 @@ static std::string generate_material_guid(const std::string& material_type) {
 
 // Helper function to extract MATERIAL_GUID from filament preset
 // Walks the inheritance chain to find the base preset that has the MATERIAL_GUID
+// Also checks the selected preset itself first (in case it's a user-created preset with its own GUID)
 static std::string extract_material_guid_from_preset(const Slic3r::Preset* filament_preset, const Slic3r::PresetBundle* preset_bundle, const std::string& preset_name_for_debug) {
     if (!filament_preset || !preset_bundle) {
         BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: filament_preset=" << (filament_preset ? "VALID" : "NULL") 
@@ -81,59 +82,102 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
     BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: filament_preset name=" << filament_preset->name
                               << ", preset_bundle valid, searching for: " << preset_name_for_debug;
     
-    // Try to get the base preset by walking the inheritance chain
-    // SAFETY: Check filament_preset is not null before dereferencing
-    const Slic3r::Preset* base_preset = nullptr;
-    try {
-        if (filament_preset) {
-            base_preset = preset_bundle->filaments.get_preset_base(*filament_preset);
-        }
-    } catch (const std::exception& e) {
-        BOOST_LOG_TRIVIAL(error) << "extract_material_guid_from_preset: Exception in get_preset_base: " << e.what();
-        base_preset = nullptr;
-    }
-    
-    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base_preset from get_preset_base()=" << (base_preset ? base_preset->name : "NULL");
-    
-    // If no base preset found, use the current preset
-    if (!base_preset) {
-        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: get_preset_base() returned NULL, using filament_preset directly";
-        base_preset = filament_preset;
-    } else {
-        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Using base preset: " << base_preset->name
-                                  << ", inherits: " << base_preset->inherits();
-    }
-    
-    // Extract MATERIAL_GUID from filament_notes
-    if (const Slic3r::ConfigOptionString* notes_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_notes")) {
-        std::string notes = notes_opt->value;
-        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base preset " << base_preset->name 
-                                  << " has filament_notes, length=" << notes.length();
+    // Helper lambda to extract GUID from a preset's filament_notes
+    auto extract_guid_from_preset = [](const Slic3r::Preset* preset) -> std::string {
+        if (!preset) return "";
         
-        // Check if MATERIAL_GUID exists in notes
-        const std::string guid_tag = "MATERIAL_GUID:";
-        size_t guid_pos = notes.find(guid_tag);
-        if (guid_pos != std::string::npos) {
-            size_t guid_start = guid_pos + guid_tag.length();
-            size_t guid_end = notes.find_first_of("\n\r", guid_start);
-            if (guid_end == std::string::npos) guid_end = notes.length();
-            std::string material_guid = notes.substr(guid_start, guid_end - guid_start);
-            boost::algorithm::trim(material_guid);
-            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Found MATERIAL_GUID: " << material_guid;
-            if (!material_guid.empty()) {
-                return material_guid;
+        if (const Slic3r::ConfigOptionString* notes_opt = preset->config.option<Slic3r::ConfigOptionString>("filament_notes")) {
+            std::string notes = notes_opt->value;
+            
+            // Check if MATERIAL_GUID exists in notes
+            const std::string guid_tag = "MATERIAL_GUID:";
+            size_t guid_pos = notes.find(guid_tag);
+            if (guid_pos != std::string::npos) {
+                size_t guid_start = guid_pos + guid_tag.length();
+                size_t guid_end = notes.find_first_of("\n\r", guid_start);
+                if (guid_end == std::string::npos) guid_end = notes.length();
+                std::string material_guid = notes.substr(guid_start, guid_end - guid_start);
+                boost::algorithm::trim(material_guid);
+                if (!material_guid.empty()) {
+                    return material_guid;
+                }
             }
-        } else {
-            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: MATERIAL_GUID: not found in filament_notes";
-            // Print first 200 chars of notes for debugging
-            std::string notes_preview = notes.substr(0, std::min(notes.length(), size_t(200)));
-            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Notes preview: " << notes_preview;
         }
-    } else {
-        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base preset " << base_preset->name 
-                                  << " does NOT have filament_notes option";
+        return "";
+    };
+    
+    // STEP 1: First, check if the selected preset itself has a GUID
+    // This handles user-created presets that might have their own GUID
+    std::string selected_guid = extract_guid_from_preset(filament_preset);
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Selected preset " << filament_preset->name 
+                              << " has GUID: " << (selected_guid.empty() ? "EMPTY" : selected_guid);
+    
+    // STEP 2: Walk up the inheritance chain to find a preset with a GUID
+    // Start with the selected preset's parent
+    const Slic3r::Preset* current = filament_preset;
+    const Slic3r::Preset* base_preset = nullptr;
+    std::string base_preset_name = "none";
+    
+    while (current) {
+        // Try to get the parent preset
+        const Slic3r::Preset* parent = nullptr;
+        if (!current->inherits().empty()) {
+            try {
+                // find_preset is not const, so we need to const_cast the collection
+                // This is safe because we're just reading presets
+                Slic3r::PresetCollection& filaments = const_cast<Slic3r::PresetCollection&>(preset_bundle->filaments);
+                parent = filaments.find_preset(current->inherits(), false, true);
+            } catch (const std::exception& e) {
+                BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Exception finding parent: " << e.what();
+            }
+        }
+        
+        if (!parent) {
+            // No more parents, try get_preset_base as fallback
+            try {
+                base_preset = preset_bundle->filaments.get_preset_base(*filament_preset);
+                base_preset_name = base_preset ? base_preset->name : "NULL";
+            } catch (const std::exception& e) {
+                BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Exception in get_preset_base: " << e.what();
+                base_preset = nullptr;
+            }
+            break;
+        }
+        
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Checking parent preset: " << parent->name
+                                  << " (child: " << current->name << ")";
+        
+        // Check if this parent has a GUID
+        std::string parent_guid = extract_guid_from_preset(parent);
+        if (!parent_guid.empty()) {
+            base_preset = parent;
+            base_preset_name = parent->name;
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Found GUID in parent: " << parent_guid;
+            break;
+        }
+        
+        // Move up the chain
+        current = parent;
     }
     
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Final base preset: " << base_preset_name;
+    
+    // STEP 3: Extract GUID from the base preset we found
+    if (base_preset) {
+        std::string base_guid = extract_guid_from_preset(base_preset);
+        if (!base_guid.empty()) {
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Base preset GUID: " << base_guid;
+            return base_guid;
+        }
+    }
+    
+    // STEP 4: If we still don't have a GUID, return the selected preset's GUID if it exists
+    if (!selected_guid.empty()) {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Using selected preset's own GUID: " << selected_guid;
+        return selected_guid;
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: No GUID found in inheritance chain";
     return "";
 }
 

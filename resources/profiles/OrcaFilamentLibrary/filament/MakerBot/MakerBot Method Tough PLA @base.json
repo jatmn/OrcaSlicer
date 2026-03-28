@@ -34,5 +34,9 @@
     ],
     "filament_scarf_length": [
         "10"
-    ]
+    ],
+    "filament_type": [
+        "PLA Tough"
+    ],
+    "filament_notes": "MATERIAL_GUID: 2c31d5ae-a75c-4be6-83bf-377341fc6d24"
 }

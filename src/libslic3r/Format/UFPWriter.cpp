@@ -114,6 +114,8 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     // Prepare material filename (needed for UFP_Global, material, and gcode.rels)
     std::string material_type_lower = meta.material_type;
     std::transform(material_type_lower.begin(), material_type_lower.end(), material_type_lower.begin(), ::tolower);
+    // Replace spaces with underscores for filename compatibility
+    std::replace(material_type_lower.begin(), material_type_lower.end(), ' ', '_');
     std::string material_filename = "ultimaker_" + material_type_lower + ".xml.fdm_material";
 
     // 4. /Metadata/UFP_Global.json - with leading slash
@@ -197,28 +199,50 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
             meta.filament_g = m_filament_g;
     }
     
-    // CRITICAL: Ensure extruder GUID matches metadata GUID
-    // If extruder GUID is empty but metadata has one (from G-code parsing), use it
-    // This ensures the header uses the correct GUID from OrcaSlicer G-code
-    if (m_extruders[0].material_guid.empty() && !meta.material_guid.empty()) {
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Setting extruder 0 GUID from metadata: '" 
-                               << meta.material_guid << "'";
-        m_extruders[0].material_guid = meta.material_guid;
-    } else if (!m_extruders[0].material_guid.empty() && !meta.material_guid.empty()) {
-        // If both have GUIDs, ensure they match
+    // CRITICAL: Prioritize extruder GUID over metadata GUID
+    // The extruder data comes from filament presets which should have the correct GUID
+    // Metadata GUID is a default from G-code parsing (often wrong for specialized materials)
+    
+    // First handle extruder 0: always use extruder GUID if available
+    if (!m_extruders[0].material_guid.empty()) {
+        // Extruder has GUID, use it to override metadata
         if (meta.material_guid != m_extruders[0].material_guid) {
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder GUID '" 
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder 0 GUID '" 
                                    << m_extruders[0].material_guid 
                                    << "' (overriding metadata GUID '" << meta.material_guid << "')";
             meta.material_guid = m_extruders[0].material_guid;
         }
+    } else if (!meta.material_guid.empty()) {
+        // Extruder has no GUID, but metadata does - copy it to extruder as fallback
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Setting extruder 0 GUID from metadata: '" 
+                               << meta.material_guid << "'";
+        m_extruders[0].material_guid = meta.material_guid;
     }
     
-    // Also propagate GUID to extruder 1 if it has no GUID but extruder 0 does
-    // (same material for dual extrusion)
-    if (m_extruders[1].material_guid.empty() && !m_extruders[0].material_guid.empty()) {
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Propagating GUID to extruder 1";
+    // Handle extruder 1: similar logic but also check extruder 0 for propagation
+    if (!m_extruders[1].material_guid.empty()) {
+        // Extruder 1 has its own GUID, use it
+        // Note: We don't override metadata here since extruder 0 already did
+    } else if (!m_extruders[0].material_guid.empty()) {
+        // Extruder 1 has no GUID but extruder 0 does - propagate for dual extrusion with same material
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Propagating GUID from extruder 0 to extruder 1";
         m_extruders[1].material_guid = m_extruders[0].material_guid;
+    } else if (!meta.material_guid.empty()) {
+        // Neither extruder has GUID, use metadata as fallback
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Setting extruder 1 GUID from metadata: '" 
+                               << meta.material_guid << "'";
+        m_extruders[1].material_guid = meta.material_guid;
+    }
+    
+    // Also update material type from extruder data if available
+    // This ensures "PLA Tough" is correctly identified instead of default "PLA"
+    if (!m_extruders[0].material_name.empty()) {
+        if (meta.material_type != m_extruders[0].material_name) {
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder 0 material name '" 
+                                   << m_extruders[0].material_name 
+                                   << "' (overriding metadata material type '" << meta.material_type << "')";
+            meta.material_type = m_extruders[0].material_name;
+        }
     }
     
     // Use machine bounds from config if available (6 values: min_x, min_y, min_z, max_x, max_y, max_z)
