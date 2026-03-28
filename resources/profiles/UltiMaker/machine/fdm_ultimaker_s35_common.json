@@ -1,0 +1,182 @@
+{
+    "type": "machine",
+    "name": "fdm_ultimaker_s35_common",
+    "inherits": "fdm_machine_common",
+    "from": "system",
+    "instantiation": "false",
+    "printer_technology": "FFF",
+    "printer_notes": "",
+    "deretraction_speed": [
+        "35"
+    ],
+    "extruder_colour": [
+        "#FCE94F",
+        "#FCE94F"
+    ],
+    "extruder_offset": [
+        "0x0",
+        "0x0"
+    ],
+    "gcode_flavor": "marlin2",
+    "host_type": "ultimaker",
+    "machine_max_acceleration_extruding": [
+        "3000",
+        "3000"
+    ],
+    "machine_max_acceleration_retracting": [
+        "3000",
+        "3000"
+    ],
+    "machine_max_acceleration_travel": [
+        "15000",
+        "15000"
+    ],
+    "machine_max_speed_e": [
+        "120",
+        "120"
+    ],
+    "machine_max_jerk_e": [
+        "5",
+        "5"
+    ],
+    "machine_max_jerk_x": [
+        "20",
+        "20"
+    ],
+    "machine_max_jerk_y": [
+        "20",
+        "20"
+    ],
+    "machine_max_jerk_z": [
+        "0.4",
+        "0.4"
+    ],
+    "min_layer_height": [
+        "0.08",
+        "0.08"
+    ],
+    "extruder_type": [
+        "Direct Drive",
+        "Direct Drive"
+    ],
+    "retract_before_wipe": [
+        "70%",
+        "70%"
+    ],
+    "retraction_length": [
+        "3.4",
+        "3.4"
+    ],
+    "retract_length_toolchange": [
+        "1",
+        "1"
+    ],
+    "retraction_speed": [
+        "45",
+        "45"
+    ],
+    "retract_lift_above": [
+        "0",
+        "0"
+    ],
+    "retract_lift_below": [
+        "0",
+        "0"
+    ],
+    "retract_lift_enforce": [
+        "All Surfaces",
+        "All Surfaces"
+    ],
+    "retraction_minimum_travel": [
+        "1",
+        "1"
+    ],
+    "retract_restart_extra": [
+        "0",
+        "0"
+    ],
+    "retract_restart_extra_toolchange": [
+        "0",
+        "0"
+    ],
+    "retract_when_changing_layer": [
+        "1",
+        "1"
+    ],
+    "retraction_distances_when_cut": [
+        "18",
+        "18"
+    ],
+    "long_retractions_when_cut": [
+        "0",
+        "0"
+    ],
+    "wipe": [
+        "0",
+        "0"
+    ],
+    "wipe_distance": [
+        "1",
+        "1"
+    ],
+    "z_hop": [
+        "0.4",
+        "0.4"
+    ],
+    "z_hop_types": [
+        "Slope Lift",
+        "Slope Lift"
+    ],
+    "travel_slope": [
+        "3",
+        "3"
+    ],
+    "use_relative_e_distances": "0",
+    "single_extruder_multi_material": "0",
+    "default_nozzle_volume_type": [
+        "Standard",
+        "Standard"
+    ],
+    "extruder_printable_height": [
+        "0",
+        "0"
+    ],
+    "nozzle_flush_dataset": [
+        "0",
+        "0"
+    ],
+    "nozzle_volume": [
+        "0",
+        "0"
+    ],
+    "printer_extruder_id": [
+        "1",
+        "2"
+    ],
+    "printer_extruder_variant": [
+        "AA 0.4",
+        "AA 0.4"
+    ],
+    "extruder_variant_list": [
+        "Direct Drive Standard",
+        "Direct Drive Standard"
+    ],
+    "nozzle_diameter": [
+        "0.4",
+        "0.4"
+    ],
+    "nozzle_type": [
+        "brass",
+        "brass"
+    ],
+    "max_layer_height": [
+        "0.32",
+        "0.32"
+    ],
+    "printer_agent": "moonraker",
+    "purge_in_prime_tower": "0",
+    "z_offset": "0.2",
+    "default_print_profile": "",
+    "scan_first_layer": "0",
+    "thumbnails": "300x300/PNG"
+}
