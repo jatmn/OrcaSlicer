@@ -1,7 +1,7 @@
 {
     "type": "machine",
     "name": "UltiMaker S8 0.25 nozzle",
-    "inherits": "fdm_ultimaker_s_common",
+    "inherits": "fdm_ultimaker_s68_common",
     "from": "system",
     "setting_id": "GM001",
     "instantiation": "true",
@@ -23,7 +23,7 @@
         "0x240"
     ],
     "printable_height": "300",
-"default_filament_profile": [
+    "default_filament_profile": [
         "UltiMaker Tough PLA @System",
         "UltiMaker Tough PLA @System"
     ],
