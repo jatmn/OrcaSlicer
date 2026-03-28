@@ -45,6 +45,36 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
 }
 
 PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUploadActions post_actions, const wxArrayString &groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
+                                       const PrintHostType* host_type)
+    : MsgDialog(static_cast<wxWindow*>(wxGetApp().mainframe), _L("Send G-code to printer host"), _L("Upload to Printer Host with the following filename:"), 0) // Set style = 0 to avoid default creation of the "OK" button. 
+                                                                                                                                                                 // All buttons will be added later in this constructor 
+    , txt_filename(new wxTextCtrl(this, wxID_ANY))
+    , combo_groups(!groups.IsEmpty() ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, groups, wxCB_READONLY) : nullptr)
+    , combo_storage(storage_names.GetCount() > 1 ? new wxComboBox(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, storage_names, wxCB_READONLY) : nullptr)
+    , combo_projects(nullptr)
+    , btn_new_project(nullptr)
+    , btn_refresh_projects(nullptr)
+    , post_upload_action(PrintHostPostUploadAction::None)
+    , m_paths(storage_paths)
+    , m_switch_to_device_tab(switch_to_device_tab)
+    , m_path(path)
+    , m_post_actions(post_actions)
+    , m_storage_names(storage_names)
+    , m_project_names()
+    , m_project_ids()
+    , m_last_project_id()
+    , m_project_msg_label(nullptr)
+    , m_no_projects(false)
+    , m_btn_upload(nullptr)
+    , m_btn_upload_and_print(nullptr)
+    , m_host_type(host_type)
+{
+#ifdef __APPLE__
+    txt_filename->OSXDisableAllSmartSubstitutions();
+#endif
+}
+
+PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUploadActions post_actions, const wxArrayString &groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
                                        const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id, bool no_projects)
     : MsgDialog(static_cast<wxWindow*>(wxGetApp().mainframe), _L("Send G-code to printer host"), _L("Upload to Printer Host with the following filename:"), 0) // Set style = 0 to avoid default creation of the "OK" button. 
                                                                                                                                                                  // All buttons will be added later in this constructor 
@@ -67,6 +97,7 @@ PrintHostSendDialog::PrintHostSendDialog(const fs::path &path, PrintHostPostUplo
     , m_no_projects(no_projects)
     , m_btn_upload(nullptr)
     , m_btn_upload_and_print(nullptr)
+    , m_host_type(nullptr)
 {
 #ifdef __APPLE__
     txt_filename->OSXDisableAllSmartSubstitutions();
@@ -344,23 +375,29 @@ void PrintHostSendDialog::init()
         return true;
     };
 
-    m_btn_upload = add_button(wxID_OK, true, _L("Upload"));
-    // Disable upload button if no projects exist
-    if (m_no_projects) {
-        m_btn_upload->Enable(false);
-    }
-    m_btn_upload->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
-        // Validate that a real project is selected (not the placeholder)
+    // For UltiMaker LAN, only show "Upload and Print" button since the API always starts the print
+    // and there's no way to upload-only (the /cluster-api/v1/print_jobs/ endpoint starts the print)
+    bool hide_upload_button = (m_host_type != nullptr && *m_host_type == PrintHostType::htUltiMakerLAN);
+    
+    if (!hide_upload_button) {
+        m_btn_upload = add_button(wxID_OK, true, _L("Upload"));
+        // Disable upload button if no projects exist
         if (m_no_projects) {
-            wxMessageDialog err_dlg(this, _L("Please create a project folder before uploading."), _L("Error"), wxOK | wxICON_ERROR);
-            err_dlg.ShowModal();
-            return;
+            m_btn_upload->Enable(false);
         }
-        if (validate_path(txt_filename->GetValue())) {
-            post_upload_action = PrintHostPostUploadAction::None;
-            EndDialog(wxID_OK);
-        }
-    });
+        m_btn_upload->Bind(wxEVT_BUTTON, [this, validate_path](wxCommandEvent&) {
+            // Validate that a real project is selected (not the placeholder)
+            if (m_no_projects) {
+                wxMessageDialog err_dlg(this, _L("Please create a project folder before uploading."), _L("Error"), wxOK | wxICON_ERROR);
+                err_dlg.ShowModal();
+                return;
+            }
+            if (validate_path(txt_filename->GetValue())) {
+                post_upload_action = PrintHostPostUploadAction::None;
+                EndDialog(wxID_OK);
+            }
+        });
+    }
     txt_filename->SetFocus();
     
     // if (post_actions.has(PrintHostPostUploadAction::QueuePrint)) {

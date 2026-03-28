@@ -14,6 +14,11 @@
 #include "MsgDialog.hpp"
 #include "../Utils/PrintHost.hpp"
 #include "libslic3r/PrintConfig.hpp"
+
+// Forward declaration for PrintHostType to avoid circular dependency
+namespace Slic3r {
+enum PrintHostType : int;
+}
 class wxButton;
 class wxTextCtrl;
 class wxChoice;
@@ -30,6 +35,9 @@ public:
     PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab);
     PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
                        const wxArrayString& project_names, const wxArrayString& project_ids, const std::string& last_project_id = "", bool no_projects = false);
+    // Constructor with host_type parameter to control button visibility
+    PrintHostSendDialog(const boost::filesystem::path &path, PrintHostPostUploadActions post_actions, const wxArrayString& groups, const wxArrayString& storage_paths, const wxArrayString& storage_names, bool switch_to_device_tab,
+                       const PrintHostType* host_type);
     virtual ~PrintHostSendDialog() {}
     boost::filesystem::path filename() const;
     PrintHostPostUploadAction post_action() const;
@@ -76,6 +84,8 @@ protected:
     // Cached button pointers for enabling after project creation
     Button* m_btn_upload;
     Button* m_btn_upload_and_print;
+    // Host type to control button visibility (e.g., hide Upload button for UltiMaker LAN)
+    const PrintHostType* m_host_type;
 
 public:
     void add_project(const wxString& name, const wxString& id);

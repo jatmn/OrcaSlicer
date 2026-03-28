@@ -70,22 +70,47 @@ static std::string generate_material_guid(const std::string& material_type) {
 
 // Helper function to extract MATERIAL_GUID from filament preset
 // Walks the inheritance chain to find the base preset that has the MATERIAL_GUID
-static std::string extract_material_guid_from_preset(const Slic3r::Preset* filament_preset, const Slic3r::PresetBundle* preset_bundle) {
+static std::string extract_material_guid_from_preset(const Slic3r::Preset* filament_preset, const Slic3r::PresetBundle* preset_bundle, const std::string& preset_name_for_debug) {
     if (!filament_preset || !preset_bundle) {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: filament_preset=" << (filament_preset ? "VALID" : "NULL") 
+                                  << ", preset_bundle=" << (preset_bundle ? "VALID" : "NULL")
+                                  << ", searching for: " << preset_name_for_debug;
         return "";
     }
     
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: filament_preset name=" << filament_preset->name
+                              << ", preset_bundle valid, searching for: " << preset_name_for_debug;
+    
     // Try to get the base preset by walking the inheritance chain
-    const Slic3r::Preset* base_preset = preset_bundle->filaments.get_preset_base(*filament_preset);
+    // SAFETY: Check filament_preset is not null before dereferencing
+    const Slic3r::Preset* base_preset = nullptr;
+    try {
+        if (filament_preset) {
+            base_preset = preset_bundle->filaments.get_preset_base(*filament_preset);
+        }
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "extract_material_guid_from_preset: Exception in get_preset_base: " << e.what();
+        base_preset = nullptr;
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base_preset from get_preset_base()=" << (base_preset ? base_preset->name : "NULL");
     
     // If no base preset found, use the current preset
     if (!base_preset) {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: get_preset_base() returned NULL, using filament_preset directly";
         base_preset = filament_preset;
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Using base preset: " << base_preset->name
+                                  << ", inherits: " << base_preset->inherits();
     }
     
     // Extract MATERIAL_GUID from filament_notes
     if (const Slic3r::ConfigOptionString* notes_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_notes")) {
         std::string notes = notes_opt->value;
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base preset " << base_preset->name 
+                                  << " has filament_notes, length=" << notes.length();
+        
+        // Check if MATERIAL_GUID exists in notes
         const std::string guid_tag = "MATERIAL_GUID:";
         size_t guid_pos = notes.find(guid_tag);
         if (guid_pos != std::string::npos) {
@@ -94,10 +119,19 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
             if (guid_end == std::string::npos) guid_end = notes.length();
             std::string material_guid = notes.substr(guid_start, guid_end - guid_start);
             boost::algorithm::trim(material_guid);
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Found MATERIAL_GUID: " << material_guid;
             if (!material_guid.empty()) {
                 return material_guid;
             }
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: MATERIAL_GUID: not found in filament_notes";
+            // Print first 200 chars of notes for debugging
+            std::string notes_preview = notes.substr(0, std::min(notes.length(), size_t(200)));
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Notes preview: " << notes_preview;
         }
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base preset " << base_preset->name 
+                                  << " does NOT have filament_notes option";
     }
     
     return "";
@@ -735,6 +769,229 @@ void BackgroundSlicingProcess::cancel_ui_task(std::shared_ptr<UITask> task)
 	}
 }
 
+// Shared helper to build UFP container - used by both export_to_final_path() and prepare_upload()
+// This ensures consistent UFP generation and avoids code duplication
+bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path,
+                                                    const std::string& output_path,
+                                                    const std::string& printer_notes,
+                                                    std::string& error_message)
+{
+    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: ENTER - gcode=" << gcode_path << ", output=" << output_path;
+    
+    // Check for nullptrs early to prevent access violations
+    if (!m_fff_print) {
+        BOOST_LOG_TRIVIAL(error) << "build_ufp_container: m_fff_print is NULL!";
+        error_message = "Internal error: m_fff_print is null";
+        return false;
+    }
+    
+    // Determine format type from printer notes
+    std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
+    if (format_type.empty()) {
+        error_message = "No valid format type found in printer notes";
+        BOOST_LOG_TRIVIAL(error) << "build_ufp_container: " << error_message;
+        return false;
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: format_type=" << format_type;
+    
+    // Extract extruder variants from print config for multi-extruder support
+    std::vector<std::string> extruder_variants;
+    if (const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("printer_extruder_variant")) {
+        extruder_variants = variant_opt->values;
+        BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Found " << extruder_variants.size() << " extruder variants";
+    }
+    
+    // Extract extruder data (GUIDs, temps, volumes) for multi-extruder UFP export
+    std::vector<Slic3r::ExtruderData> extruder_data;
+    const DynamicPrintConfig& full_config = m_fff_print->full_print_config();
+    
+    // Get filament presets to compare for single/multi-material detection
+    const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
+    std::vector<std::string> filament_preset_values;
+    if (filament_preset_opts) {
+        filament_preset_values = filament_preset_opts->values;
+    }
+    
+    // Get filament presets
+    if (const ConfigOptionStrings* filament_opts = full_config.option<ConfigOptionStrings>("filament_type")) {
+        const std::vector<std::string>& filament_values = filament_opts->values;
+        
+        // Get filament temps if available
+        std::vector<int> extruder_temps;
+        if (const ConfigOptionInts* temp_opts = full_config.option<ConfigOptionInts>("nozzle_temperature")) {
+            extruder_temps = temp_opts->values;
+        }
+        
+        // Build extruder data for each active extruder (up to 2)
+        for (size_t i = 0; i < filament_values.size() && i < 2; ++i) {
+            Slic3r::ExtruderData edata;
+            
+            // Look up the filament preset for GUID and brand extraction
+            const Slic3r::Preset* filament_preset = nullptr;
+            
+            // CRITICAL: Capture preset_bundle reference immediately to avoid thread safety issues
+            // wxGetApp().preset_bundle may change or become invalid when accessed from background thread
+            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Searching for filament preset: " 
+                                     << (i < filament_preset_values.size() ? filament_preset_values[i] : "(empty)");
+            
+            const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+            if (!preset_bundle) {
+                BOOST_LOG_TRIVIAL(error) << "build_ufp_container: wxGetApp().preset_bundle is NULL!";
+                // Continue with empty GUID rather than crashing
+            } else {
+                try {
+                    if (i < filament_preset_values.size() && !filament_preset_values[i].empty()) {
+                        std::string preset_name = filament_preset_values[i];
+                        filament_preset = preset_bundle->filaments.find_preset(preset_name, false);
+                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Preset lookup result: "
+                                                 << (filament_preset ? "found: " + filament_preset->name : "NOT FOUND");
+                    }
+                    
+                    // Fallback: If preset name is empty but filament_type exists, try to find preset by filament_type
+                    if (!filament_preset && i < filament_values.size() && !filament_values[i].empty()) {
+                        std::string filament_type = filament_values[i];
+                        std::string filament_id = preset_bundle->filaments.filament_id_by_type(filament_type);
+                        if (!filament_id.empty()) {
+                            filament_preset = preset_bundle->filaments.find_preset(filament_id, false);
+                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Fallback preset lookup by filament_type: "
+                                                     << filament_type << " -> " << filament_id
+                                                     << " -> " << (filament_preset ? filament_preset->name : "NOT FOUND");
+                        } else {
+                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: No preset found for filament_type: " << filament_type;
+                        }
+                    }
+
+                    // Extract material GUID from filament preset (walks inheritance chain to find base preset)
+                    std::string material_guid = extract_material_guid_from_preset(filament_preset, preset_bundle, 
+                        i < filament_preset_values.size() ? filament_preset_values[i] : 
+                        (i < filament_values.size() ? filament_values[i] : "unknown"));
+                    
+                    // For container formats (.ufp/.makerbot), NEVER use generated GUIDs - they are always invalid
+                    if (material_guid.empty()) {
+                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: No MATERIAL_GUID found for preset, using empty GUID";
+                        material_guid = "";
+                    }
+                    
+                    edata.material_guid = material_guid;
+                } catch (const std::exception& e) {
+                    BOOST_LOG_TRIVIAL(error) << "build_ufp_container: Exception accessing preset_bundle: " << e.what();
+                    edata.material_guid = "";
+                }
+                
+                // Extract brand from filament preset if available
+                if (filament_preset) {
+                    const Slic3r::Preset* base_preset = preset_bundle->filaments.get_preset_base(*filament_preset);
+                    if (!base_preset) base_preset = filament_preset;
+                    
+                    if (const Slic3r::ConfigOptionString* vendor_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_vendor")) {
+                        edata.brand = vendor_opt->value;
+                        BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Extruder " << i << " brand: " << edata.brand;
+                    }
+                }
+            }
+            
+            // Fallback brand extraction from print config if preset lookup failed
+            if (edata.brand.empty()) {
+                const ConfigOptionStrings* vendor_opts = full_config.option<ConfigOptionStrings>("filament_vendor");
+                if (vendor_opts && i < vendor_opts->values.size() && !vendor_opts->values[i].empty()) {
+                    edata.brand = vendor_opts->values[i];
+                    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Extruder " << i << " brand from config: " << edata.brand;
+                }
+            }
+            
+            edata.material_name = (i < filament_values.size()) ? filament_values[i] : "Unknown";
+            edata.extruder_temp = (i < extruder_temps.size()) ? extruder_temps[i] : 0;
+            edata.filament_mm = 0.0;
+            edata.filament_g = 0.0;
+            
+            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Extruder " << i << " preset lookup: " 
+                                      << (filament_preset ? "found" : "NOT FOUND")
+                                      << ", GUID: " << edata.material_guid
+                                      << ", brand: " << edata.brand;
+            
+            extruder_data.push_back(edata);
+            BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Extruder " << i 
+                                    << " - GUID: " << edata.material_guid
+                                    << ", temp: " << edata.extruder_temp
+                                    << ", name: " << edata.material_name;
+        }
+    }
+    
+    // Get filament length from print statistics
+    if (!extruder_data.empty()) {
+        double total_filament_mm = m_fff_print->print_statistics().total_used_filament;
+        double total_filament_g = m_fff_print->print_statistics().total_weight;
+        
+        // Check if single or multi-material print
+        bool is_single_material = true;
+        if (filament_preset_values.size() >= 2) {
+            const std::string& p0 = filament_preset_values[0];
+            const std::string& p1 = filament_preset_values[1];
+            if (!p0.empty() && !p1.empty() && p0 != p1) {
+                is_single_material = false;
+                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Multi-material print detected";
+            } else {
+                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Single material print detected";
+            }
+        }
+        
+        // Distribute filament across extruders
+        if (extruder_data.size() == 1 || is_single_material) {
+            extruder_data[0].filament_mm = total_filament_mm;
+            extruder_data[0].filament_g = total_filament_g;
+            if (extruder_data.size() >= 2) {
+                extruder_data[1].filament_mm = 0.0;
+                extruder_data[1].filament_g = 0.0;
+            }
+        } else if (extruder_data.size() == 2 && !is_single_material) {
+            extruder_data[0].filament_mm = total_filament_mm / 2.0;
+            extruder_data[0].filament_g = total_filament_g / 2.0;
+            extruder_data[1].filament_mm = total_filament_mm / 2.0;
+            extruder_data[1].filament_g = total_filament_g / 2.0;
+        }
+        
+        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Final filament distribution - extruder 0: " 
+                                    << extruder_data[0].filament_mm << "mm, extruder 1: " 
+                                    << (extruder_data.size() > 1 ? extruder_data[1].filament_mm : 0.0) << "mm";
+    }
+    
+    // Generate PNG thumbnail for UFP using the plate's cached thumbnail_data.
+    // The plate thumbnail is rendered during slicing (at slicing-completed time) and cached;
+    // re-rendering via render_thumbnails() at export time is unreliable (OpenGL context state,
+    // timing issues) and has been observed to produce a blank white image.
+    // Using the cached thumbnail_data is the correct approach.
+    std::vector<uint8_t> thumbnail_data;
+    if (m_current_plate && m_current_plate->thumbnail_data.is_valid()) {
+        auto compressed = GCodeThumbnails::compress_thumbnail(m_current_plate->thumbnail_data, GCodeThumbnailsFormat::PNG);
+        if (compressed && compressed->data && compressed->size) {
+            thumbnail_data.assign((uint8_t*)compressed->data,
+                                  (uint8_t*)compressed->data + compressed->size);
+            BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Using cached plate thumbnail, PNG size=" << thumbnail_data.size();
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Thumbnail PNG compression failed";
+        }
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: No valid cached thumbnail on current plate"
+                                   << " (plate=" << (m_current_plate ? "valid" : "null")
+                                   << ", is_valid=" << (m_current_plate ? m_current_plate->thumbnail_data.is_valid() : false) << ")"
+                                   << " - UFP will have no thumbnail";
+    }
+    
+    // Export to container format
+    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Converting G-code to container format: " << format_type;
+    std::string container_error;
+    if (!Slic3r::FormatConfig::export_to_container(format_type, gcode_path, output_path, printer_notes, 
+                                                   extruder_variants, extruder_data, thumbnail_data, container_error)) {
+        BOOST_LOG_TRIVIAL(error) << "build_ufp_container: ERROR - Container conversion FAILED: " << container_error;
+        error_message = "Failed to export in container format.\n" + container_error;
+        return false;
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: SUCCESS - Container created at: " << output_path;
+    return true;
+}
+
 bool BackgroundSlicingProcess::empty() const
 {
 	assert(m_print != nullptr);
@@ -859,7 +1116,14 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
                                                      bool run_post_process,
                                                      std::string& error_message)
 {
-    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: source=" << source_path << ", dest=" << dest_path;
+    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: ENTER - source=" << source_path << ", dest=" << dest_path;
+    
+    // Check for nullptrs early to prevent access violations
+    if (!m_fff_print) {
+        BOOST_LOG_TRIVIAL(error) << "export_to_final_path: m_fff_print is NULL!";
+        error_message = "Internal error: m_fff_print is null";
+        return false;
+    }
     
     std::string output_path = source_path;
     std::string export_path = dest_path;
@@ -892,7 +1156,6 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
     }
     
     BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: export_path=" << export_path;
-    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: printer_notes=" << printer_notes;
     BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: format_type=" << format_type;
     
     // Container file path (created in system temp directory, deleted after successful copy)
@@ -912,174 +1175,18 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
             export_path = export_path_path.string();
         }
         
-        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Container format required, using export_path: " << export_path;
-        
         // Create container file path in system temp directory
         boost::filesystem::path temp_path = boost::filesystem::temp_directory_path();
         temp_path /= boost::filesystem::unique_path("%%%%-%%%%-%%%%-%%%%");
         temp_path.replace_extension(ext);
         container_path = temp_path.string();
         
-        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Creating container at temp path: " << container_path;
+        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Building container using shared function";
         
-        // Extract extruder variants from print config for multi-extruder support
-        std::vector<std::string> extruder_variants;
-        if (const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("printer_extruder_variant")) {
-            extruder_variants = variant_opt->values;
-            BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Found " << extruder_variants.size() << " extruder variants";
-        }
-        
-        // Extract extruder data (GUIDs, temps, volumes) for multi-extruder UFP export
-        std::vector<Slic3r::ExtruderData> extruder_data;
-        const DynamicPrintConfig& full_config = m_fff_print->full_print_config();
-        
-        // Get filament presets to compare for single/multi-material detection
-        const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
-        std::vector<std::string> filament_preset_values;
-        if (filament_preset_opts) {
-            filament_preset_values = filament_preset_opts->values;
-        }
-        
-        // Get filament presets
-        if (const ConfigOptionStrings* filament_opts = full_config.option<ConfigOptionStrings>("filament_type")) {
-            const std::vector<std::string>& filament_values = filament_opts->values;
-            
-            // Get filament temps if available
-            std::vector<int> extruder_temps;
-            if (const ConfigOptionInts* temp_opts = full_config.option<ConfigOptionInts>("nozzle_temperature")) {
-                extruder_temps = temp_opts->values;
-            }
-            
-            // Build extruder data for each active extruder (up to 2)
-            for (size_t i = 0; i < filament_values.size() && i < 2; ++i) {
-                Slic3r::ExtruderData edata;
-                
-                // Look up the filament preset for GUID and brand extraction
-                const Slic3r::Preset* filament_preset = nullptr;
-                const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
-                if (i < filament_preset_values.size() && preset_bundle) {
-                    std::string preset_name = filament_preset_values[i];
-                    filament_preset = preset_bundle->filaments.find_preset(preset_name, false);
-                }
-                
-                // Extract material GUID from filament preset (walks inheritance chain to find base preset)
-                std::string material_guid = extract_material_guid_from_preset(filament_preset, preset_bundle);
-                
-                // If no GUID found, try to generate a consistent one from material type
-                if (material_guid.empty() && i < filament_values.size()) {
-                    material_guid = generate_material_guid(filament_values[i]);
-                }
-                
-                // Extract brand from filament preset if available (from base preset if needed)
-                if (filament_preset) {
-                    // Try to get brand from base preset first
-                    const Slic3r::Preset* base_preset = preset_bundle ? preset_bundle->filaments.get_preset_base(*filament_preset) : nullptr;
-                    if (!base_preset) base_preset = filament_preset;
-                    
-                    if (const Slic3r::ConfigOptionString* vendor_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_vendor")) {
-                        edata.brand = vendor_opt->value;
-                        BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Extruder " << i << " brand: " << edata.brand;
-                    }
-                }
-                
-                // Fallback brand extraction from print config if preset lookup failed
-                if (edata.brand.empty()) {
-                    const ConfigOptionStrings* vendor_opts = full_config.option<ConfigOptionStrings>("filament_vendor");
-                    if (vendor_opts && i < vendor_opts->values.size() && !vendor_opts->values[i].empty()) {
-                        edata.brand = vendor_opts->values[i];
-                        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Extruder " << i << " brand from config: " << edata.brand;
-                    }
-                }
-                
-                BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Extruder " << i << " preset lookup: " 
-                                          << (filament_preset ? "found" : "NOT FOUND")
-                                          << ", GUID: " << material_guid
-                                          << ", brand: " << edata.brand;
-                
-                edata.material_guid = material_guid;
-                edata.material_name = (i < filament_values.size()) ? filament_values[i] : "Unknown";
-                edata.extruder_temp = (i < extruder_temps.size()) ? extruder_temps[i] : 0;
-                edata.filament_mm = 0.0;  // Will be computed from print stats
-                edata.filament_g = 0.0;
-                
-                extruder_data.push_back(edata);
-                BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Extruder " << i 
-                                        << " - GUID: " << edata.material_guid
-                                        << ", temp: " << edata.extruder_temp
-                                        << ", name: " << edata.material_name;
-            }
-        }
-        
-        // Get filament length from print statistics
-        if (!extruder_data.empty()) {
-            double total_filament_mm = m_fff_print->print_statistics().total_used_filament;
-            double total_filament_g = m_fff_print->print_statistics().total_weight;
-            
-            // Check if both extruders use the same filament (single material print)
-            // Logic:
-            // - If only 1 filament in config -> single material
-            // - If both extruders have the SAME non-empty preset -> single material
-            // - If different non-empty presets -> multi material
-            // - If only 1 non-empty preset (other is empty) -> single material
-            bool is_single_material = true;
-            if (filament_preset_values.size() >= 2) {
-                const std::string& p0 = filament_preset_values[0];
-                const std::string& p1 = filament_preset_values[1];
-                if (!p0.empty() && !p1.empty() && p0 != p1) {
-                    // Different non-empty presets = multi material
-                    is_single_material = false;
-                    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Multi-material print detected (different filaments), splitting filament between extruders";
-                } else {
-                    // Same or one empty = single material
-                    BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Single material print detected, extruder 1 will not get filament";
-                }
-            }
-            
-            // Distribute across extruders
-            if (extruder_data.size() == 1 || is_single_material) {
-                // Single material: all filament goes to extruder 0
-                extruder_data[0].filament_mm = total_filament_mm;
-                extruder_data[0].filament_g = total_filament_g;
-                if (extruder_data.size() >= 2) {
-                    extruder_data[1].filament_mm = 0.0;
-                    extruder_data[1].filament_g = 0.0;
-                }
-            } else if (extruder_data.size() == 2 && !is_single_material) {
-                // Dual extrusion with different filaments: split filament
-                // For now, use equal distribution - could be refined with actual usage data
-                extruder_data[0].filament_mm = total_filament_mm / 2.0;
-                extruder_data[0].filament_g = total_filament_g / 2.0;
-                extruder_data[1].filament_mm = total_filament_mm / 2.0;
-                extruder_data[1].filament_g = total_filament_g / 2.0;
-            }
-            
-            BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Final filament distribution - extruder 0: " 
-                                        << extruder_data[0].filament_mm << "mm, extruder 1: " 
-                                        << (extruder_data.size() > 1 ? extruder_data[1].filament_mm : 0.0) << "mm";
-        }
-        
-        // Generate PNG thumbnail directly for UFP (not extracted from G-code comments)
-        std::vector<uint8_t> thumbnail_data;
-        if (m_thumbnail_cb) {
-            ThumbnailsParams params{{Vec2d(320, 320)}, true, true, true, true, m_fff_print->get_plate_index()};
-            ThumbnailsList thumbnails = m_thumbnail_cb(params);
-            if (!thumbnails.empty() && thumbnails[0].is_valid()) {
-                auto compressed = GCodeThumbnails::compress_thumbnail(thumbnails[0], GCodeThumbnailsFormat::PNG);
-                if (compressed && compressed->data && compressed->size) {
-                    thumbnail_data.assign((uint8_t*)compressed->data, 
-                                          (uint8_t*)compressed->data + compressed->size);
-                    BOOST_LOG_TRIVIAL(info) << "export_to_final_path: Generated PNG thumbnail, size=" << thumbnail_data.size();
-                }
-            }
-        }
-        
-        // Export to container format
-        BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Converting G-code to container format: " << format_type;
-        std::string container_error;
-        if (!Slic3r::FormatConfig::export_to_container(format_type, output_path, container_path, printer_notes, 
-                                                       extruder_variants, extruder_data, thumbnail_data, container_error)) {
-            BOOST_LOG_TRIVIAL(error) << "export_to_final_path: ERROR - Container conversion FAILED: " << container_error;
-            error_message = "Failed to export in container format.\n" + container_error;
+        // Use the shared helper function for container building
+        // This ensures consistent UFP generation for both export and upload paths
+        if (!build_ufp_container(output_path, container_path, printer_notes, error_message)) {
+            BOOST_LOG_TRIVIAL(error) << "export_to_final_path: Container build FAILED: " << error_message;
             return false;
         }
         
@@ -1128,13 +1235,25 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
 // Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
 void BackgroundSlicingProcess::finalize_gcode()
 {
+    BOOST_LOG_TRIVIAL(warning) << "finalize_gcode: ENTER - m_export_path=" << m_export_path;
+    
+    // Check for nullptrs early
+    if (!m_fff_print) {
+        BOOST_LOG_TRIVIAL(error) << "finalize_gcode: m_fff_print is NULL!";
+        throw Slic3r::ExportError("Internal error: m_fff_print is null");
+    }
+    
     // Perform the final post-processing of the export path by applying the print statistics over the file name.
     std::string export_path = m_fff_print->print_statistics().finalize_output_path(m_export_path);
+    
+    BOOST_LOG_TRIVIAL(warning) << "finalize_gcode: export_path=" << export_path;
     
     std::string error_message;
     if (!export_to_final_path(m_temp_output_path, export_path, true, error_message)) {
         throw Slic3r::ExportError(error_message);
     }
+    
+    BOOST_LOG_TRIVIAL(warning) << "finalize_gcode: EXIT SUCCESS";
 }
 
 // G-code is generated in m_temp_output_path.
@@ -1142,8 +1261,18 @@ void BackgroundSlicingProcess::finalize_gcode()
 // Copy the final G-code to target location (possibly a SD card, if it is a removable media, then verify that the file was written without an error).
 void BackgroundSlicingProcess::export_gcode()
 {
+    BOOST_LOG_TRIVIAL(warning) << "export_gcode: ENTER - m_export_path=" << m_export_path;
+    
+    // Check for nullptrs early
+    if (!m_fff_print) {
+        BOOST_LOG_TRIVIAL(error) << "export_gcode: m_fff_print is NULL!";
+        throw Slic3r::ExportError("Internal error: m_fff_print is null");
+    }
+    
     // Perform the final post-processing of the export path by applying the print statistics over the file name.
     std::string export_path = m_fff_print->print_statistics().finalize_output_path(m_export_path);
+    
+    BOOST_LOG_TRIVIAL(warning) << "export_gcode: export_path=" << export_path;
     
     std::string error_message;
     // Note: run_post_process=false because BBL printers have already run post-processing
@@ -1181,8 +1310,6 @@ void BackgroundSlicingProcess::prepare_upload()
 		    // Orca: skip post-processing scripts for BBL printers as we have run them already in finalize_gcode()
 		    // todo: do we need to copy the file?
 		
-            // Make a copy of the source path, as run_post_process_scripts() is allowed to change it when making a copy of the source file
-            // (not here, but when the final target is a file).
             // Check if container format conversion is needed for print host upload
             // (e.g., UltiMaker LAN requires .ufp format)
             std::string printer_notes = m_fff_print->full_print_config().opt_string("printer_notes");
@@ -1194,121 +1321,13 @@ void BackgroundSlicingProcess::prepare_upload()
                 boost::filesystem::path container_path = source_path;
                 container_path.replace_extension(container_ext);
                 
-                // Get extruder variants for UFP
-                std::vector<std::string> extruder_variants;
-                // Use printer_extruder_variant to get the correct nozzle variants (matching export_to_final_path)
-                const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("printer_extruder_variant");
-                if (variant_opt) {
-                    extruder_variants = variant_opt->values;
-                    BOOST_LOG_TRIVIAL(info) << "prepare_upload: Found " << extruder_variants.size() << " extruder variants from printer_extruder_variant";
-                } else {
-                    BOOST_LOG_TRIVIAL(warning) << "prepare_upload: printer_extruder_variant not found in config";
-                }
+                BOOST_LOG_TRIVIAL(warning) << "prepare_upload: Building container using shared function";
                 
-                // Build extruder data (simplified version for upload)
-                std::vector<Slic3r::ExtruderData> extruder_data;
-                const DynamicPrintConfig& full_config = m_fff_print->full_print_config();
-                
-                if (const ConfigOptionStrings* filament_opts = full_config.option<ConfigOptionStrings>("filament_type")) {
-                    BOOST_LOG_TRIVIAL(info) << "prepare_upload: Building extruder data for " << filament_opts->values.size() << " extruders";
-                    
-                    // Get filament preset names
-                    const ConfigOptionStrings* filament_preset_opts = full_config.option<ConfigOptionStrings>("filament_presets");
-                    const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
-                    
-                    for (size_t i = 0; i < filament_opts->values.size() && i < 2; ++i) {
-                        Slic3r::ExtruderData edata;
-                        edata.material_name = filament_opts->values[i];
-                        
-                        // Look up the filament preset for GUID and brand extraction
-                        const Slic3r::Preset* filament_preset = nullptr;
-                        if (filament_preset_opts && i < filament_preset_opts->values.size() && preset_bundle) {
-                            filament_preset = preset_bundle->filaments.find_preset(filament_preset_opts->values[i], false);
-                        }
-                        
-                        // Extract material GUID from filament preset (walks inheritance chain to find base preset)
-                        std::string material_guid = extract_material_guid_from_preset(filament_preset, preset_bundle);
-                        
-                        if (material_guid.empty()) {
-                            // Generate fallback GUID from material name using lowercase hex
-                            material_guid = generate_material_guid(edata.material_name);
-                        }
-                        
-                        // Extract brand from filament preset if available (from base preset if needed)
-                        if (filament_preset) {
-                            // Try to get brand from base preset first
-                            const Slic3r::Preset* base_preset = preset_bundle ? preset_bundle->filaments.get_preset_base(*filament_preset) : nullptr;
-                            if (!base_preset) base_preset = filament_preset;
-                            
-                            if (const Slic3r::ConfigOptionString* vendor_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_vendor")) {
-                                edata.brand = vendor_opt->value;
-                                BOOST_LOG_TRIVIAL(info) << "prepare_upload: Extruder " << i << " brand: " << edata.brand;
-                            }
-                        }
-                        
-                        // Fallback brand extraction from print config if preset lookup failed
-                        if (edata.brand.empty()) {
-                            const ConfigOptionStrings* vendor_opts = full_config.option<ConfigOptionStrings>("filament_vendor");
-                            if (vendor_opts && i < vendor_opts->values.size() && !vendor_opts->values[i].empty()) {
-                                edata.brand = vendor_opts->values[i];
-                                BOOST_LOG_TRIVIAL(warning) << "prepare_upload: Extruder " << i << " brand from config: " << edata.brand;
-                            }
-                        }
-                        
-                        BOOST_LOG_TRIVIAL(warning) << "prepare_upload: Extruder " << i << " preset lookup: " 
-                                                  << (filament_preset ? "found" : "NOT FOUND")
-                                                  << ", GUID: " << material_guid
-                                                  << ", brand: " << edata.brand;
-                        
-                        // Get temperature if available
-                        if (const ConfigOptionInts* temp_opts = full_config.option<ConfigOptionInts>("nozzle_temperature")) {
-                            if (i < temp_opts->values.size()) {
-                                edata.extruder_temp = temp_opts->values[i];
-                            }
-                        }
-                        
-                        // Get print statistics
-                        double total_filament_mm = m_fff_print->print_statistics().total_used_filament;
-                        double total_filament_g = m_fff_print->print_statistics().total_weight;
-                        if (filament_opts->values.size() == 1) {
-                            edata.filament_mm = total_filament_mm;
-                            edata.filament_g = total_filament_g;
-                        } else if (filament_opts->values.size() == 2) {
-                            edata.filament_mm = total_filament_mm / 2.0;
-                            edata.filament_g = total_filament_g / 2.0;
-                        }
-                        
-                        extruder_data.push_back(edata);
-                        BOOST_LOG_TRIVIAL(info) << "prepare_upload: Extruder " << i << " final data - GUID: '" << edata.material_guid 
-                                                << "', temp: " << edata.extruder_temp 
-                                                << ", filament_mm: " << edata.filament_mm;
-                    }
-                }
-                
-                BOOST_LOG_TRIVIAL(info) << "prepare_upload: Total extruder_data count: " << extruder_data.size();
-                
-                // Generate PNG thumbnail directly for UFP (not extracted from G-code comments)
-                std::vector<uint8_t> thumbnail_data;
-                if (m_thumbnail_cb) {
-                    ThumbnailsParams params{{Vec2d(320, 320)}, true, true, true, true, m_fff_print->get_plate_index()};
-                    ThumbnailsList thumbnails = m_thumbnail_cb(params);
-                    if (!thumbnails.empty() && thumbnails[0].is_valid()) {
-                        auto compressed = GCodeThumbnails::compress_thumbnail(thumbnails[0], GCodeThumbnailsFormat::PNG);
-                        if (compressed && compressed->data && compressed->size) {
-                            thumbnail_data.assign((uint8_t*)compressed->data, 
-                                                  (uint8_t*)compressed->data + compressed->size);
-                            BOOST_LOG_TRIVIAL(info) << "prepare_upload: Generated PNG thumbnail, size=" << thumbnail_data.size();
-                        }
-                    }
-                }
-                
-                // Convert to container format
-                std::string container_error;
-                if (!Slic3r::FormatConfig::export_to_container(format_type, source_path.string(), 
-                                                               container_path.string(), printer_notes, 
-                                                               extruder_variants, extruder_data, thumbnail_data, container_error)) {
-                    BOOST_LOG_TRIVIAL(error) << "prepare_upload: Container conversion failed: " << container_error;
-                    throw Slic3r::RuntimeError("Failed to convert to container format: " + container_error);
+                // Use the shared helper function for container building
+                // This ensures consistent UFP generation for both export and upload paths
+                if (!build_ufp_container(source_path.string(), container_path.string(), printer_notes, error_message)) {
+                    BOOST_LOG_TRIVIAL(error) << "prepare_upload: Container build FAILED: " << error_message;
+                    throw Slic3r::RuntimeError("Failed to build container format: " + error_message);
                 }
                 
                 // Remove the original source file and use container

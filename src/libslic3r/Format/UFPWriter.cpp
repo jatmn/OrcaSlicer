@@ -197,15 +197,28 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
             meta.filament_g = m_filament_g;
     }
     
-    // CRITICAL: Ensure material GUID in metadata matches the extruder GUID
-    // This ensures G-code header and material.xml have matching GUIDs
-    if (!m_extruders[0].material_guid.empty()) {
+    // CRITICAL: Ensure extruder GUID matches metadata GUID
+    // If extruder GUID is empty but metadata has one (from G-code parsing), use it
+    // This ensures the header uses the correct GUID from OrcaSlicer G-code
+    if (m_extruders[0].material_guid.empty() && !meta.material_guid.empty()) {
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Setting extruder 0 GUID from metadata: '" 
+                               << meta.material_guid << "'";
+        m_extruders[0].material_guid = meta.material_guid;
+    } else if (!m_extruders[0].material_guid.empty() && !meta.material_guid.empty()) {
+        // If both have GUIDs, ensure they match
         if (meta.material_guid != m_extruders[0].material_guid) {
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Overriding material_guid from '" 
-                                   << meta.material_guid << "' to '" << m_extruders[0].material_guid 
-                                   << "' to ensure consistency";
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder GUID '" 
+                                   << m_extruders[0].material_guid 
+                                   << "' (overriding metadata GUID '" << meta.material_guid << "')";
             meta.material_guid = m_extruders[0].material_guid;
         }
+    }
+    
+    // Also propagate GUID to extruder 1 if it has no GUID but extruder 0 does
+    // (same material for dual extrusion)
+    if (m_extruders[1].material_guid.empty() && !m_extruders[0].material_guid.empty()) {
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Propagating GUID to extruder 1";
+        m_extruders[1].material_guid = m_extruders[0].material_guid;
     }
     
     // Use machine bounds from config if available (6 values: min_x, min_y, min_z, max_x, max_y, max_z)
@@ -297,8 +310,10 @@ std::map<std::string, std::pair<std::string, std::string>> UFPWriter::load_nozzl
 
 std::string UFPWriter::generate_extruder_block(int idx, const ExtruderData& data) {
     // Only generate block if extruder was actually used (has filament data)
-    if (data.empty() || data.filament_mm <= 0.0) {
-        return "";  // Return empty string if no data or not used
+    // NOTE: We check filament_mm > 0, not data.empty() because even if GUID is empty,
+    // we still need to generate the NOZZLE info and VOLUME_USED for the G-code header
+    if (data.filament_mm <= 0.0) {
+        return "";  // Return empty string only if no filament was used
     }
     
     std::ostringstream block;
@@ -313,6 +328,8 @@ std::string UFPWriter::generate_extruder_block(int idx, const ExtruderData& data
     if (!filament_str.empty() && filament_str.back() == '.') filament_str.pop_back();
     block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.VOLUME_USED:" << filament_str << "\n";
     
+    // Use GUID from extruder data, or leave empty if not available
+    // The caller should have set this via set_extruder_data()
     block << ";EXTRUDER_TRAIN." << idx << ".MATERIAL.GUID:" << data.material_guid;
     // No trailing \n - template continues with {{extruder_block}} which provides NOZZLE info
     
