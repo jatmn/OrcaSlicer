@@ -96,7 +96,7 @@ GCodeMetadata GCodeContainerWriter::parse_gcode(const std::vector<std::string>& 
     meta.bed_temp = 55;
     meta.material_name = "pla";
     meta.material_type = "PLA";
-    meta.material_guid = "5b890432-a9f1-45e4-aad7-a73995600276";
+    meta.material_guid = "";
     meta.min_x = meta.min_y = meta.min_z = 0.0;
     meta.max_x = meta.max_y = meta.max_z = 100.0;
     meta.slice_uuid = generate_uuid();

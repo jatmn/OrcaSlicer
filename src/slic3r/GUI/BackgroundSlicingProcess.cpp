@@ -72,22 +72,59 @@ static std::string generate_material_guid(const std::string& material_type) {
 // Walks the inheritance chain to find the base preset that has the MATERIAL_GUID
 // Also checks the selected preset itself first (in case it's a user-created preset with its own GUID)
 static std::string extract_material_guid_from_preset(const Slic3r::Preset* filament_preset, const Slic3r::PresetBundle* preset_bundle, const std::string& preset_name_for_debug) {
-    if (!filament_preset || !preset_bundle) {
-        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: filament_preset=" << (filament_preset ? "VALID" : "NULL") 
-                                  << ", preset_bundle=" << (preset_bundle ? "VALID" : "NULL")
-                                  << ", searching for: " << preset_name_for_debug;
+    BOOST_LOG_TRIVIAL(warning) << "=== extract_material_guid_from_preset START ===";
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Searching for preset: '" << preset_name_for_debug << "'";
+    
+    if (!preset_bundle) {
+        BOOST_LOG_TRIVIAL(error) << "extract_material_guid_from_preset: FAILURE - preset_bundle=NULL";
         return "";
     }
     
-    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: filament_preset name=" << filament_preset->name
-                              << ", preset_bundle valid, searching for: " << preset_name_for_debug;
-    
-    // Helper lambda to extract GUID from a preset's filament_notes
-    auto extract_guid_from_preset = [](const Slic3r::Preset* preset) -> std::string {
-        if (!preset) return "";
+    // If filament_preset is NULL, try to find it using the preset_name_for_debug or other strategies
+    const Slic3r::Preset* preset_to_use = filament_preset;
+    if (!preset_to_use && !preset_name_for_debug.empty()) {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: filament_preset is NULL, trying to find preset by name: '" << preset_name_for_debug << "'";
+        preset_to_use = preset_bundle->filaments.find_preset(preset_name_for_debug, false);
+        if (!preset_to_use) {
+            // Try partial name matching
+            std::string search_lower = preset_name_for_debug;
+            std::transform(search_lower.begin(), search_lower.end(), search_lower.begin(), ::tolower);
+            for (const auto& preset : preset_bundle->filaments) {
+                if (preset.is_system && preset.is_visible) {
+                    std::string name_lower = preset.name;
+                    std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
+                    if (name_lower.find(search_lower) != std::string::npos) {
+                        preset_to_use = &preset;
+                        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Found preset by partial name match: " << preset.name;
+                        break;
+                    }
+                }
+            }
+        }
         
-        if (const Slic3r::ConfigOptionString* notes_opt = preset->config.option<Slic3r::ConfigOptionString>("filament_notes")) {
-            std::string notes = notes_opt->value;
+        if (!preset_to_use) {
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Could not find preset '" << preset_name_for_debug << "', will use fallback search";
+        }
+    }
+    
+    if (!preset_to_use) {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: No preset available, proceeding to fallback search";
+        // We'll continue to the fallback logic below
+        BOOST_LOG_TRIVIAL(warning) << "=== extract_material_guid_from_preset END (NO PRESET) ===";
+        return "";
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Selected preset name='" << preset_to_use->name << "'";
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Inherits field='" << preset_to_use->inherits() << "'";
+    
+        // Helper lambda to extract GUID from a preset's filament_notes
+        auto extract_guid_from_preset = [](const Slic3r::Preset* preset) -> std::string {
+            if (!preset) return "";
+            
+            // FIX: filament_notes is ConfigOptionStrings (array), not ConfigOptionString (single value)
+            if (const Slic3r::ConfigOptionStrings* notes_opt = preset->config.option<Slic3r::ConfigOptionStrings>("filament_notes")) {
+                if (!notes_opt->values.empty()) {
+                    std::string notes = notes_opt->values[0];
             
             // Check if MATERIAL_GUID exists in notes
             const std::string guid_tag = "MATERIAL_GUID:";
@@ -99,44 +136,54 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
                 std::string material_guid = notes.substr(guid_start, guid_end - guid_start);
                 boost::algorithm::trim(material_guid);
                 if (!material_guid.empty()) {
+                    BOOST_LOG_TRIVIAL(debug) << "extract_guid_from_preset: Found GUID '" << material_guid << "' in preset '" << preset->name << "'";
                     return material_guid;
                 }
             }
         }
+        }
+        BOOST_LOG_TRIVIAL(debug) << "extract_guid_from_preset: No GUID found in preset '" << preset->name << "'";
         return "";
     };
     
     // STEP 1: First, check if the selected preset itself has a GUID
     // This handles user-created presets that might have their own GUID
-    std::string selected_guid = extract_guid_from_preset(filament_preset);
-    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Selected preset " << filament_preset->name 
-                              << " has GUID: " << (selected_guid.empty() ? "EMPTY" : selected_guid);
+    std::string selected_guid = extract_guid_from_preset(preset_to_use);
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: STEP 1 - Selected preset '" << preset_to_use->name 
+                              << "' GUID: " << (selected_guid.empty() ? "[EMPTY]" : selected_guid);
     
     // STEP 2: Walk up the inheritance chain to find a preset with a GUID
     // Start with the selected preset's parent
-    const Slic3r::Preset* current = filament_preset;
+    const Slic3r::Preset* current = preset_to_use;
     const Slic3r::Preset* base_preset = nullptr;
     std::string base_preset_name = "none";
+    std::vector<std::string> inheritance_chain;
+    
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: STEP 2 - Walking inheritance chain...";
     
     while (current) {
         // Try to get the parent preset
         const Slic3r::Preset* parent = nullptr;
         if (!current->inherits().empty()) {
+            inheritance_chain.push_back(current->name + " (inherits: " + current->inherits() + ")");
             try {
-                // find_preset is not const, so we need to const_cast the collection
-                // This is safe because we're just reading presets
                 Slic3r::PresetCollection& filaments = const_cast<Slic3r::PresetCollection&>(preset_bundle->filaments);
                 parent = filaments.find_preset(current->inherits(), false, true);
+                BOOST_LOG_TRIVIAL(debug) << "extract_material_guid_from_preset: Found parent '" << current->inherits() << "' = " << (parent ? parent->name : "NULL");
             } catch (const std::exception& e) {
                 BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Exception finding parent: " << e.what();
             }
+        } else {
+            inheritance_chain.push_back(current->name + " (no inherits)");
+            BOOST_LOG_TRIVIAL(debug) << "extract_material_guid_from_preset: Preset '" << current->name << "' has no inherits field";
         }
         
         if (!parent) {
-            // No more parents, try get_preset_base as fallback
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: End of inheritance chain, using get_preset_base() as fallback";
             try {
-                base_preset = preset_bundle->filaments.get_preset_base(*filament_preset);
+                base_preset = preset_bundle->filaments.get_preset_base(*preset_to_use);
                 base_preset_name = base_preset ? base_preset->name : "NULL";
+                BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: get_preset_base() returned: '" << base_preset_name << "'";
             } catch (const std::exception& e) {
                 BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Exception in get_preset_base: " << e.what();
                 base_preset = nullptr;
@@ -144,15 +191,14 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
             break;
         }
         
-        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Checking parent preset: " << parent->name
-                                  << " (child: " << current->name << ")";
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Checking parent preset: '" << parent->name << "' (child: '" << current->name << "')";
         
         // Check if this parent has a GUID
         std::string parent_guid = extract_guid_from_preset(parent);
         if (!parent_guid.empty()) {
             base_preset = parent;
             base_preset_name = parent->name;
-            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Found GUID in parent: " << parent_guid;
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: SUCCESS - Found GUID in parent '" << parent->name << "': " << parent_guid;
             break;
         }
         
@@ -160,24 +206,59 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
         current = parent;
     }
     
-    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Final base preset: " << base_preset_name;
+    // Log the full inheritance chain
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Inheritance chain: " << inheritance_chain.size() << " levels";
+    for (size_t i = 0; i < inheritance_chain.size(); i++) {
+        BOOST_LOG_TRIVIAL(warning) << "  Chain[" << i << "]: " << inheritance_chain[i];
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Final base preset: '" << base_preset_name << "'";
     
     // STEP 3: Extract GUID from the base preset we found
     if (base_preset) {
         std::string base_guid = extract_guid_from_preset(base_preset);
         if (!base_guid.empty()) {
-            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Base preset GUID: " << base_guid;
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: SUCCESS - Base preset '" << base_preset->name << "' has GUID: " << base_guid;
+            BOOST_LOG_TRIVIAL(warning) << "=== extract_material_guid_from_preset END (SUCCESS from base) ===";
             return base_guid;
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Base preset '" << base_preset->name << "' has no GUID";
         }
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base_preset is NULL";
     }
     
     // STEP 4: If we still don't have a GUID, return the selected preset's GUID if it exists
     if (!selected_guid.empty()) {
         BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Using selected preset's own GUID: " << selected_guid;
+        BOOST_LOG_TRIVIAL(warning) << "=== extract_material_guid_from_preset END (SUCCESS from selected) ===";
         return selected_guid;
     }
     
-    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: No GUID found in inheritance chain";
+    // STEP 5: FALLBACK - Try to find any base preset with "PLA" or "Tough" in the name
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: STEP 5 - Trying fallback search for PLA-related presets...";
+    {
+        Slic3r::PresetCollection& filaments = const_cast<Slic3r::PresetCollection&>(preset_bundle->filaments);
+        for (const auto& preset : filaments) {
+            if (preset.is_system && preset.is_visible) {
+                std::string pname = preset.name;
+                if (pname.find("PLA") != std::string::npos || pname.find("Tough") != std::string::npos) {
+                    std::string pguid = extract_guid_from_preset(&preset);
+                    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback candidate: '" << preset.name << "' GUID: " << (pguid.empty() ? "[NONE]" : pguid);
+                    if (!pguid.empty() && base_preset == nullptr) {
+                        base_preset = &preset;
+                        base_preset_name = preset.name;
+                        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback - Using preset '" << preset.name << "' with GUID: " << pguid;
+                        BOOST_LOG_TRIVIAL(warning) << "=== extract_material_guid_from_preset END (SUCCESS from fallback) ===";
+                        return pguid;
+                    }
+                }
+            }
+        }
+    }
+    
+    BOOST_LOG_TRIVIAL(error) << "extract_material_guid_from_preset: FAILURE - No GUID found in inheritance chain for preset '" << preset_name_for_debug << "'";
+    BOOST_LOG_TRIVIAL(warning) << "=== extract_material_guid_from_preset END (FAILURE) ===";
     return "";
 }
 
@@ -892,16 +973,56 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                                                  << (filament_preset ? "found: " + filament_preset->name : "NOT FOUND");
                     }
                     
-                    // Fallback: If preset name is empty but filament_type exists, try to find preset by filament_type
+                    // Fallback: If preset name is empty but filament_type exists, try multiple strategies to find preset
                     if (!filament_preset && i < filament_values.size() && !filament_values[i].empty()) {
                         std::string filament_type = filament_values[i];
+                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Fallback lookup for filament_type: " << filament_type;
+                        
+                        // Strategy 1: Try filament_id_by_type first (standard lookup)
                         std::string filament_id = preset_bundle->filaments.filament_id_by_type(filament_type);
                         if (!filament_id.empty()) {
                             filament_preset = preset_bundle->filaments.find_preset(filament_id, false);
-                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Fallback preset lookup by filament_type: "
+                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 1 (filament_id): " 
                                                      << filament_type << " -> " << filament_id
-                                                     << " -> " << (filament_preset ? filament_preset->name : "NOT FOUND");
-                        } else {
+                                                     << " -> " << (filament_preset ? "found: " + filament_preset->name : "NOT FOUND");
+                        }
+                        
+                        // Strategy 2: If that fails, search all presets for matching filament_type field
+                        if (!filament_preset) {
+                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 2 - searching presets by filament_type field: " << filament_type;
+                            for (const auto& preset : preset_bundle->filaments) {
+                                if (preset.is_system && preset.is_visible) {
+                                    if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
+                                        if (!type_opt->values.empty() && type_opt->values[0] == filament_type) {
+                                            filament_preset = &preset;
+                                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset by filament_type field: " << preset.name;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Strategy 3: Try partial name matching (e.g., "PLA Tough" might match "UltiMaker Tough PLA @base")
+                        if (!filament_preset) {
+                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 3 - partial name match for: " << filament_type;
+                            std::string search_lower = filament_type;
+                            std::transform(search_lower.begin(), search_lower.end(), search_lower.begin(), ::tolower);
+                            for (const auto& preset : preset_bundle->filaments) {
+                                if (preset.is_system && preset.is_visible) {
+                                    std::string name_lower = preset.name;
+                                    std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
+                                    // Check if filament_type appears in preset name (case-insensitive)
+                                    if (name_lower.find(search_lower) != std::string::npos) {
+                                        filament_preset = &preset;
+                                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset by partial name match: " << preset.name;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (!filament_preset) {
                             BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: No preset found for filament_type: " << filament_type;
                         }
                     }

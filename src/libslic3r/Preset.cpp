@@ -2828,6 +2828,15 @@ size_t PresetCollection::first_visible_idx_by_type(const std::string& filament_t
         idx = find_by_type(filament_type.substr(0, sep));
         if (idx != size_t(-1))
             return idx;
+
+        // 2.5. Word order variation fallback
+        //    e.g. "PLA Tough" -> "Tough PLA"
+        //    Some materials like "Tough PLA" may be stored with reversed word order in presets
+        std::string reversed = filament_type.substr(sep + 1) + " " + filament_type.substr(0, sep);
+        boost::algorithm::trim(reversed);
+        idx = find_by_type(reversed);
+        if (idx != size_t(-1))
+            return idx;
     }
 
     // 3. Any visible preset
