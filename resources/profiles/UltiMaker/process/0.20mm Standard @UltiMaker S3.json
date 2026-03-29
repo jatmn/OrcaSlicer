@@ -14,10 +14,10 @@
         "UltiMaker S3 CC 0.4",
         "UltiMaker S3 CC 0.6",
         "UltiMaker S3 CC RED 0.6",
-        "UltiMaker S3 AA+ 0.4",
-        "UltiMaker S3 CC+ 0.4",
-        "UltiMaker S3 CC+ 0.6",
-        "UltiMaker S3 HT 0.6"
+        "UltiMaker S3 0.25 nozzle",
+        "UltiMaker S3 0.4 nozzle",
+        "UltiMaker S3 0.6 nozzle",
+        "UltiMaker S3 0.8 nozzle"
     ],
     "bridge_acceleration": "75%",
     "default_acceleration": "10000",

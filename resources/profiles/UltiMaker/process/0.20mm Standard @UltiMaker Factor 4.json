@@ -14,10 +14,11 @@
         "UltiMaker Factor 4 CC 0.4",
         "UltiMaker Factor 4 CC 0.6",
         "UltiMaker Factor 4 CC RED 0.6",
-        "UltiMaker Factor 4 AA+ 0.4",
-        "UltiMaker Factor 4 CC+ 0.4",
-        "UltiMaker Factor 4 CC+ 0.6",
-        "UltiMaker Factor 4 HT 0.6"
+        "UltiMaker Factor 4 HT 0.6",
+        "UltiMaker Factor 4 0.25 nozzle",
+        "UltiMaker Factor 4 0.4 nozzle",
+        "UltiMaker Factor 4 0.6 nozzle",
+        "UltiMaker Factor 4 0.8 nozzle"
     ],
     "bridge_acceleration": "75%",
     "default_acceleration": "10000",
