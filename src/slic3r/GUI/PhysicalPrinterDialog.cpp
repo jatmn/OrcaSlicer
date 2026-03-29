@@ -41,6 +41,7 @@
 #include "SimplyPrint.hpp"
 #include "UltiMaker.hpp"
 #include "UltiMakerLAN.hpp"
+#include "UltiMakerDialog.hpp"
 
 namespace Slic3r {
 namespace GUI {
@@ -205,14 +206,28 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
         return sizer;
     };
 
-    auto printhost_browse = [=](wxWindow* parent) 
+    auto printhost_browse = [=](wxWindow* parent)
     {
         auto sizer = create_sizer_with_btn(parent, &m_printhost_browse_btn, "printer_host_browser", _L("Browse") + " " + dots);
         m_printhost_browse_btn->Bind(wxEVT_BUTTON, [=](wxCommandEvent& e) {
-            BonjourDialog dialog(this, Preset::printer_technology(*m_config));
-            if (dialog.show_and_lookup()) {
-                m_optgroup->set_value("print_host", dialog.get_selected(), true);
-                m_optgroup->get_field("print_host")->field_changed();
+            // Check if this is UltiMaker LAN host type
+            const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
+            bool is_ultimaker_lan = opt && opt->value == htUltiMakerLAN;
+            
+            if (is_ultimaker_lan) {
+                // Use UltiMaker-specific dialog for UltiMaker LAN discovery
+                UltiMakerDialog dialog(this, Preset::printer_technology(*m_config));
+                if (dialog.show_and_lookup()) {
+                    m_optgroup->set_value("print_host", dialog.get_selected(), true);
+                    m_optgroup->get_field("print_host")->field_changed();
+                }
+            } else {
+                // Use generic Bonjour dialog for other host types
+                BonjourDialog dialog(this, Preset::printer_technology(*m_config));
+                if (dialog.show_and_lookup()) {
+                    m_optgroup->set_value("print_host", dialog.get_selected(), true);
+                    m_optgroup->get_field("print_host")->field_changed();
+                }
             }
         });
 
