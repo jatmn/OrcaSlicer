@@ -955,14 +955,14 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
             // Look up the filament preset for GUID and brand extraction
             const Slic3r::Preset* filament_preset = nullptr;
             
-            // CRITICAL: Capture preset_bundle reference immediately to avoid thread safety issues
+            // CRITICAL: Use m_preset_bundle captured from UI thread to avoid thread safety issues
             // wxGetApp().preset_bundle may change or become invalid when accessed from background thread
             BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Searching for filament preset: " 
                                      << (i < filament_preset_values.size() ? filament_preset_values[i] : "(empty)");
             
-            const Slic3r::PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+            const Slic3r::PresetBundle* preset_bundle = m_preset_bundle;
             if (!preset_bundle) {
-                BOOST_LOG_TRIVIAL(error) << "build_ufp_container: wxGetApp().preset_bundle is NULL!";
+                BOOST_LOG_TRIVIAL(error) << "build_ufp_container: m_preset_bundle is NULL! (thread safety issue)";
                 // Continue with empty GUID rather than crashing
             } else {
                 try {
@@ -1221,6 +1221,8 @@ void BackgroundSlicingProcess::schedule_export(const std::string &path, bool exp
 	this->invalidate_step(bspsGCodeFinalize);
 	m_export_path = path;
 	m_export_path_on_removable_media = export_path_on_removable_media;
+	// Capture preset bundle from UI thread for thread-safe access during UFP export
+	m_preset_bundle = wxGetApp().preset_bundle;
 }
 
 void BackgroundSlicingProcess::schedule_upload(Slic3r::PrintHostJob upload_job)
@@ -1234,6 +1236,8 @@ void BackgroundSlicingProcess::schedule_upload(Slic3r::PrintHostJob upload_job)
 	this->invalidate_step(bspsGCodeFinalize);
 	m_export_path.clear();
 	m_upload_job = std::move(upload_job);
+	// Capture preset bundle from UI thread for thread-safe access during UFP export
+	m_preset_bundle = wxGetApp().preset_bundle;
 }
 
 void BackgroundSlicingProcess::reset_export()

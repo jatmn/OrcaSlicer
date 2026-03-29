@@ -107,8 +107,24 @@
             "sub_path": "machine/fdm_ultimaker_s_common.json"
         },
         {
+            "name": "fdm_ultimaker_s68_common",
+            "sub_path": "machine/fdm_ultimaker_s68_common.json"
+        },
+        {
+            "name": "fdm_ultimaker_s35_common",
+            "sub_path": "machine/fdm_ultimaker_s35_common.json"
+        },
+        {
+            "name": "fdm_ultimaker_factor4_common",
+            "sub_path": "machine/fdm_ultimaker_factor4_common.json"
+        },
+        {
             "name": "fdm_makerbot_common",
             "sub_path": "machine/fdm_makerbot_common.json"
+        },
+        {
+            "name": "fdm_ultimaker_2plus_common",
+            "sub_path": "machine/fdm_ultimaker_2plus_common.json"
         },
         {
             "name": "UltiMaker 2 0.4 nozzle",

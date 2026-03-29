@@ -273,10 +273,12 @@ private:
     // thread is blocking until the UI thread calculation finishes.
     std::shared_ptr<UITask> 	m_ui_task;
 
-	//BBS: partplate related
-	GUI::PartPlate* m_current_plate;
-	PrinterTechnology m_printer_tech = ptUnknown;
-	bool m_internal_cancelled = false;
+    //BBS: partplate related
+    GUI::PartPlate* m_current_plate;
+    PrinterTechnology m_printer_tech = ptUnknown;
+    bool m_internal_cancelled = false;
+    // Captured preset bundle from UI thread for thread-safe access during UFP export
+    const Slic3r::PresetBundle* m_preset_bundle = nullptr;
 
     PrintState<BackgroundSlicingProcessStep, bspsCount>   	m_step_state;
 	bool                set_step_started(BackgroundSlicingProcessStep step);
