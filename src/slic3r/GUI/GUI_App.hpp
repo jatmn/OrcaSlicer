@@ -150,7 +150,7 @@ class GizmoObjectManipulation;
 static wxString dots("...", wxConvUTF8);
 
 // Does our wxWidgets version support markup?
-#if wxUSE_MARKUP && wxCHECK_VERSION(3, 1, 1)
+#if wxUSE_MARKUP
     #define SUPPORTS_MARKUP
 #endif
 
