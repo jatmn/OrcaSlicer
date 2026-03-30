@@ -7,7 +7,7 @@
     "instantiation": "true",
     "printer_model": "UltiMaker S7",
     "printer_variant": "0.8",
-    "default_print_profile": "0.20mm Extra Draft @UltiMaker S7",
+    "default_print_profile": "0.20mm Extra Draft @UltiMaker S3-S5-S7 0.8 nozzle",
     "nozzle_diameter": [
         "0.8",
         "0.8"

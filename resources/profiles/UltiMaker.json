@@ -68,28 +68,52 @@
             "sub_path": "process/0.25mm Darft @UltiMaker 2.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S6",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6.json"
+            "name": "0.15mm Standard @UltiMaker S3-S5-S7 0.25 nozzle",
+            "sub_path": "process/0.15mm Standard @UltiMaker S3-S5-S7 0.25 nozzle.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S5",
-            "sub_path": "process/0.20mm Standard @UltiMaker S5.json"
+            "name": "0.15mm Standard @UltiMaker S6-S8 0.25 nozzle",
+            "sub_path": "process/0.15mm Standard @UltiMaker S6-S8 0.25 nozzle.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S7",
-            "sub_path": "process/0.20mm Standard @UltiMaker S7.json"
+            "name": "0.15mm Standard @UltiMaker Factor 4 0.25 nozzle",
+            "sub_path": "process/0.15mm Standard @UltiMaker Factor 4 0.25 nozzle.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S3",
-            "sub_path": "process/0.20mm Standard @UltiMaker S3.json"
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 0.4 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 0.4 nozzle.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S8",
-            "sub_path": "process/0.20mm Standard @UltiMaker S8.json"
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 0.6 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 0.6 nozzle.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker Factor 4",
-            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4.json"
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 0.8 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 0.8 nozzle.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 0.4 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 0.4 nozzle.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 0.6 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 0.6 nozzle.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 0.8 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 0.8 nozzle.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker Factor 4 0.4 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 0.4 nozzle.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker Factor 4 0.6 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 0.6 nozzle.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker Factor 4 0.8 nozzle",
+            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 0.8 nozzle.json"
         },
         {
             "name": "0.20mm Standard @UltiMaker 2+ Connect",

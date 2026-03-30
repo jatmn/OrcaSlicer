@@ -245,7 +245,9 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
                 if (pname.find("PLA") != std::string::npos || pname.find("Tough") != std::string::npos) {
                     std::string pguid = extract_guid_from_preset(&preset);
                     BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback candidate: '" << preset.name << "' GUID: " << (pguid.empty() ? "[NONE]" : pguid);
-                    if (!pguid.empty() && base_preset == nullptr) {
+                    // FIX: Removed `&& base_preset == nullptr` condition that was preventing fallback from working
+                    // when a base_preset was already found (even if it had no GUID)
+                    if (!pguid.empty()) {
                         base_preset = &preset;
                         base_preset_name = preset.name;
                         BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback - Using preset '" << preset.name << "' with GUID: " << pguid;
@@ -988,15 +990,66 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                         }
                         
                         // Strategy 2: If that fails, search all presets for matching filament_type field
+                        // Use two-pass approach to prioritize presets with MATERIAL_GUID (for manufacturer-specific materials)
                         if (!filament_preset) {
                             BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 2 - searching presets by filament_type field: " << filament_type;
+                            
+                            // Helper lambda to extract GUID from a preset's filament_notes
+                            // This is a local copy of the same logic used in extract_material_guid_from_preset
+                            auto extract_guid_from_preset_local = [](const Slic3r::Preset* preset) -> std::string {
+                                if (!preset) return "";
+                                
+                                // filament_notes is ConfigOptionStrings (array), not ConfigOptionString (single value)
+                                if (const Slic3r::ConfigOptionStrings* notes_opt = preset->config.option<Slic3r::ConfigOptionStrings>("filament_notes")) {
+                                    if (!notes_opt->values.empty()) {
+                                        std::string notes = notes_opt->values[0];
+                                
+                                        // Check if MATERIAL_GUID exists in notes
+                                        const std::string guid_tag = "MATERIAL_GUID:";
+                                        size_t guid_pos = notes.find(guid_tag);
+                                        if (guid_pos != std::string::npos) {
+                                            size_t guid_start = guid_pos + guid_tag.length();
+                                            size_t guid_end = notes.find_first_of("\n\r", guid_start);
+                                            if (guid_end == std::string::npos) guid_end = notes.length();
+                                            std::string material_guid = notes.substr(guid_start, guid_end - guid_start);
+                                            boost::algorithm::trim(material_guid);
+                                            if (!material_guid.empty()) {
+                                                return material_guid;
+                                            }
+                                        }
+                                    }
+                                }
+                                return "";
+                            };
+                            
+                            // First pass: Find a preset with matching filament_type AND has a MATERIAL_GUID
                             for (const auto& preset : preset_bundle->filaments) {
                                 if (preset.is_system && preset.is_visible) {
                                     if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
                                         if (!type_opt->values.empty() && type_opt->values[0] == filament_type) {
-                                            filament_preset = &preset;
-                                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset by filament_type field: " << preset.name;
-                                            break;
+                                            // Check if this preset has a MATERIAL_GUID
+                                            std::string guid = extract_guid_from_preset_local(&preset);
+                                            if (!guid.empty()) {
+                                                filament_preset = &preset;
+                                                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset with GUID by filament_type field: " << preset.name;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Second pass: If no preset with GUID found, use the first matching preset
+                            if (!filament_preset) {
+                                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 2 - no preset with GUID found, using first match";
+                                for (const auto& preset : preset_bundle->filaments) {
+                                    if (preset.is_system && preset.is_visible) {
+                                        if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
+                                            if (!type_opt->values.empty() && type_opt->values[0] == filament_type) {
+                                                filament_preset = &preset;
+                                                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset by filament_type field: " << preset.name;
+                                                break;
+                                            }
                                         }
                                     }
                                 }

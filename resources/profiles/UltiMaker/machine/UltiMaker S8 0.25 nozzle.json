@@ -7,7 +7,7 @@
     "instantiation": "true",
     "printer_model": "UltiMaker S8",
     "printer_variant": "0.25",
-    "default_print_profile": "0.20mm Standard @UltiMaker S8",
+    "default_print_profile": "0.15mm Standard @UltiMaker S6-S8 0.25 nozzle",
     "nozzle_diameter": [
         "0.25",
         "0.25"
