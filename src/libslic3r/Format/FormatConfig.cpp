@@ -414,4 +414,87 @@ bool FormatConfig::export_to_container(const std::string& format_type,
     return success;
 }
 
+bool FormatConfig::export_to_container(const std::string& format_type,
+                                       const std::string& input_gcode_path,
+                                       const std::string& output_path,
+                                       const std::string& printer_notes,
+                                       const std::vector<std::string>& extruder_variants,
+                                       const std::vector<ExtruderData>& extruder_data,
+                                       const std::vector<std::pair<std::vector<uint8_t>, std::string>>& thumbnails,
+                                       std::string& error_message) {
+    // For UFP format or when no thumbnails provided, delegate to single-thumbnail overload
+    if (format_type != "makerbot" || thumbnails.empty()) {
+        std::vector<uint8_t> single_thumbnail;
+        if (!thumbnails.empty()) {
+            single_thumbnail = thumbnails[0].first;
+        }
+        return export_to_container(format_type, input_gcode_path, output_path, printer_notes,
+                                     extruder_variants, extruder_data, single_thumbnail, error_message);
+    }
+    
+    // Parse the FORMAT_CONFIG_ID from printer notes
+    std::string config_id = parse_format_config_id(printer_notes, "");
+    
+    if (config_id.empty()) {
+        error_message = "No FORMAT_CONFIG_ID found in printer notes. "
+                       "To export in container format, add FORMAT_CONFIG_ID:<id> to your printer notes. "
+                       "Valid IDs for .ufp: ultimaker_s3, ultimaker_s5, ultimaker_s6, ultimaker_s7, ultimaker_s8, ultimaker_factor4, ultimaker2_plus_connect. "
+                       "Valid IDs for .makerbot: sketch_small, sketch_sprint, sketch_large, method_x, method_xl.";
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
+        return false;
+    }
+    
+    // Load the printer-specific config (NO FALLBACK - fail if config doesn't exist)
+    PrinterFormatConfig format_config;
+    if (!load_printer_config(format_type, config_id, format_config)) {
+        error_message = "Failed to load configuration for FORMAT_CONFIG_ID: " + config_id + ". "
+                       "The configuration file '" + config_id + ".json' does not exist in the formats directory. "
+                       "Please ensure the printer preset is properly configured.";
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
+        return false;
+    }
+    
+    BOOST_LOG_TRIVIAL(info) << "FormatConfig: Exporting to " << format_type 
+                           << " format using config: " << config_id 
+                           << " with " << thumbnails.size() << " thumbnails";
+    
+    // Create the MakerBot writer with multiple thumbnails
+    MakerBotWriter writer(format_config);
+    
+    // Pass extruder variants for nozzle diameter/name
+    if (!extruder_variants.empty()) {
+        writer.set_extruder_variants(extruder_variants);
+        BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting " << extruder_variants.size() << " extruder variants for MakerBot export";
+    }
+    
+    // Pass multiple thumbnails with their filenames
+    writer.set_thumbnails(thumbnails);
+    BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting " << thumbnails.size() << " thumbnails for MakerBot export";
+    
+    // Pass extruder data (GUIDs, temps, volumes) - support up to 2 extruders for dual-extruder MakerBot models
+    for (size_t i = 0; i < extruder_data.size() && i < 2; ++i) {
+        MakerBotExtruderData mb_data;
+        mb_data.material_guid = extruder_data[i].material_guid;
+        mb_data.material_name = extruder_data[i].material_name;
+        mb_data.extruder_temp = extruder_data[i].extruder_temp;
+        mb_data.filament_mm = extruder_data[i].filament_mm;
+        mb_data.filament_g = extruder_data[i].filament_g;
+        writer.set_extruder_data(static_cast<int>(i), mb_data);
+        BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting extruder data for MakerBot export - GUID: " << mb_data.material_guid;
+    }
+    
+    bool success = writer.write(input_gcode_path, output_path);
+    if (!success) {
+        error_message = "Failed to create MakerBot file (.makerbot). "
+                       "The MakerBot writer encountered an error while packaging the G-code file. "
+                       "This may be caused by an invalid or corrupted G-code file, "
+                       "or missing required metadata in the printer configuration.";
+        BOOST_LOG_TRIVIAL(error) << "FormatConfig: Export failed: " << error_message;
+    } else {
+        BOOST_LOG_TRIVIAL(info) << "FormatConfig: Successfully exported to " << output_path;
+    }
+    
+    return success;
+}
+
 } // namespace Slic3r

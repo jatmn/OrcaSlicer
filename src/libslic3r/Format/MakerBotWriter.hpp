@@ -35,11 +35,17 @@ public:
     }
     
     // Set per-extruder data for metadata
-    // idx: 0 for first extruder (MakerBot Sketch only has 1 extruder)
+    // idx: 0 for first extruder, 1 for second (dual-extruder MakerBot models like Method X/XL)
     void set_extruder_data(int idx, const MakerBotExtruderData& data) {
-        if (idx >= 0 && idx < 1) {  // MakerBot only supports 1 extruder
+        if (idx >= 0 && idx < 2) {  // Support up to 2 extruders for dual-extruder MakerBot models
             m_extruder = data;
         }
+    }
+    
+    // Set multiple thumbnails with their filenames (for MakerBot format)
+    // thumbnails: Vector of pairs containing (PNG data, filename)
+    void set_thumbnails(const std::vector<std::pair<std::vector<uint8_t>, std::string>>& thumbnails) {
+        m_thumbnails = thumbnails;
     }
     
     // Check if extruder data has been set
@@ -59,6 +65,7 @@ private:
     bool m_has_stats = false;
     std::vector<std::string> m_extruder_variants;
     MakerBotExtruderData m_extruder;  // Single extruder for MakerBot Sketch
+    std::vector<std::pair<std::vector<uint8_t>, std::string>> m_thumbnails;  // Multiple thumbnails (PNG data, filename)
     
 private:
     std::string generate_meta_json(const GCodeMetadata& meta);

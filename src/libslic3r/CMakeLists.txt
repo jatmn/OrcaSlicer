@@ -210,6 +210,8 @@ set(lisbslic3r_sources
     Format/UFPWriter.hpp
     Format/MakerBotWriter.cpp
     Format/MakerBotWriter.hpp
+    Format/ContainerFormatHelper.cpp
+    Format/ContainerFormatHelper.hpp
     GCode/AdaptivePAInterpolator.cpp
     GCode/AdaptivePAInterpolator.hpp
     GCode/AdaptivePAProcessor.cpp

@@ -146,34 +146,60 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
         return false;
     }
     
-    // 4. Thumbnails (passed directly via set_thumbnail_data(), never extracted from gcode)
+    // 4. Thumbnails (passed directly via set_thumbnails() or set_thumbnail_data(), never extracted from gcode)
     // IMPORTANT: Thumbnails should NEVER be embedded in gcode comments - they are passed separately
-    if (has_thumbnail_data()) {
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding thumbnail, size=" << m_thumbnail_data.size();
+    if (!m_thumbnails.empty()) {
+        // Multiple thumbnails provided via set_thumbnails()
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding " << m_thumbnails.size() << " thumbnails";
+        
+        for (const auto& [thumbnail_data, filename] : m_thumbnails) {
+            if (thumbnail_data.empty()) {
+                BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter: Skipping empty thumbnail: " << filename;
+                continue;
+            }
+            
+            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Adding thumbnail '" << filename << "', size=" << thumbnail_data.size();
+            
+            if (!mz_zip_writer_add_mem(&archive, filename.c_str(),
+                                       thumbnail_data.data(), thumbnail_data.size(),
+                                       MZ_DEFAULT_COMPRESSION)) {
+                BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: FAILED to add thumbnail '" << filename << "' to archive";
+            } else {
+                BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESSFULLY added thumbnail '" << filename 
+                    << "' (" << thumbnail_data.size() << " bytes)";
+            }
+        }
+    } else if (has_thumbnail_data()) {
+        // Single thumbnail provided via set_thumbnail_data() (backward compatibility)
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding single thumbnail, size=" << m_thumbnail_data.size();
+        
+        // DEBUG: Log first few bytes of PNG to verify it's valid
+        if (m_thumbnail_data.size() > 8) {
+            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: PNG header bytes: "
+                << std::hex << (int)m_thumbnail_data[0] << " " << (int)m_thumbnail_data[1] << " "
+                << (int)m_thumbnail_data[2] << " " << (int)m_thumbnail_data[3] << " "
+                << (int)m_thumbnail_data[4] << " " << (int)m_thumbnail_data[5] << " "
+                << (int)m_thumbnail_data[6] << " " << (int)m_thumbnail_data[7] << std::dec;
+        }
         
         // Determine naming convention based on printer type
-        // sketch_small (griffin): 120/320/640 -> isometric_thumbnail, others -> thumbnail
-        // sketch_sprint (marlin): ALL -> isometric_thumbnail
-        bool is_sprint = (m_config.header_template == "marlin");
+        // IMPORTANT: Both sketch_small and sketch_sprint use isometric_thumbnail naming
+        // This is required by the MakerBot firmware and Digital Factory
+        std::string filename = "isometric_thumbnail_320x320.png";
         
-        std::string filename;
-        if (is_sprint) {
-            // Sprint: use isometric naming
-            filename = "isometric_thumbnail_320x320.png";
-        } else {
-            // Small: use regular thumbnail naming
-            filename = "thumbnail_320x320.png";
-        }
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Using isometric thumbnail naming for " << m_config.printer_name;
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Adding thumbnail with filename: " << filename;
         
         if (!mz_zip_writer_add_mem(&archive, filename.c_str(),
                                    m_thumbnail_data.data(), m_thumbnail_data.size(),
                                    MZ_DEFAULT_COMPRESSION)) {
-            BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter::write_container: Failed to add thumbnail";
+            BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: FAILED to add thumbnail to archive";
         } else {
-            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Added thumbnail as " << filename;
+            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESSFULLY added thumbnail as " << filename
+                << " (" << m_thumbnail_data.size() << " bytes)";
         }
     } else {
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: No thumbnail data available";
+        BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter::write_container: No thumbnail data available - THUMBNAIL WILL BE MISSING";
     }
     
     // Finalize archive
@@ -196,6 +222,16 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     const std::string& bot_type = bot_and_tool.first;
     const std::string& tool_type = bot_and_tool.second;
     
+    // DEBUG: Log all metadata values
+    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::generate_meta_json: BEGIN";
+    BOOST_LOG_TRIVIAL(info) << "  bot_type=" << bot_type << ", tool_type=" << tool_type;
+    BOOST_LOG_TRIVIAL(info) << "  duration_s=" << meta.duration_s;
+    BOOST_LOG_TRIVIAL(info) << "  filament_mm=" << meta.filament_mm << ", filament_g=" << meta.filament_g;
+    BOOST_LOG_TRIVIAL(info) << "  material_name=" << meta.material_name;
+    BOOST_LOG_TRIVIAL(info) << "  material_guid=" << meta.material_guid;
+    BOOST_LOG_TRIVIAL(info) << "  extruder_temp=" << meta.extruder_temp << ", bed_temp=" << meta.bed_temp;
+    BOOST_LOG_TRIVIAL(info) << "  layer_height=" << meta.layer_height;
+    
     json << "{\n";
     json << "  \"bot_type\": \"" << bot_type << "\",\n";
     json << "  \"platform_temperature\": " << meta.bed_temp << ",\n";
@@ -206,7 +242,9 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     json << "  \"extrusion_distances_mm\": [" << std::fixed << std::setprecision(1) << meta.filament_mm << "],\n";
     json << "  \"extrusion_mass_g\": " << std::fixed << std::setprecision(6) << meta.filament_g << ",\n";
     json << "  \"extrusion_masses_g\": [" << std::fixed << std::setprecision(6) << meta.filament_g << "],\n";
-    json << "  \"uuid\": \"" << meta.material_guid << "\",\n";
+    // Generate a unique file UUID (not the material GUID)
+    std::string file_uuid = generate_uuid();
+    json << "  \"uuid\": \"" << file_uuid << "\",\n";
     std::string material_code = material_name_to_code(meta.material_name);
     BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: material_name='" << meta.material_name << "' -> material_code='" << material_code << "'";
     json << "  \"material\": \"" << material_code << "\",\n";
@@ -265,20 +303,27 @@ std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& met
         template_filename
     };
     
+    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::generate_slicemetadata_json: Looking for template " << template_filename;
+    
     std::string template_content;
     bool found = false;
+    std::string found_path;
     for (const auto& path : template_paths) {
+        BOOST_LOG_TRIVIAL(info) << "  Trying path: " << path;
         boost::nowide::ifstream file(path);
         if (file.is_open()) {
             template_content = std::string((std::istreambuf_iterator<char>(file)),
                                            std::istreambuf_iterator<char>());
             found = true;
+            found_path = path;
+            BOOST_LOG_TRIVIAL(info) << "  FOUND template at: " << path << " (" << template_content.size() << " bytes)";
             break;
         }
     }
     
     // If template not found, fall back to minimal generation
     if (!found) {
+        BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter: Template " << template_filename << " NOT FOUND, using minimal fallback";
         return generate_slicemetadata_json_minimal(meta);
     }
     

@@ -24,6 +24,7 @@
 #include "libslic3r/Format/SL1.hpp"
 #include "libslic3r/Format/FormatConfig.hpp"
 #include "libslic3r/Format/UFPWriter.hpp"
+#include "libslic3r/Format/ContainerFormatHelper.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/libslic3r.h"
 
@@ -896,18 +897,18 @@ void BackgroundSlicingProcess::cancel_ui_task(std::shared_ptr<UITask> task)
 	}
 }
 
-// Shared helper to build UFP container - used by both export_to_final_path() and prepare_upload()
-// This ensures consistent UFP generation and avoids code duplication
-bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path,
-                                                    const std::string& output_path,
-                                                    const std::string& printer_notes,
-                                                    std::string& error_message)
+// Shared helper to build container format file (UFP or MakerBot) - used by both export_to_final_path() and prepare_upload()
+// This ensures consistent container format generation and avoids code duplication
+bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_path,
+                                                       const std::string& output_path,
+                                                       const std::string& printer_notes,
+                                                       std::string& error_message)
 {
-    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: ENTER - gcode=" << gcode_path << ", output=" << output_path;
+    BOOST_LOG_TRIVIAL(warning) << "build_container_format: ENTER - gcode=" << gcode_path << ", output=" << output_path;
     
     // Check for nullptrs early to prevent access violations
     if (!m_fff_print) {
-        BOOST_LOG_TRIVIAL(error) << "build_ufp_container: m_fff_print is NULL!";
+        BOOST_LOG_TRIVIAL(error) << "build_container_format: m_fff_print is NULL!";
         error_message = "Internal error: m_fff_print is null";
         return false;
     }
@@ -916,17 +917,17 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
     std::string format_type = Slic3r::FormatConfig::get_format_type_for_printer(printer_notes);
     if (format_type.empty()) {
         error_message = "No valid format type found in printer notes";
-        BOOST_LOG_TRIVIAL(error) << "build_ufp_container: " << error_message;
+        BOOST_LOG_TRIVIAL(error) << "build_container_format: " << error_message;
         return false;
     }
     
-    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: format_type=" << format_type;
+    BOOST_LOG_TRIVIAL(warning) << "build_container_format: format_type=" << format_type;
     
     // Extract extruder variants from print config for multi-extruder support
     std::vector<std::string> extruder_variants;
     if (const ConfigOptionStrings* variant_opt = m_fff_print->full_print_config().option<ConfigOptionStrings>("printer_extruder_variant")) {
         extruder_variants = variant_opt->values;
-        BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Found " << extruder_variants.size() << " extruder variants";
+        BOOST_LOG_TRIVIAL(info) << "build_container_format: Found " << extruder_variants.size() << " extruder variants";
     }
     
     // Extract extruder data (GUIDs, temps, volumes) for multi-extruder UFP export
@@ -959,32 +960,32 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
             
             // CRITICAL: Use m_preset_bundle captured from UI thread to avoid thread safety issues
             // wxGetApp().preset_bundle may change or become invalid when accessed from background thread
-            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Searching for filament preset: " 
+            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Searching for filament preset: " 
                                      << (i < filament_preset_values.size() ? filament_preset_values[i] : "(empty)");
             
             const Slic3r::PresetBundle* preset_bundle = m_preset_bundle;
             if (!preset_bundle) {
-                BOOST_LOG_TRIVIAL(error) << "build_ufp_container: m_preset_bundle is NULL! (thread safety issue)";
+                BOOST_LOG_TRIVIAL(error) << "build_container_format: m_preset_bundle is NULL! (thread safety issue)";
                 // Continue with empty GUID rather than crashing
             } else {
                 try {
                     if (i < filament_preset_values.size() && !filament_preset_values[i].empty()) {
                         std::string preset_name = filament_preset_values[i];
                         filament_preset = preset_bundle->filaments.find_preset(preset_name, false);
-                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Preset lookup result: "
+                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Preset lookup result: "
                                                  << (filament_preset ? "found: " + filament_preset->name : "NOT FOUND");
                     }
                     
                     // Fallback: If preset name is empty but filament_type exists, try multiple strategies to find preset
                     if (!filament_preset && i < filament_values.size() && !filament_values[i].empty()) {
                         std::string filament_type = filament_values[i];
-                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Fallback lookup for filament_type: " << filament_type;
+                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Fallback lookup for filament_type: " << filament_type;
                         
                         // Strategy 1: Try filament_id_by_type first (standard lookup)
                         std::string filament_id = preset_bundle->filaments.filament_id_by_type(filament_type);
                         if (!filament_id.empty()) {
                             filament_preset = preset_bundle->filaments.find_preset(filament_id, false);
-                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 1 (filament_id): " 
+                            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Strategy 1 (filament_id): " 
                                                      << filament_type << " -> " << filament_id
                                                      << " -> " << (filament_preset ? "found: " + filament_preset->name : "NOT FOUND");
                         }
@@ -992,7 +993,7 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                         // Strategy 2: If that fails, search all presets for matching filament_type field
                         // Use two-pass approach to prioritize presets with MATERIAL_GUID (for manufacturer-specific materials)
                         if (!filament_preset) {
-                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 2 - searching presets by filament_type field: " << filament_type;
+                            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Strategy 2 - searching presets by filament_type field: " << filament_type;
                             
                             // Helper lambda to extract GUID from a preset's filament_notes
                             // This is a local copy of the same logic used in extract_material_guid_from_preset
@@ -1031,7 +1032,7 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                                             std::string guid = extract_guid_from_preset_local(&preset);
                                             if (!guid.empty()) {
                                                 filament_preset = &preset;
-                                                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset with GUID by filament_type field: " << preset.name;
+                                                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found preset with GUID by filament_type field: " << preset.name;
                                                 break;
                                             }
                                         }
@@ -1041,13 +1042,13 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                             
                             // Second pass: If no preset with GUID found, use the first matching preset
                             if (!filament_preset) {
-                                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 2 - no preset with GUID found, using first match";
+                                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Strategy 2 - no preset with GUID found, using first match";
                                 for (const auto& preset : preset_bundle->filaments) {
                                     if (preset.is_system && preset.is_visible) {
                                         if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
                                             if (!type_opt->values.empty() && type_opt->values[0] == filament_type) {
                                                 filament_preset = &preset;
-                                                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset by filament_type field: " << preset.name;
+                                                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found preset by filament_type field: " << preset.name;
                                                 break;
                                             }
                                         }
@@ -1058,7 +1059,7 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                         
                         // Strategy 3: Try partial name matching (e.g., "PLA Tough" might match "UltiMaker Tough PLA @base")
                         if (!filament_preset) {
-                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Strategy 3 - partial name match for: " << filament_type;
+                            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Strategy 3 - partial name match for: " << filament_type;
                             std::string search_lower = filament_type;
                             std::transform(search_lower.begin(), search_lower.end(), search_lower.begin(), ::tolower);
                             for (const auto& preset : preset_bundle->filaments) {
@@ -1068,7 +1069,7 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                                     // Check if filament_type appears in preset name (case-insensitive)
                                     if (name_lower.find(search_lower) != std::string::npos) {
                                         filament_preset = &preset;
-                                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Found preset by partial name match: " << preset.name;
+                                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found preset by partial name match: " << preset.name;
                                         break;
                                     }
                                 }
@@ -1076,7 +1077,7 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                         }
                         
                         if (!filament_preset) {
-                            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: No preset found for filament_type: " << filament_type;
+                            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No preset found for filament_type: " << filament_type;
                         }
                     }
 
@@ -1087,13 +1088,13 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                     
                     // For container formats (.ufp/.makerbot), NEVER use generated GUIDs - they are always invalid
                     if (material_guid.empty()) {
-                        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: No MATERIAL_GUID found for preset, using empty GUID";
+                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: No MATERIAL_GUID found for preset, using empty GUID";
                         material_guid = "";
                     }
                     
                     edata.material_guid = material_guid;
                 } catch (const std::exception& e) {
-                    BOOST_LOG_TRIVIAL(error) << "build_ufp_container: Exception accessing preset_bundle: " << e.what();
+                    BOOST_LOG_TRIVIAL(error) << "build_container_format: Exception accessing preset_bundle: " << e.what();
                     edata.material_guid = "";
                 }
                 
@@ -1104,7 +1105,7 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                     
                     if (const Slic3r::ConfigOptionString* vendor_opt = base_preset->config.option<Slic3r::ConfigOptionString>("filament_vendor")) {
                         edata.brand = vendor_opt->value;
-                        BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Extruder " << i << " brand: " << edata.brand;
+                        BOOST_LOG_TRIVIAL(info) << "build_container_format: Extruder " << i << " brand: " << edata.brand;
                     }
                 }
             }
@@ -1114,7 +1115,7 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
                 const ConfigOptionStrings* vendor_opts = full_config.option<ConfigOptionStrings>("filament_vendor");
                 if (vendor_opts && i < vendor_opts->values.size() && !vendor_opts->values[i].empty()) {
                     edata.brand = vendor_opts->values[i];
-                    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Extruder " << i << " brand from config: " << edata.brand;
+                    BOOST_LOG_TRIVIAL(warning) << "build_container_format: Extruder " << i << " brand from config: " << edata.brand;
                 }
             }
             
@@ -1123,13 +1124,13 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
             edata.filament_mm = 0.0;
             edata.filament_g = 0.0;
             
-            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Extruder " << i << " preset lookup: " 
+            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Extruder " << i << " preset lookup: " 
                                       << (filament_preset ? "found" : "NOT FOUND")
                                       << ", GUID: " << edata.material_guid
                                       << ", brand: " << edata.brand;
             
             extruder_data.push_back(edata);
-            BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Extruder " << i 
+            BOOST_LOG_TRIVIAL(info) << "build_container_format: Extruder " << i 
                                     << " - GUID: " << edata.material_guid
                                     << ", temp: " << edata.extruder_temp
                                     << ", name: " << edata.material_name;
@@ -1148,9 +1149,9 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
             const std::string& p1 = filament_preset_values[1];
             if (!p0.empty() && !p1.empty() && p0 != p1) {
                 is_single_material = false;
-                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Multi-material print detected";
+                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Multi-material print detected";
             } else {
-                BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Single material print detected";
+                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Single material print detected";
             }
         }
         
@@ -1169,44 +1170,113 @@ bool BackgroundSlicingProcess::build_ufp_container(const std::string& gcode_path
             extruder_data[1].filament_g = total_filament_g / 2.0;
         }
         
-        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Final filament distribution - extruder 0: " 
+        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Final filament distribution - extruder 0: " 
                                     << extruder_data[0].filament_mm << "mm, extruder 1: " 
                                     << (extruder_data.size() > 1 ? extruder_data[1].filament_mm : 0.0) << "mm";
     }
     
-    // Generate PNG thumbnail for UFP using the plate's cached thumbnail_data.
-    // The plate thumbnail is rendered during slicing (at slicing-completed time) and cached;
-    // re-rendering via render_thumbnails() at export time is unreliable (OpenGL context state,
-    // timing issues) and has been observed to produce a blank white image.
-    // Using the cached thumbnail_data is the correct approach.
+    // Generate PNG thumbnail(s) for container format
+    // For MakerBot format, generate multiple thumbnails with specific filenames
+    // For UFP format, generate a single thumbnail
     std::vector<uint8_t> thumbnail_data;
-    if (m_current_plate && m_current_plate->thumbnail_data.is_valid()) {
-        auto compressed = GCodeThumbnails::compress_thumbnail(m_current_plate->thumbnail_data, GCodeThumbnailsFormat::PNG);
-        if (compressed && compressed->data && compressed->size) {
-            thumbnail_data.assign((uint8_t*)compressed->data,
-                                  (uint8_t*)compressed->data + compressed->size);
-            BOOST_LOG_TRIVIAL(info) << "build_ufp_container: Using cached plate thumbnail, PNG size=" << thumbnail_data.size();
-        } else {
-            BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Thumbnail PNG compression failed";
+    std::vector<std::pair<std::vector<uint8_t>, std::string>> thumbnails;
+    
+    bool is_makerbot_format = (format_type == "makerbot");
+    
+    if (is_makerbot_format) {
+        // MakerBot format: Generate all 7 thumbnails as defined in format config
+        // These filenames are REQUIRED by MakerBot firmware and Digital Factory
+        // Sizes from resources/formats/makerbot/sketch_small.json
+        const std::vector<std::pair<int, std::string>> makerbot_thumbnails = {
+            {120, "isometric_thumbnail_120x120.png"},
+            {320, "isometric_thumbnail_320x320.png"},
+            {640, "isometric_thumbnail_640x640.png"},
+            {90, "thumbnail_90x90.png"},
+            {140, "thumbnail_140x106.png"},
+            {212, "thumbnail_212x300.png"},
+            {960, "thumbnail_960x1460.png"}
+        };
+        
+        // Generate thumbnails using render callback for proper sizing
+        std::vector<Vec2d> thumbnail_sizes;
+        for (const auto& [thumb_size, filename] : makerbot_thumbnails) {
+            thumbnail_sizes.emplace_back(thumb_size, thumb_size);
         }
+        
+        ThumbnailsParams params{thumbnail_sizes, true, true, true, true, 0};
+        ThumbnailsList rendered_thumbs = this->render_thumbnails(params);
+        
+        // Compress each rendered thumbnail to PNG
+        for (size_t i = 0; i < rendered_thumbs.size() && i < makerbot_thumbnails.size(); ++i) {
+            if (rendered_thumbs[i].is_valid()) {
+                auto compressed = GCodeThumbnails::compress_thumbnail(rendered_thumbs[i], GCodeThumbnailsFormat::PNG);
+                if (compressed && compressed->data && compressed->size) {
+                    std::vector<uint8_t> png_data((uint8_t*)compressed->data,
+                                                  (uint8_t*)compressed->data + compressed->size);
+                    thumbnails.emplace_back(std::move(png_data), makerbot_thumbnails[i].second);
+                    BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated MakerBot thumbnail "
+                                            << makerbot_thumbnails[i].second << " (" << makerbot_thumbnails[i].first << "x" << makerbot_thumbnails[i].first << "), size=" << png_data.size();
+                } else {
+                    BOOST_LOG_TRIVIAL(warning) << "build_container_format: Failed to compress thumbnail " << makerbot_thumbnails[i].second;
+                }
+            } else {
+                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Rendered thumbnail " << makerbot_thumbnails[i].second << " is not valid";
+            }
+        }
+        
+        // Clean up rendered thumbnail data
+        for (auto& thumb : rendered_thumbs) {
+            thumb.reset();
+        }
+        
+        if (thumbnails.empty()) {
+            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No valid thumbnails generated for MakerBot format"
+                                       << " - MakerBot file will have no thumbnails";
+        }
+        
+        BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated " << thumbnails.size() << " MakerBot thumbnails";
     } else {
-        BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: No valid cached thumbnail on current plate"
-                                   << " (plate=" << (m_current_plate ? "valid" : "null")
-                                   << ", is_valid=" << (m_current_plate ? m_current_plate->thumbnail_data.is_valid() : false) << ")"
-                                   << " - UFP will have no thumbnail";
+        // UFP format: Use ContainerFormatHelper to generate thumbnail from config
+        std::string config_id = Slic3r::FormatConfig::parse_format_config_id(printer_notes, "");
+        auto requirements = Slic3r::ContainerFormatHelper::load_thumbnail_requirements(format_type, config_id);
+        
+        if (!requirements.empty() && m_thumbnail_cb) {
+            // Create a wrapper lambda that matches the expected signature
+            auto render_wrapper = [this](const ThumbnailsParams& params) -> ThumbnailsList {
+                return this->render_thumbnails(params);
+            };
+            thumbnails = Slic3r::ContainerFormatHelper::generate_thumbnails(requirements, render_wrapper);
+            BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated " << thumbnails.size()
+                                    << " UFP thumbnails from config";
+        } else if (requirements.empty()) {
+            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No thumbnail requirements found in UFP config";
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No render callback available for UFP thumbnails";
+        }
     }
     
     // Export to container format
-    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: Converting G-code to container format: " << format_type;
+    BOOST_LOG_TRIVIAL(warning) << "build_container_format: Converting G-code to container format: " << format_type;
     std::string container_error;
-    if (!Slic3r::FormatConfig::export_to_container(format_type, gcode_path, output_path, printer_notes, 
-                                                   extruder_variants, extruder_data, thumbnail_data, container_error)) {
-        BOOST_LOG_TRIVIAL(error) << "build_ufp_container: ERROR - Container conversion FAILED: " << container_error;
+    bool export_success = false;
+    
+    if (!thumbnails.empty()) {
+        // Use multi-thumbnail overload for both MakerBot and UFP formats
+        export_success = Slic3r::FormatConfig::export_to_container(format_type, gcode_path, output_path, printer_notes,
+                                                                   extruder_variants, extruder_data, thumbnails, container_error);
+    } else {
+        // Fallback: no thumbnails available
+        export_success = Slic3r::FormatConfig::export_to_container(format_type, gcode_path, output_path, printer_notes,
+                                                                   extruder_variants, extruder_data, thumbnail_data, container_error);
+    }
+    
+    if (!export_success) {
+        BOOST_LOG_TRIVIAL(error) << "build_container_format: ERROR - Container conversion FAILED: " << container_error;
         error_message = "Failed to export in container format.\n" + container_error;
         return false;
     }
     
-    BOOST_LOG_TRIVIAL(warning) << "build_ufp_container: SUCCESS - Container created at: " << output_path;
+    BOOST_LOG_TRIVIAL(warning) << "build_container_format: SUCCESS - Container created at: " << output_path;
     return true;
 }
 
@@ -1406,8 +1476,8 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
         BOOST_LOG_TRIVIAL(warning) << "export_to_final_path: Building container using shared function";
         
         // Use the shared helper function for container building
-        // This ensures consistent UFP generation for both export and upload paths
-        if (!build_ufp_container(output_path, container_path, printer_notes, error_message)) {
+        // This ensures consistent container format generation for both export and upload paths
+        if (!build_container_format(output_path, container_path, printer_notes, error_message)) {
             BOOST_LOG_TRIVIAL(error) << "export_to_final_path: Container build FAILED: " << error_message;
             return false;
         }
@@ -1546,8 +1616,8 @@ void BackgroundSlicingProcess::prepare_upload()
                 BOOST_LOG_TRIVIAL(warning) << "prepare_upload: Building container using shared function";
                 
                 // Use the shared helper function for container building
-                // This ensures consistent UFP generation for both export and upload paths
-                if (!build_ufp_container(source_path.string(), container_path.string(), printer_notes, error_message)) {
+                // This ensures consistent container format generation for both export and upload paths
+                if (!build_container_format(source_path.string(), container_path.string(), printer_notes, error_message)) {
                     BOOST_LOG_TRIVIAL(error) << "prepare_upload: Container build FAILED: " << error_message;
                     throw Slic3r::RuntimeError("Failed to build container format: " + error_message);
                 }

@@ -299,13 +299,13 @@ private:
                                               bool run_post_process,
                                               std::string& error_message);
 
-    // Shared helper to build UFP container - used by both export_to_final_path() and prepare_upload()
-    // This ensures consistent UFP generation and avoids code duplication
+    // Shared helper to build container format file (UFP or MakerBot) - used by both export_to_final_path() and prepare_upload()
+    // This ensures consistent container generation and avoids code duplication
     // Returns true on success, false on failure with error_message populated
-    bool                build_ufp_container(const std::string& gcode_path,
-                                             const std::string& output_path,
-                                             const std::string& printer_notes,
-                                             std::string& error_message);
+    bool                build_container_format(const std::string& gcode_path,
+                                                const std::string& output_path,
+                                                const std::string& format_type,
+                                                std::string& error_message);
 
     // To be executed at the background thread.
 	ThumbnailsList		render_thumbnails(const ThumbnailsParams &params);
