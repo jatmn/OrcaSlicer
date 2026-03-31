@@ -1,6 +1,6 @@
 # OrcaSlicer Agent Guide (jatmn's Fork)
 
-> **Last Updated:** 2026-03-29
+> **Last Updated:** 2026-03-31
 >
 > **Change Tracking:** This file tracks implementation status specific to jatmn's fork. See the [Change Log](#change-log) section at the end for revision history.
 
@@ -70,7 +70,7 @@ When working on Cura-related features (especially UltiMaker Digital Factory inte
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Container Format Export (.ufp) | ✅ Completed | Works for all UltiMaker printers |
-| Container Format Export (.makerbot) | ⚠️ Needs Work | Writer needs redo due to UFP writer changes |
+| Container Format Export (.makerbot) | ⚠️ Needs Work | Writer needs validation and testing |
 | Digital Factory Upload | ✅ Completed | Two-step upload with container conversion |
 | LAN Printing | ✅ Completed | Does not support UltiMaker 2+ Connect (firmware limitation) |
 | Printer Profiles | ⚠️ In Progress | Created but have known issues |
@@ -136,7 +136,8 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 - Recommendation: delete `ultimaker_f4.json` to avoid confusion
 
 **MakerBot Format:**
-- `.makerbot` writer needs to be redone due to considerable changes in the UFP writer implementation
+- `.makerbot` writer needs validation and testing
+- Implementation exists but not yet verified working
 
 ---
 
@@ -276,7 +277,7 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 
 **Machine Profiles Created:**
 - **UltiMaker Factor 4**: 0.25, 0.4, 0.6, 0.8 nozzle variants
-- **UltiMaker S3**: 0.25, 0.4, 0.6, 0.8 nozzle variants  
+- **UltiMaker S3**: 0.25, 0.4, 0.6, 0.8 nozzle variants
 - **UltiMaker S5**: 0.25, 0.4, 0.6, 0.8 nozzle variants
 - **UltiMaker S6**: 0.25, 0.4, 0.6, 0.8 nozzle variants
 - **UltiMaker S7**: 0.25, 0.4, 0.6, 0.8 nozzle variants
@@ -313,6 +314,9 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 | UltiMaker ABS | ✅ Has GUID | `94209c78-8d4d-4866-8a60-5e1f7adb0c36` | Valid GUID from Cura AnyColor profiles |
 | UltiMaker PPS-CF | ⚠️ Missing GUID | `unknown (not available in Cura AnyColor profiles)` | GUID not available in reference profiles |
 | UltiMaker PET-CF | ⚠️ Missing GUID | `unknown (not available in Cura AnyColor profiles)` | GUID not available in reference profiles |
+| MakerBot Sketch PLA | ✅ Has GUID | `abb9c58e-1f56-48d1-bd8f-055fde3a5b56` | Valid GUID with MATERIAL_CODE:pla |
+| MakerBot Sketch Tough PLA | ✅ Has GUID | `de031137-a8ca-4a72-bd1b-17bb964033ad` | Valid GUID with MATERIAL_CODE:im-pla |
+| MakerBot Sketch Metallic PLA | ✅ Has GUID | `3fac1543-dd0c-462d-9cbc-d94137d43999` | Valid GUID with MATERIAL_CODE:metallic-pla |
 
 **Note:** The two-pass filament search in `BackgroundSlicingProcess.cpp` will prioritize presets with MATERIAL_GUID, falling back to `filament_type` matching for materials without GUIDs.
 

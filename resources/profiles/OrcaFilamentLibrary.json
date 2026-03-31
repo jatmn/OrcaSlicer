@@ -1473,6 +1473,10 @@
             "sub_path": "filament/MakerBot/MakerBot Sketch Tough PLA @base.json"
         },
         {
+            "name": "MakerBot Sketch Metallic PLA @base",
+            "sub_path": "filament/MakerBot/MakerBot Sketch Metallic PLA @base.json"
+        },
+        {
             "name": "MakerBot Method Tough PLA @base",
             "sub_path": "filament/MakerBot/MakerBot Method Tough PLA @base.json"
         },
@@ -1495,6 +1499,10 @@
         {
             "name": "MakerBot Sketch Tough PLA @System",
             "sub_path": "filament/MakerBot/MakerBot Sketch Tough PLA @System.json"
+        },
+        {
+            "name": "MakerBot Sketch Metallic PLA @System",
+            "sub_path": "filament/MakerBot/MakerBot Sketch Metallic PLA @System.json"
         },
         {
             "name": "MakerBot Method Tough PLA @System",

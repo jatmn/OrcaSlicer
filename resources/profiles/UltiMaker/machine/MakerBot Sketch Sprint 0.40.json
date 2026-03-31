@@ -25,5 +25,6 @@
   "max_layer_height": "0.32",
   "min_layer_height": "0.05",
   "printer_notes": "MakerBot Sketch Sprint with 0.40mm nozzle\nFORMAT_CONFIG_ID:sketch_sprint",
-  "inherits": "fdm_makerbot_common"
+  "inherits": "fdm_makerbot_common",
+  "default_materials": "MakerBot Sketch PLA @System"
 }

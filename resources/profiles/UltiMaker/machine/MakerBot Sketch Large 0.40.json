@@ -10,11 +10,11 @@
   "nozzle_diameter": ["0.4"],
   "printable_area": [
     "0x0",
-    "200x0",
-    "200x200",
+    "220x0",
+    "220x200",
     "0x200"
   ],
-  "printable_height": "200",
+  "printable_height": "250",
   "extruder_count": "1",
   "printer_extruder_variant": ["Standard 0.4"],
   "extruder_variant_list": ["Standard"],
@@ -25,5 +25,6 @@
   "max_layer_height": "0.32",
   "min_layer_height": "0.05",
   "printer_notes": "MakerBot Sketch Large with 0.40mm nozzle\nFORMAT_CONFIG_ID:sketch_large",
-  "inherits": "fdm_makerbot_common"
+  "inherits": "fdm_makerbot_common",
+  "default_materials": "MakerBot Sketch PLA @System"
 }

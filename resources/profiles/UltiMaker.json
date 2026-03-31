@@ -118,6 +118,18 @@
         {
             "name": "0.20mm Standard @UltiMaker 2+ Connect",
             "sub_path": "process/0.20mm Standard @UltiMaker 2+ Connect.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Sketch 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Sketch 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Sketch Large 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Sketch Large 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Sketch Sprint 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Sketch Sprint 0.40.json"
         }
     ],
     "filament_list": [],
