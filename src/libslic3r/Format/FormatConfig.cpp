@@ -382,7 +382,7 @@ bool FormatConfig::export_to_container(const std::string& format_type,
         }
         // Pass extruder data (GUIDs, temps, volumes)
         for (size_t i = 0; i < extruder_data.size() && i < 1; ++i) {
-            MakerBotExtruderData mb_data;
+            ExtruderData mb_data;
             mb_data.material_guid = extruder_data[i].material_guid;
             mb_data.material_name = extruder_data[i].material_name;
             mb_data.extruder_temp = extruder_data[i].extruder_temp;
@@ -473,7 +473,7 @@ bool FormatConfig::export_to_container(const std::string& format_type,
     
     // Pass extruder data (GUIDs, temps, volumes) - support up to 2 extruders for dual-extruder MakerBot models
     for (size_t i = 0; i < extruder_data.size() && i < 2; ++i) {
-        MakerBotExtruderData mb_data;
+        ExtruderData mb_data;
         mb_data.material_guid = extruder_data[i].material_guid;
         mb_data.material_name = extruder_data[i].material_name;
         mb_data.extruder_temp = extruder_data[i].extruder_temp;

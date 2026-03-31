@@ -30,30 +30,31 @@ static std::string material_name_to_code(const std::string& name) {
 
 void MakerBotWriter::override_metadata(GCodeMetadata& meta) {
     // Override print stats if provided via set_print_stats()
-    if (m_has_stats) {
-        meta.duration_s = m_duration_s;
-        meta.filament_mm = m_filament_mm;
-        meta.filament_g = m_filament_g;
+    if (m_context.has_print_stats()) {
+        meta.duration_s = m_context.get_duration_s();
+        meta.filament_mm = m_context.get_filament_mm();
+        meta.filament_g = m_context.get_filament_g();
         BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Override metadata with injected stats - "
-                               << "duration=" << m_duration_s << "s, "
-                               << "filament=" << m_filament_mm << "mm, "
-                               << "weight=" << m_filament_g << "g";
+                               << "duration=" << m_context.get_duration_s() << "s, "
+                               << "filament=" << m_context.get_filament_mm() << "mm, "
+                               << "weight=" << m_context.get_filament_g() << "g";
     }
-    
+
     // Override material GUID from extruder data if available
-    if (has_extruder_data() && !m_extruder.material_guid.empty()) {
-        meta.material_guid = m_extruder.material_guid;
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Override metadata with GUID from extruder data: " << m_extruder.material_guid;
+    const auto& extruders = m_context.get_extruder_data();
+    if (m_context.has_any_extruder_data() && !extruders[0].material_guid.empty()) {
+        meta.material_guid = extruders[0].material_guid;
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Override metadata with GUID from extruder data: " << extruders[0].material_guid;
     }
-    
+
     // Override material name from extruder data if available
-    if (has_extruder_data() && !m_extruder.material_name.empty()) {
-        meta.material_name = m_extruder.material_name;
+    if (m_context.has_any_extruder_data() && !extruders[0].material_name.empty()) {
+        meta.material_name = extruders[0].material_name;
     }
-    
+
     // Override extruder temp from extruder data if available
-    if (has_extruder_data() && m_extruder.extruder_temp > 0) {
-        meta.extruder_temp = m_extruder.extruder_temp;
+    if (m_context.has_any_extruder_data() && extruders[0].extruder_temp > 0) {
+        meta.extruder_temp = extruders[0].extruder_temp;
     }
 }
 
@@ -61,12 +62,12 @@ std::pair<std::string, std::string> MakerBotWriter::get_bot_and_tool_type() cons
     // Use bot_type and tool_type directly from config (loaded from JSON config file)
     // The config_id (FORMAT_CONFIG_ID) is stored in m_config.id
     // The bot_type and tool_type are set in the JSON config files
-    
+
     const std::string& bot_type = m_config.bot_type;
     const std::string& tool_type = m_config.tool_type;
-    
+
     BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Using bot_type='" << bot_type << "', tool_type='" << tool_type << "' from config";
-    
+
     // Return bot_type as-is and tool_type as-is
     // The config values are the authoritative source for MakerBot compatibility
     return std::make_pair(bot_type, tool_type);
@@ -74,7 +75,7 @@ std::pair<std::string, std::string> MakerBotWriter::get_bot_and_tool_type() cons
 
 std::string MakerBotWriter::generate_header(const GCodeMetadata& meta) {
     std::ostringstream header;
-    
+
     if (m_config.header_template == "griffin") {
         // Griffin flavor header (Sketch Small style)
         header << ";START_OF_HEADER\n";
@@ -100,23 +101,23 @@ std::string MakerBotWriter::generate_header(const GCodeMetadata& meta) {
         header << ";SLICE_UUID:" << meta.slice_uuid << "\n";
         header << ";END_OF_HEADER\n\n";
     }
-    
+
     return header.str();
 }
 
 bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::string& gcode_content, const std::string& output_path) {
     mz_zip_archive archive;
     mz_zip_zero_struct(&archive);
-    
+
     if (!open_zip_writer(&archive, output_path)) {
         BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: Failed to open zip writer";
         return false;
     }
-    
+
     auto cleanup = [&]() {
         close_zip_writer(&archive);
     };
-    
+
     // 1. print.gcode
     if (!mz_zip_writer_add_mem(&archive, "print.gcode",
                               gcode_content.c_str(), gcode_content.length(),
@@ -125,7 +126,7 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
         cleanup();
         return false;
     }
-    
+
     // 2. meta.json
     std::string meta_json = generate_meta_json(meta);
     if (!mz_zip_writer_add_mem(&archive, "meta.json",
@@ -135,7 +136,7 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
         cleanup();
         return false;
     }
-    
+
     // 3. slicemetadata.json
     std::string slicemetadata = generate_slicemetadata_json(meta);
     if (!mz_zip_writer_add_mem(&archive, "slicemetadata.json",
@@ -145,34 +146,35 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
         cleanup();
         return false;
     }
-    
+
     // 4. Thumbnails (passed directly via set_thumbnails() or set_thumbnail_data(), never extracted from gcode)
     // IMPORTANT: Thumbnails should NEVER be embedded in gcode comments - they are passed separately
-    if (!m_thumbnails.empty()) {
+    const auto& thumbnails = m_context.get_thumbnails();
+    if (!thumbnails.empty()) {
         // Multiple thumbnails provided via set_thumbnails()
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding " << m_thumbnails.size() << " thumbnails";
-        
-        for (const auto& [thumbnail_data, filename] : m_thumbnails) {
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding " << thumbnails.size() << " thumbnails";
+
+        for (const auto& [thumbnail_data, filename] : thumbnails) {
             if (thumbnail_data.empty()) {
                 BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter: Skipping empty thumbnail: " << filename;
                 continue;
             }
-            
+
             BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Adding thumbnail '" << filename << "', size=" << thumbnail_data.size();
-            
+
             if (!mz_zip_writer_add_mem(&archive, filename.c_str(),
                                        thumbnail_data.data(), thumbnail_data.size(),
                                        MZ_DEFAULT_COMPRESSION)) {
                 BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: FAILED to add thumbnail '" << filename << "' to archive";
             } else {
-                BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESSFULLY added thumbnail '" << filename 
+                BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESSFULLY added thumbnail '" << filename
                     << "' (" << thumbnail_data.size() << " bytes)";
             }
         }
     } else if (has_thumbnail_data()) {
         // Single thumbnail provided via set_thumbnail_data() (backward compatibility)
         BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding single thumbnail, size=" << m_thumbnail_data.size();
-        
+
         // DEBUG: Log first few bytes of PNG to verify it's valid
         if (m_thumbnail_data.size() > 8) {
             BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: PNG header bytes: "
@@ -181,15 +183,15 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
                 << (int)m_thumbnail_data[4] << " " << (int)m_thumbnail_data[5] << " "
                 << (int)m_thumbnail_data[6] << " " << (int)m_thumbnail_data[7] << std::dec;
         }
-        
+
         // Determine naming convention based on printer type
         // IMPORTANT: Both sketch_small and sketch_sprint use isometric_thumbnail naming
         // This is required by the MakerBot firmware and Digital Factory
         std::string filename = "isometric_thumbnail_320x320.png";
-        
+
         BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Using isometric thumbnail naming for " << m_config.printer_name;
         BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Adding thumbnail with filename: " << filename;
-        
+
         if (!mz_zip_writer_add_mem(&archive, filename.c_str(),
                                    m_thumbnail_data.data(), m_thumbnail_data.size(),
                                    MZ_DEFAULT_COMPRESSION)) {
@@ -201,14 +203,14 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     } else {
         BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter::write_container: No thumbnail data available - THUMBNAIL WILL BE MISSING";
     }
-    
+
     // Finalize archive
     if (!mz_zip_writer_finalize_archive(&archive)) {
         BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: Failed to finalize archive";
         cleanup();
         return false;
     }
-    
+
     cleanup();
     BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESS";
     return true;
@@ -216,12 +218,12 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
 
 std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     std::ostringstream json;
-    
+
     // Get dynamic bot_type and tool_type based on FORMAT_CONFIG_ID
     std::pair<std::string, std::string> bot_and_tool = get_bot_and_tool_type();
     const std::string& bot_type = bot_and_tool.first;
     const std::string& tool_type = bot_and_tool.second;
-    
+
     // DEBUG: Log all metadata values
     BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::generate_meta_json: BEGIN";
     BOOST_LOG_TRIVIAL(info) << "  bot_type=" << bot_type << ", tool_type=" << tool_type;
@@ -231,7 +233,7 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     BOOST_LOG_TRIVIAL(info) << "  material_guid=" << meta.material_guid;
     BOOST_LOG_TRIVIAL(info) << "  extruder_temp=" << meta.extruder_temp << ", bed_temp=" << meta.bed_temp;
     BOOST_LOG_TRIVIAL(info) << "  layer_height=" << meta.layer_height;
-    
+
     json << "{\n";
     json << "  \"bot_type\": \"" << bot_type << "\",\n";
     json << "  \"platform_temperature\": " << meta.bed_temp << ",\n";
@@ -261,12 +263,12 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     json << "      \"printMode\": \"default\"\n";
     json << "    }\n";
     json << "  },\n";
-    
+
     // Add extruderProfiles for Sprint variant
     if (m_config.header_template == "marlin") {
         json << "  \"extruderProfiles\": [{ \"nozzle_diameter\": 0.4, \"tool_type\": \"" << tool_type << "\" }],\n";
     }
-    
+
     json << "  \"miracle_config\": {\n";
     json << "    \"gaggles\": {\"instance0\": {}},\n";
     json << "    \"curaengine_version\": \"" << m_config.miracle_config.curaengine_version << "\",\n";
@@ -289,22 +291,22 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
 std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
     namespace fs = boost::filesystem;
     using json = nlohmann::json;
-    
+
     // Determine template based on printer type
     // Sprint (marlin) needs full Cura settings, Small (griffin) is minimal
-    std::string template_filename = (m_config.header_template == "marlin") 
-        ? "slicemetadata_sprint_template.json" 
+    std::string template_filename = (m_config.header_template == "marlin")
+        ? "slicemetadata_sprint_template.json"
         : "slicemetadata_small_template.json";
-    
+
     // Find template file - try multiple locations
     std::vector<std::string> template_paths = {
         (fs::path(Slic3r::resources_dir()) / "formats" / "makerbot" / template_filename).string(),
         (fs::path("resources") / "formats" / "makerbot" / template_filename).string(),
         template_filename
     };
-    
+
     BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::generate_slicemetadata_json: Looking for template " << template_filename;
-    
+
     std::string template_content;
     bool found = false;
     std::string found_path;
@@ -320,22 +322,22 @@ std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& met
             break;
         }
     }
-    
+
     // If template not found, fall back to minimal generation
     if (!found) {
         BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter: Template " << template_filename << " NOT FOUND, using minimal fallback";
         return generate_slicemetadata_json_minimal(meta);
     }
-    
+
     try {
         // Parse template
         json root = json::parse(template_content);
-        
+
         // Patch material values
         if (root.contains("material")) {
             bool use_meters = (m_config.header_template == "marlin");
             double length_value = use_meters ? (meta.filament_mm / 1000.0) : meta.filament_mm;
-            
+
             if (root["material"].contains("length") && root["material"]["length"].is_array() && root["material"]["length"].size() > 0) {
                 root["material"]["length"][0] = length_value;
             }
@@ -343,12 +345,12 @@ std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& met
                 root["material"]["weight"][0] = meta.filament_g;
             }
         }
-        
+
         // Patch quality settings
         if (root.contains("quality")) {
             root["quality"]["layer_height"] = meta.layer_height;
         }
-        
+
         // Patch global settings
         if (root.contains("global") && root["global"].contains("all_settings")) {
             auto& settings = root["global"]["all_settings"];
@@ -360,7 +362,7 @@ std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& met
             settings["material_print_temperature"] = meta.extruder_temp;
             settings["machine_name"] = m_config.target_machine;
         }
-        
+
         // Patch extruder_0 settings
         if (root.contains("extruder_0") && root["extruder_0"].contains("all_settings")) {
             auto& settings = root["extruder_0"]["all_settings"];
@@ -370,9 +372,9 @@ std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& met
             settings["infill_sparse_density"] = meta.infill_percent;
             settings["machine_name"] = m_config.target_machine;
         }
-        
+
         return root.dump();
-        
+
     } catch (const std::exception& e) {
         // Fall back to minimal if parsing fails
         return generate_slicemetadata_json_minimal(meta);
@@ -384,7 +386,7 @@ std::string MakerBotWriter::generate_slicemetadata_json_minimal(const GCodeMetad
     bool use_meters = (m_config.header_template == "marlin");
     double length_value = use_meters ? (meta.filament_mm / 1000.0) : meta.filament_mm;
     int precision = use_meters ? 5 : 1;
-    
+
     std::ostringstream json;
     json << "{\n";
     json << "  \"material\": {\n";

@@ -8,8 +8,18 @@
 
 namespace Slic3r {
 
-// Forward declaration to avoid circular dependencies
-struct ExtruderData;
+// Unified per-extruder metadata for container format export (UFP and MakerBot)
+// This replaces the duplicate structs in UFPWriter.hpp and MakerBotWriter.hpp
+struct ExtruderData {
+    std::string material_guid;
+    std::string material_name;
+    std::string brand;  // Material brand (e.g., "Bambu Lab", "eSUN") - used for material.xml
+    int extruder_temp = 0;
+    double filament_mm = 0.0;
+    double filament_g = 0.0;
+    
+    bool empty() const { return material_guid.empty() && extruder_temp == 0 && filament_mm == 0.0; }
+};
 
 struct ThumbnailConfig {
     std::string size;

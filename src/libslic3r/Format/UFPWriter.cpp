@@ -147,7 +147,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         cleanup();
         return false;
     }
-    
+
     // 7. /[Content_Types].xml - with leading slash
     std::string content_types = generate_content_types_xml();
     if (!mz_zip_writer_add_mem_ex(&archive, "/[Content_Types].xml",
@@ -184,64 +184,45 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
 void UFPWriter::override_metadata(GCodeMetadata& meta) {
     // Override parsed metadata with injected values ONLY if they are non-zero
     // (zero means stats weren't captured; keep the parsed values from G-code comments)
-    if (m_has_stats) {
+    if (m_context.has_print_stats()) {
         BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Injected stats - "
-                               << "duration_s=" << m_duration_s
-                               << ", filament_mm=" << m_filament_mm
-                               << ", filament_g=" << m_filament_g
+                               << "duration_s=" << m_context.get_duration_s()
+                               << ", filament_mm=" << m_context.get_filament_mm()
+                               << ", filament_g=" << m_context.get_filament_g()
                                << " (parsed: duration_s=" << meta.duration_s
                                << ", filament_mm=" << meta.filament_mm << ")";
-        if (m_duration_s > 0)
-            meta.duration_s = m_duration_s;
-        if (m_filament_mm > 0)
-            meta.filament_mm = m_filament_mm;
-        if (m_filament_g > 0)
-            meta.filament_g = m_filament_g;
+        if (m_context.get_duration_s() > 0)
+            meta.duration_s = m_context.get_duration_s();
+        if (m_context.get_filament_mm() > 0)
+            meta.filament_mm = m_context.get_filament_mm();
+        if (m_context.get_filament_g() > 0)
+            meta.filament_g = m_context.get_filament_g();
     }
     
     // CRITICAL: Prioritize extruder GUID over metadata GUID
     // The extruder data comes from filament presets which should have the correct GUID
     // Metadata GUID is a default from G-code parsing (often wrong for specialized materials)
+    const auto& extruders = m_context.get_extruder_data();
     
     // First handle extruder 0: always use extruder GUID if available
-    if (!m_extruders[0].material_guid.empty()) {
+    if (!extruders[0].material_guid.empty()) {
         // Extruder has GUID, use it to override metadata
-        if (meta.material_guid != m_extruders[0].material_guid) {
+        if (meta.material_guid != extruders[0].material_guid) {
             BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder 0 GUID '" 
-                                   << m_extruders[0].material_guid 
+                                   << extruders[0].material_guid 
                                    << "' (overriding metadata GUID '" << meta.material_guid << "')";
-            meta.material_guid = m_extruders[0].material_guid;
+            meta.material_guid = extruders[0].material_guid;
         }
-    } else if (!meta.material_guid.empty()) {
-        // Extruder has no GUID, but metadata does - copy it to extruder as fallback
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Setting extruder 0 GUID from metadata: '" 
-                               << meta.material_guid << "'";
-        m_extruders[0].material_guid = meta.material_guid;
-    }
-    
-    // Handle extruder 1: similar logic but also check extruder 0 for propagation
-    if (!m_extruders[1].material_guid.empty()) {
-        // Extruder 1 has its own GUID, use it
-        // Note: We don't override metadata here since extruder 0 already did
-    } else if (!m_extruders[0].material_guid.empty()) {
-        // Extruder 1 has no GUID but extruder 0 does - propagate for dual extrusion with same material
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Propagating GUID from extruder 0 to extruder 1";
-        m_extruders[1].material_guid = m_extruders[0].material_guid;
-    } else if (!meta.material_guid.empty()) {
-        // Neither extruder has GUID, use metadata as fallback
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Setting extruder 1 GUID from metadata: '" 
-                               << meta.material_guid << "'";
-        m_extruders[1].material_guid = meta.material_guid;
     }
     
     // Also update material type from extruder data if available
     // This ensures "PLA Tough" is correctly identified instead of default "PLA"
-    if (!m_extruders[0].material_name.empty()) {
-        if (meta.material_type != m_extruders[0].material_name) {
+    if (!extruders[0].material_name.empty()) {
+        if (meta.material_type != extruders[0].material_name) {
             BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder 0 material name '" 
-                                   << m_extruders[0].material_name 
+                                   << extruders[0].material_name 
                                    << "' (overriding metadata material type '" << meta.material_type << "')";
-            meta.material_type = m_extruders[0].material_name;
+            meta.material_type = extruders[0].material_name;
         }
     }
     
@@ -382,17 +363,19 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     
     // Generate extruder block based on active extruders only (nozzle info)
     std::string extruder_block;
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: m_extruder_variants.size()=" << m_extruder_variants.size()
-                           << ", extruder0 filament_mm=" << m_extruders[0].filament_mm
-                           << ", extruder1 filament_mm=" << m_extruders[1].filament_mm;
-    if (!m_extruder_variants.empty()) {
-        for (size_t i = 0; i < m_extruder_variants.size() && i < 2; ++i) {
+    const auto& extruder_variants = m_context.get_extruder_variants();
+    const auto& extruders = m_context.get_extruder_data();
+    BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: extruder_variants.size()=" << extruder_variants.size()
+                           << ", extruder0 filament_mm=" << extruders[0].filament_mm
+                           << ", extruder1 filament_mm=" << extruders[1].filament_mm;
+    if (!extruder_variants.empty()) {
+        for (size_t i = 0; i < extruder_variants.size() && i < 2; ++i) {
             BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: Checking extruder " << i
-                                   << ", variant=" << m_extruder_variants[i]
-                                   << ", filament_mm=" << m_extruders[i].filament_mm;
+                                   << ", variant=" << extruder_variants[i]
+                                   << ", filament_mm=" << extruders[i].filament_mm;
             // Only include nozzle info if extruder was actually used
-            if (m_extruders[i].filament_mm > 0.0) {
-                const std::string& variant = m_extruder_variants[i];
+            if (extruders[i].filament_mm > 0.0) {
+                const std::string& variant = extruder_variants[i];
                 auto nozzle_info = get_nozzle_info(variant);
                 extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
                 extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second + "\n";
@@ -410,9 +393,9 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["extruder_block"] = extruder_block;
     
     // Generate per-extruder metadata blocks (temperature, material GUID, volume) - only for active extruders
-    values["extruder0_block"] = generate_extruder_block(0, m_extruders[0]);
+    values["extruder0_block"] = generate_extruder_block(0, extruders[0]);
     // Only include extruder 1 if it has filament data
-    std::string extruder1_block = generate_extruder_block(1, m_extruders[1]);
+    std::string extruder1_block = generate_extruder_block(1, extruders[1]);
     values["extruder1_block"] = extruder1_block;
     
     return substitute_template(m_config.header_template_content, values);
@@ -517,17 +500,18 @@ std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
     xml << "    <name>\n";
     
     // Use brand from extruder data if available, otherwise default to "Generic"
+    const auto& extruders = m_context.get_extruder_data();
     std::string brand = "Generic";
-    if (!m_extruders[0].brand.empty()) {
-        brand = m_extruders[0].brand;
+    if (!extruders[0].brand.empty()) {
+        brand = extruders[0].brand;
         BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_material_xml: Using brand from extruder data: " << brand;
     }
     xml << "      <brand>" << brand << "</brand>\n";
     
     // Use material_type from extruder data if available, otherwise from metadata
     std::string material_type = meta.material_type;
-    if (!m_extruders[0].material_name.empty()) {
-        material_type = m_extruders[0].material_name;
+    if (!extruders[0].material_name.empty()) {
+        material_type = extruders[0].material_name;
     }
     xml << "      <material>" << material_type << "</material>\n";
     

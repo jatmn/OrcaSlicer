@@ -1184,57 +1184,23 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
     bool is_makerbot_format = (format_type == "makerbot");
     
     if (is_makerbot_format) {
-        // MakerBot format: Generate all 7 thumbnails as defined in format config
-        // These filenames are REQUIRED by MakerBot firmware and Digital Factory
-        // Sizes from resources/formats/makerbot/sketch_small.json
-        const std::vector<std::pair<int, std::string>> makerbot_thumbnails = {
-            {120, "isometric_thumbnail_120x120.png"},
-            {320, "isometric_thumbnail_320x320.png"},
-            {640, "isometric_thumbnail_640x640.png"},
-            {90, "thumbnail_90x90.png"},
-            {140, "thumbnail_140x106.png"},
-            {212, "thumbnail_212x300.png"},
-            {960, "thumbnail_960x1460.png"}
-        };
+        // MakerBot format: Use ContainerFormatHelper to generate thumbnails from config
+        std::string config_id = Slic3r::FormatConfig::parse_format_config_id(printer_notes, "");
+        auto requirements = Slic3r::ContainerFormatHelper::load_thumbnail_requirements(format_type, config_id);
         
-        // Generate thumbnails using render callback for proper sizing
-        std::vector<Vec2d> thumbnail_sizes;
-        for (const auto& [thumb_size, filename] : makerbot_thumbnails) {
-            thumbnail_sizes.emplace_back(thumb_size, thumb_size);
+        if (!requirements.empty() && m_thumbnail_cb) {
+            // Create a wrapper lambda that matches the expected signature
+            auto render_wrapper = [this](const ThumbnailsParams& params) -> ThumbnailsList {
+                return this->render_thumbnails(params);
+            };
+            thumbnails = Slic3r::ContainerFormatHelper::generate_thumbnails(requirements, render_wrapper);
+            BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated " << thumbnails.size()
+                                    << " MakerBot thumbnails from config";
+        } else if (requirements.empty()) {
+            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No thumbnail requirements found in MakerBot config";
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No render callback available for MakerBot thumbnails";
         }
-        
-        ThumbnailsParams params{thumbnail_sizes, true, true, true, true, 0};
-        ThumbnailsList rendered_thumbs = this->render_thumbnails(params);
-        
-        // Compress each rendered thumbnail to PNG
-        for (size_t i = 0; i < rendered_thumbs.size() && i < makerbot_thumbnails.size(); ++i) {
-            if (rendered_thumbs[i].is_valid()) {
-                auto compressed = GCodeThumbnails::compress_thumbnail(rendered_thumbs[i], GCodeThumbnailsFormat::PNG);
-                if (compressed && compressed->data && compressed->size) {
-                    std::vector<uint8_t> png_data((uint8_t*)compressed->data,
-                                                  (uint8_t*)compressed->data + compressed->size);
-                    thumbnails.emplace_back(std::move(png_data), makerbot_thumbnails[i].second);
-                    BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated MakerBot thumbnail "
-                                            << makerbot_thumbnails[i].second << " (" << makerbot_thumbnails[i].first << "x" << makerbot_thumbnails[i].first << "), size=" << png_data.size();
-                } else {
-                    BOOST_LOG_TRIVIAL(warning) << "build_container_format: Failed to compress thumbnail " << makerbot_thumbnails[i].second;
-                }
-            } else {
-                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Rendered thumbnail " << makerbot_thumbnails[i].second << " is not valid";
-            }
-        }
-        
-        // Clean up rendered thumbnail data
-        for (auto& thumb : rendered_thumbs) {
-            thumb.reset();
-        }
-        
-        if (thumbnails.empty()) {
-            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No valid thumbnails generated for MakerBot format"
-                                       << " - MakerBot file will have no thumbnails";
-        }
-        
-        BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated " << thumbnails.size() << " MakerBot thumbnails";
     } else {
         // UFP format: Use ContainerFormatHelper to generate thumbnail from config
         std::string config_id = Slic3r::FormatConfig::parse_format_config_id(printer_notes, "");

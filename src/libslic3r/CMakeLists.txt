@@ -212,6 +212,8 @@ set(lisbslic3r_sources
     Format/MakerBotWriter.hpp
     Format/ContainerFormatHelper.cpp
     Format/ContainerFormatHelper.hpp
+    Format/ContainerWriterContext.cpp
+    Format/ContainerWriterContext.hpp
     GCode/AdaptivePAInterpolator.cpp
     GCode/AdaptivePAInterpolator.hpp
     GCode/AdaptivePAProcessor.cpp

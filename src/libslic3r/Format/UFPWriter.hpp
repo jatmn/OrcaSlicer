@@ -1,20 +1,11 @@
 #ifndef slic3r_UFPWriter_hpp_
 #define slic3r_UFPWriter_hpp_
 
+#include "ContainerWriterContext.hpp"
+#include "FormatConfig.hpp"
 #include "GCodeContainerWriter.hpp"
 
 namespace Slic3r {
-
-// Per-extruder metadata for multi-extruder UFP export
-struct ExtruderData {
-    std::string material_guid;
-    std::string material_name;
-    std::string brand;  // Material brand (e.g., "Bambu Lab", "eSUN") - used for material.xml
-    int extruder_temp = 0;
-    double filament_mm = 0.0;
-    double filament_g = 0.0;
-    bool empty() const { return material_guid.empty() && extruder_temp == 0 && filament_mm == 0.0; }
-};
 
 class UFPWriter : public GCodeContainerWriter {
 public:
@@ -22,29 +13,24 @@ public:
     
     // Set print statistics directly (bypass G-code parsing)
     void set_print_stats(int duration_s, double filament_mm, double filament_g) {
-        m_duration_s = duration_s;
-        m_filament_mm = filament_mm;
-        m_filament_g = filament_g;
-        m_has_stats = true;
+        m_context.set_print_stats(duration_s, filament_mm, filament_g);
     }
     
     // Set extruder variants for multi-extruder support
     // variants: List of extruder variant names (e.g., ["AA 0.4", "BB 0.4"])
     void set_extruder_variants(const std::vector<std::string>& variants) {
-        m_extruder_variants = variants;
+        m_context.set_extruder_variants(variants);
     }
     
     // Set per-extruder data for multi-extruder UFP export
     // idx: 0 for first extruder, 1 for second extruder
     void set_extruder_data(int idx, const ExtruderData& data) {
-        if (idx >= 0 && idx < 2) {
-            m_extruders[idx] = data;
-        }
+        m_context.set_extruder_data(idx, data);
     }
     
     // Check if any extruder data has been set
     bool has_extruder_data() const {
-        return !m_extruders[0].empty() || !m_extruders[1].empty();
+        return m_context.has_any_extruder_data();
     }
     
 protected:
@@ -53,12 +39,7 @@ protected:
     bool write_container(const GCodeMetadata& meta, const std::string& gcode_content, const std::string& output_path) override;
     
 private:
-    int m_duration_s = 0;
-    double m_filament_mm = 0.0;
-    double m_filament_g = 0.0;
-    bool m_has_stats = false;
-    std::vector<std::string> m_extruder_variants;
-    ExtruderData m_extruders[2];  // Support for 2 extruders
+    ContainerWriterContext m_context;
     
 private:
     // Helper to load nozzle variants from JSON file
