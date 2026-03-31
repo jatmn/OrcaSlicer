@@ -124,6 +124,7 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 - **Export**: `FormatConfig::export_to_container()` — creates container using UFPWriter/MakerBotWriter
 - **Integration**: `BackgroundSlicingProcess::export_gcode()` — hooks container conversion into export flow
 - **Dialog**: `Plater::export_gcode()` — updates file dialog title/extension for container formats
+- **Helper**: `ContainerFormatHelper` — manages format-specific thumbnail requirements for both UFP and MakerBot formats
 
 ### Known Issues
 
@@ -137,7 +138,8 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 
 **MakerBot Format:**
 - `.makerbot` writer needs validation and testing
-- Implementation exists but not yet verified working
+- ContainerFormatHelper class added to manage thumbnail generation
+- Thumbnail format in printer profiles must use `120x120/PNG` format (with PNG specifier)
 
 ---
 
@@ -450,7 +452,21 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 - Assuming copy succeeded without verification
 
 **6. Testing After Copy:**
-1. Rebuild the app if source profiles changed
-2. Launch OrcaSlicer and verify printers appear in setup wizard
-3. Test export functionality with new profiles
-4. Check logs for any profile loading errors
+1. Delete the `user` directory: `C:\Users\<username>\AppData\Roaming\OrcaSlicer\user\` — this ensures cached presets are cleared
+2. Rebuild the app if source profiles changed
+3. Launch OrcaSlicer and verify printers appear in setup wizard
+4. Test export functionality with new profiles
+5. Check logs for any profile loading errors
+
+---
+
+## Change Log
+
+### 2026-03-31
+- **MakerBot Thumbnail Generation Fix** (commit `762ff9d3ef`)
+  - Added `ContainerFormatHelper` class to manage format-specific thumbnail requirements
+  - Fixed thumbnail generation to use `render_thumbnails()` callback for proper sizing
+  - Updated MakerBot format configs to remove oversized 960x1460 thumbnail (exceeded 1000px limit)
+  - Fixed MakerBot printer profiles to use proper PNG format specifier (`120x120/PNG` format)
+  - Renamed `build_ufp_container()` to `build_container_format()` for clarity
+  - Support both UFP and MakerBot container formats with proper thumbnail handling
