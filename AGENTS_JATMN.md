@@ -379,4 +379,74 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 
 - `resources/profiles/Flashforge/machine/` - Nozzle variant pattern
 - `resources/profiles/UltiMaker.json` - Existing UltiMaker structure
-- User config: `C:\Users\jat\AppData\Roaming\OrcaSlicer\user\default\machine\`
+
+### Profile Storage Locations
+
+**System Profiles** (for development/testing - installed OrcaSlicer):
+- Path: `C:\Users\<username>\AppData\Roaming\OrcaSlicer\system\`
+- Structure mirrors `resources/profiles/`:
+  - Machine profiles: `system/UltiMaker/machine/`
+  - Filament profiles: `system/OrcaFilamentLibrary/filament/MakerBot/`
+  - Filament profiles: `system/OrcaFilamentLibrary/filament/UltiMaker/`
+
+**User Profiles** (user-created presets via UI):
+- Location: `C:\Users\<username>\AppData\Roaming\OrcaSlicer\user\<preset_folder>\`
+- Subfolders: `machine/`, `filament/`, `print/`
+- Note: These are for user-created presets, NOT for development profile testing
+
+**Source Code Profiles** (for rebuilding app):
+- Machine profiles: `resources/profiles/UltiMaker/machine/`
+- Filament profiles: `resources/profiles/OrcaFilamentLibrary/filament/MakerBot/`
+- Filament profiles: `resources/profiles/OrcaFilamentLibrary/filament/UltiMaker/`
+- After copying new profiles here, rebuild the app to test changes
+
+### File Copying Guidelines for Testing
+
+When copying UltiMaker/MakerBot profiles for testing, follow these rules:
+
+**1. Banned Tools:**
+- ❌ **xcopy** - Do not use `xcopy` for file copying operations
+- ❌ **robocopy** - Avoid unless absolutely necessary with verification
+- ✅ **PowerShell Copy-Item** - Preferred method with explicit verification
+- ✅ **Manual verification** - Always verify files were copied successfully
+
+**2. Correct Destination Locations:**
+- ✅ **System directory**: `C:\Users\<username>\AppData\Roaming\OrcaSlicer\system\`
+- ❌ **User directory**: `C:\Users\<username>\AppData\Roaming\OrcaSlicer\user\*` - This is auto-generated, placing files here is wasted effort
+
+**3. Required Verification Steps:**
+1. **Count verification**: Compare file counts between source and destination
+2. **Size verification**: Check that file sizes match (not zero bytes)
+3. **Content spot-check**: Open 2-3 random files to ensure they contain valid JSON
+4. **Path verification**: Confirm files are in correct subdirectories (machine/, process/, etc.)
+
+**4. Copying Procedure Example:**
+```powershell
+# Copy machine profiles with verification
+$source = "resources/profiles/UltiMaker/machine/"
+$dest = "C:\Users\$env:USERNAME\AppData\Roaming\OrcaSlicer\system\UltiMaker\machine\"
+
+# Create destination directory if needed
+if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest -Force }
+
+# Copy files
+Copy-Item -Path "$source\*" -Destination $dest -Recurse -Force
+
+# Verification
+$sourceCount = (Get-ChildItem $source -Recurse -File).Count
+$destCount = (Get-ChildItem $dest -Recurse -File).Count
+Write-Host "Source: $sourceCount files, Destination: $destCount files"
+if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
+```
+
+**5. Common Pitfalls to Avoid:**
+- Copying to `user\*` directories (auto-generated, will be overwritten)
+- Using `xcopy` without verification (silent failures)
+- Not checking for zero-byte files (copy failures)
+- Assuming copy succeeded without verification
+
+**6. Testing After Copy:**
+1. Rebuild the app if source profiles changed
+2. Launch OrcaSlicer and verify printers appear in setup wizard
+3. Test export functionality with new profiles
+4. Check logs for any profile loading errors

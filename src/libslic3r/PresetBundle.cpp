@@ -1448,6 +1448,8 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
     boost::filesystem::path     dir = (boost::filesystem::path(data_dir()) / PRESET_SYSTEM_DIR).make_preferred();
     if (validation_mode)
         dir = (boost::filesystem::path(data_dir())).make_preferred();
+    
+    BOOST_LOG_TRIVIAL(warning) << "load_system_presets_from_json: scanning directory " << dir.string();
 
     PresetsConfigSubstitutions  substitutions;
     std::string                 errors_cummulative;
@@ -1464,6 +1466,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
         // Remove the .json suffix.
         vendor_name.erase(vendor_name.size() - 5);
         vendor_names.push_back(vendor_name);
+        BOOST_LOG_TRIVIAL(warning) << "Found vendor JSON: " << vendor_name;
     }
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
     for (size_t i = 0; i < vendor_names.size(); ++ i) {
@@ -3760,6 +3763,7 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
 
     //BBS: add config related logs
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" enter, path %1%, compatibility_rule %2%")%path.c_str()%compatibility_rule;
+    BOOST_LOG_TRIVIAL(warning) << "load_vendor_configs_from_json: vendor_name = " << vendor_name;
     if (flags.has(LoadConfigBundleAttribute::ResetUserProfile) || flags.has(LoadConfigBundleAttribute::LoadSystem))
         // Reset this bundle, delete user profile files if SaveImported.
         this->reset(flags.has(LoadConfigBundleAttribute::SaveImported));
@@ -3802,9 +3806,15 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         }
     };
     try {
+        BOOST_LOG_TRIVIAL(warning) << "Opening vendor root file: " << root_file;
         boost::nowide::ifstream ifs(root_file);
+        if (!ifs.is_open()) {
+            BOOST_LOG_TRIVIAL(error) << "Failed to open vendor root file: " << root_file;
+            throw ConfigurationError((boost::format("Failed to open vendor %1%'s root file: %2%") % vendor_name % root_file).str());
+        }
         json j;
         ifs >> j;
+        BOOST_LOG_TRIVIAL(warning) << "Successfully parsed vendor root file for: " << vendor_name;
         //parse the json elements
         for (auto it = j.begin(); it != j.end(); it++) {
             if (boost::iequals(it.key(), BBL_JSON_KEY_VERSION)) {

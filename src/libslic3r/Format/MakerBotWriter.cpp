@@ -13,6 +13,65 @@
 
 namespace Slic3r {
 
+// Helper to map material name to MakerBot material code
+static std::string material_name_to_code(const std::string& name) {
+    // Check for known material names (case-insensitive)
+    std::string lower = name;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    if (lower.find("tough") != std::string::npos) return "im-pla";
+    if (lower.find("metallic") != std::string::npos) return "metallic-pla";
+    if (lower.find("pla") != std::string::npos) return "pla";
+    // fallback: lowercase and replace spaces with hyphens
+    std::string code = name;
+    std::transform(code.begin(), code.end(), code.begin(), ::tolower);
+    std::replace(code.begin(), code.end(), ' ', '-');
+    return code;
+}
+
+void MakerBotWriter::override_metadata(GCodeMetadata& meta) {
+    // Override print stats if provided via set_print_stats()
+    if (m_has_stats) {
+        meta.duration_s = m_duration_s;
+        meta.filament_mm = m_filament_mm;
+        meta.filament_g = m_filament_g;
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Override metadata with injected stats - "
+                               << "duration=" << m_duration_s << "s, "
+                               << "filament=" << m_filament_mm << "mm, "
+                               << "weight=" << m_filament_g << "g";
+    }
+    
+    // Override material GUID from extruder data if available
+    if (has_extruder_data() && !m_extruder.material_guid.empty()) {
+        meta.material_guid = m_extruder.material_guid;
+        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Override metadata with GUID from extruder data: " << m_extruder.material_guid;
+    }
+    
+    // Override material name from extruder data if available
+    if (has_extruder_data() && !m_extruder.material_name.empty()) {
+        meta.material_name = m_extruder.material_name;
+    }
+    
+    // Override extruder temp from extruder data if available
+    if (has_extruder_data() && m_extruder.extruder_temp > 0) {
+        meta.extruder_temp = m_extruder.extruder_temp;
+    }
+}
+
+std::pair<std::string, std::string> MakerBotWriter::get_bot_and_tool_type() const {
+    // Use bot_type and tool_type directly from config (loaded from JSON config file)
+    // The config_id (FORMAT_CONFIG_ID) is stored in m_config.id
+    // The bot_type and tool_type are set in the JSON config files
+    
+    const std::string& bot_type = m_config.bot_type;
+    const std::string& tool_type = m_config.tool_type;
+    
+    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Using bot_type='" << bot_type << "', tool_type='" << tool_type << "' from config";
+    
+    // Return bot_type as-is and tool_type as-is
+    // The config values are the authoritative source for MakerBot compatibility
+    return std::make_pair(bot_type, tool_type);
+}
+
 std::string MakerBotWriter::generate_header(const GCodeMetadata& meta) {
     std::ostringstream header;
     
@@ -131,8 +190,14 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
 
 std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     std::ostringstream json;
+    
+    // Get dynamic bot_type and tool_type based on FORMAT_CONFIG_ID
+    std::pair<std::string, std::string> bot_and_tool = get_bot_and_tool_type();
+    const std::string& bot_type = bot_and_tool.first;
+    const std::string& tool_type = bot_and_tool.second;
+    
     json << "{\n";
-    json << "  \"bot_type\": \"" << m_config.bot_type << "\",\n";
+    json << "  \"bot_type\": \"" << bot_type << "\",\n";
     json << "  \"platform_temperature\": " << meta.bed_temp << ",\n";
     json << "  \"build_plane_temperature\": " << m_config.build_plane_temperature << ",\n";
     json << "  \"commanded_duration_s\": " << meta.duration_s << ",\n";
@@ -142,12 +207,14 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     json << "  \"extrusion_mass_g\": " << std::fixed << std::setprecision(6) << meta.filament_g << ",\n";
     json << "  \"extrusion_masses_g\": [" << std::fixed << std::setprecision(6) << meta.filament_g << "],\n";
     json << "  \"uuid\": \"" << meta.material_guid << "\",\n";
-    json << "  \"material\": \"" << meta.material_name << "\",\n";
-    json << "  \"materials\": [\"" << meta.material_name << "\"],\n";
+    std::string material_code = material_name_to_code(meta.material_name);
+    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: material_name='" << meta.material_name << "' -> material_code='" << material_code << "'";
+    json << "  \"material\": \"" << material_code << "\",\n";
+    json << "  \"materials\": [\"" << material_code << "\"],\n";
     json << "  \"extruder_temperature\": " << meta.extruder_temp << ",\n";
     json << "  \"extruder_temperatures\": [" << meta.extruder_temp << "],\n";
-    json << "  \"tool_type\": \"" << m_config.tool_type << "\",\n";
-    json << "  \"tool_types\": [\"" << m_config.tool_type << "\"],\n";
+    json << "  \"tool_type\": \"" << tool_type << "\",\n";
+    json << "  \"tool_types\": [\"" << tool_type << "\"],\n";
     json << "  \"version\": \"" << m_config.version << "\",\n";
     json << "  \"model_counts\": [{\"count\": 1, \"name\": \"instance0\"}],\n";
     json << "  \"preferences\": {\n";
@@ -159,7 +226,7 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     
     // Add extruderProfiles for Sprint variant
     if (m_config.header_template == "marlin") {
-        json << "  \"extruderProfiles\": [{ \"nozzle_diameter\": 0.4, \"tool_type\": \"" << m_config.tool_type << "\" }],\n";
+        json << "  \"extruderProfiles\": [{ \"nozzle_diameter\": 0.4, \"tool_type\": \"" << tool_type << "\" }],\n";
     }
     
     json << "  \"miracle_config\": {\n";

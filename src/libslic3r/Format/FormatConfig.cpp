@@ -370,6 +370,27 @@ bool FormatConfig::export_to_container(const std::string& format_type,
         }
     } else if (format_type == "makerbot") {
         MakerBotWriter writer(format_config);
+        // Pass extruder variants for nozzle diameter/name
+        if (!extruder_variants.empty()) {
+            writer.set_extruder_variants(extruder_variants);
+            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting " << extruder_variants.size() << " extruder variants for MakerBot export";
+        }
+        // Pass thumbnail data directly (NOT extracted from gcode)
+        if (!thumbnail_data.empty()) {
+            writer.set_thumbnail_data(thumbnail_data);
+            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting thumbnail data for MakerBot export, size=" << thumbnail_data.size();
+        }
+        // Pass extruder data (GUIDs, temps, volumes)
+        for (size_t i = 0; i < extruder_data.size() && i < 1; ++i) {
+            MakerBotExtruderData mb_data;
+            mb_data.material_guid = extruder_data[i].material_guid;
+            mb_data.material_name = extruder_data[i].material_name;
+            mb_data.extruder_temp = extruder_data[i].extruder_temp;
+            mb_data.filament_mm = extruder_data[i].filament_mm;
+            mb_data.filament_g = extruder_data[i].filament_g;
+            writer.set_extruder_data(static_cast<int>(i), mb_data);
+            BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting extruder data for MakerBot export - GUID: " << mb_data.material_guid;
+        }
         success = writer.write(input_gcode_path, output_path);
         if (!success) {
             error_message = "Failed to create MakerBot file (.makerbot). "

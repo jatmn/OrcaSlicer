@@ -1,21 +1,21 @@
 {
     "type": "filament",
-    "name": "MakerBot Sketch Tough PLA @base",
+    "name": "MakerBot Sketch Metallic PLA @base",
     "inherits": "fdm_filament_pla",
     "from": "system",
-    "filament_id": "MKSKTPLA00",
+    "filament_id": "MKSKMPLA00",
     "instantiation": "false",
     "filament_cost": [
         "29.99"
     ],
     "filament_density": [
-        "1.26"
+        "1.24"
     ],
     "filament_flow_ratio": [
-        "0.98"
+        "1.0"
     ],
     "filament_max_volumetric_speed": [
-        "10"
+        "12"
     ],
     "filament_vendor": [
         "MakerBot"
@@ -35,8 +35,5 @@
     "filament_scarf_length": [
         "10"
     ],
-    "filament_type": [
-        "PLA Tough"
-    ],
-    "filament_notes": "MATERIAL_GUID:de031137-a8ca-4a72-bd1b-17bb964033ad\nMATERIAL_CODE:im-pla"
+    "filament_notes": "MATERIAL_GUID:3fac1543-dd0c-462d-9cbc-d94137d43999\nMATERIAL_CODE:metallic-pla"
 }

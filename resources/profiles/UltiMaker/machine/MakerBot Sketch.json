@@ -5,8 +5,8 @@
     "nozzle_diameter": "0.4",
     "machine_tech": "FFF",
     "family": "MakerBot",
-    "bed_model": "",
-    "bed_texture": "",
-    "hotend_model": "",
-    "default_materials": "MakerBot Sketch PLA @System;MakerBot Sketch Tough PLA @System"
+    "bed_model": "makerbot_build_plate_model.stl",
+    "bed_texture": "makerbot_build_plate_texture.png",
+    "hotend_model": "makerbot_hotend.stl",
+    "default_materials": "MakerBot Sketch PLA @System;MakerBot Sketch Tough PLA @System;MakerBot Sketch Metallic PLA @System"
 }
