@@ -348,7 +348,7 @@ std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& met
 
         return root.dump();
 
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         // Fall back to minimal if parsing fails
         return generate_slicemetadata_json_minimal(meta);
     }

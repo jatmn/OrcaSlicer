@@ -60,7 +60,7 @@ bool FormatConfig::load_format(const std::string& format_type,
         }
         
         return !out_configs.empty();
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return false;
     }
 }
@@ -157,7 +157,7 @@ bool FormatConfig::load_printer_config(const std::string& format_type,
         }
         
         return true;
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         return false;
     }
 }
