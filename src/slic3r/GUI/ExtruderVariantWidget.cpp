@@ -2,12 +2,16 @@
 #include "GUI_App.hpp"
 #include "Plater.hpp"
 #include "Widgets/Label.hpp"
+#include "MsgDialog.hpp"
 #include "libslic3r/PresetBundle.hpp"
+#include "libslic3r/Preset.hpp"
 #include "libslic3r/Config.hpp"
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <sstream>
 #include <iomanip>
+#include <wx/arrstr.h>
+#include <wx/msgdlg.h>
 
 namespace Slic3r { namespace GUI {
 
@@ -36,10 +40,14 @@ ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
 {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     
-    // Title - use Label class with Body_10 font to match sidebar style
-    auto* title = new Label(this, Label::Body_10, _L("Print Core Configuration"));
+    // Title - use Label class with Head_14 font (bold, larger) to match section titles
+    auto* title = new Label(this, Label::Head_14, _L("Print Core Configuration"));
     sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
-    
+
+    // Add separator line to match optgroup visual style
+    auto* line = new wxStaticLine(this, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(200), 1));
+    sizer->Add(line, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(5));
+
     SetSizer(sizer);
     Hide(); // Hidden by default, shown only for compatible printers
 }
@@ -83,6 +91,7 @@ void ExtruderVariantWidget::update_from_config()
         if (row.variant_choice) row.variant_choice->Destroy();
     }
     m_extruder_rows.clear();
+    m_extruder_variants.clear();  // CRITICAL: Clear stale pointers to destroyed wxChoice controls
     
     // Get nozzle diameter count from full_config (determines extruder count)
     auto& full_config = preset_bundle->full_config();
@@ -115,9 +124,9 @@ void ExtruderVariantWidget::update_from_config()
     
     // Create dropdown for each extruder
     for (size_t i = 0; i < num_extruders; i++) {
-        // Print Core label - use Label class with Body_10 to match sidebar style
+        // Print Core label - use Label class with Body_13 to match option label styling
         wxString label_text = wxString::Format(_L("Print Core %d"), (int)(i + 1));
-        auto* label = new Label(this, Label::Body_10, label_text);
+        auto* label = new Label(this, Label::Body_13, label_text);
         row_sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
         
         // Combined variant choice (e.g., "AA 0.4", "BB 0.4", "CC 0.6")
@@ -165,6 +174,9 @@ void ExtruderVariantWidget::update_from_config()
             row_sizer->AddSpacer(10);
         }
         
+        // Also add to the variant choice vector for easier access
+        m_extruder_variants.push_back(variant_choice);
+        
         m_extruder_rows.push_back({label, variant_choice});
     }
     
@@ -194,8 +206,11 @@ void ExtruderVariantWidget::update_from_config()
 
 void ExtruderVariantWidget::on_variant_changed(int extruder_idx, const wxString& variant)
 {
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] on_variant_changed ENTER - extruder_idx=" << extruder_idx;
+    
     // Guard against null preset_bundle
     if (!wxGetApp().preset_bundle) {
+        BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] on_variant_changed EXIT - null preset_bundle";
         return;
     }
     
@@ -224,6 +239,26 @@ void ExtruderVariantWidget::on_variant_changed(int extruder_idx, const wxString&
     
     // Mark preset as dirty
     preset_bundle->printers.get_edited_preset().set_dirty();
+    
+    // Check for core size mismatch between extruders
+    // Skip check if we're already handling a mismatch dialog (recursion prevention)
+    wxString size1, size2;
+    if (!m_in_mismatch_dialog && has_size_mismatch(size1, size2)) {
+        // Show mismatch dialog - user may choose to change other core
+        show_mismatch_dialog(size1, size2);
+    }
+    
+    // Update process presets based on controlling print core
+    // Get controlling core and extract type for process preset filtering
+    int controlling_idx = get_controlling_core_index();
+    if (controlling_idx >= 0 && controlling_idx < (int)m_extruder_variants.size()) {
+        int sel = m_extruder_variants[controlling_idx]->GetSelection();
+        if (sel != wxNOT_FOUND) {
+            wxString selected_core = m_extruder_variants[controlling_idx]->GetString(sel);
+            wxString core_type = extract_type_from_core(selected_core);
+            update_process_presets(core_type);
+        }
+    }
     
     // Update printer-related UI elements
     wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINTER);
@@ -254,6 +289,240 @@ bool ExtruderVariantWidget::printer_has_variants()
     }
     
     return false;
+}
+
+// Extract nozzle size from core string (e.g., "AA 0.4" -> "0.4")
+wxString ExtruderVariantWidget::extract_size_from_core(const wxString& core)
+{
+    // Split the core string by space
+    wxArrayString parts = wxSplit(core, ' ');
+    if (parts.size() >= 2) {
+        return parts[parts.size() - 1];  // Last part is the size
+    }
+    return wxString();  // Return empty if format is invalid
+}
+
+// Check if selected cores have different nozzle sizes
+bool ExtruderVariantWidget::has_size_mismatch(wxString& size1, wxString& size2)
+{
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch ENTER";
+    
+    if (m_extruder_variants.size() < 2) {
+        BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch EXIT - single extruder";
+        return false;  // Single extruder, no mismatch possible
+    }
+    
+    // Guard against null pointers
+    if (!m_extruder_variants[0] || !m_extruder_variants[1]) {
+        BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch EXIT - null pointer";
+        return false;
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch - ptr0=" << m_extruder_variants[0] << " ptr1=" << m_extruder_variants[1];
+    
+    // Get current selections from combo boxes
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch - about to call GetSelection on ptr0";
+    int sel0 = m_extruder_variants[0]->GetSelection();
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch - sel0=" << sel0;
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch - about to call GetSelection on ptr1";
+    int sel1 = m_extruder_variants[1]->GetSelection();
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] has_size_mismatch - sel1=" << sel1;
+    
+    // Guard against no selection (GetSelection returns wxNOT_FOUND if none selected)
+    if (sel0 == wxNOT_FOUND || sel1 == wxNOT_FOUND) {
+        return false;
+    }
+    
+    wxString core1 = m_extruder_variants[0]->GetString(sel0);
+    wxString core2 = m_extruder_variants[1]->GetString(sel1);
+    
+    // Extract sizes
+    size1 = extract_size_from_core(core1);
+    size2 = extract_size_from_core(core2);
+    
+    // Compare sizes
+    return !size1.IsEmpty() && !size2.IsEmpty() && size1 != size2;
+}
+
+// Show dialog asking user to select which core size to use
+// Returns true if user made a selection, false if cancelled
+bool ExtruderVariantWidget::show_mismatch_dialog(const wxString& size1, const wxString& size2)
+{
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] show_mismatch_dialog ENTER";
+    
+    // Guard against invalid state - ensure we have 2 valid extruder variant pointers
+    if (m_extruder_variants.size() < 2 || !m_extruder_variants[0] || !m_extruder_variants[1]) {
+        BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] show_mismatch_dialog EXIT - invalid state";
+        return false;
+    }
+    
+    // Get full core names for the dialog
+    int sel0 = m_extruder_variants[0]->GetSelection();
+    int sel1 = m_extruder_variants[1]->GetSelection();
+    
+    // Guard against no selection - use passed size strings as fallback
+    wxString core1 = (sel0 != wxNOT_FOUND) ? m_extruder_variants[0]->GetString(sel0) : wxString::Format("Core 1 (%s)", size1);
+    wxString core2 = (sel1 != wxNOT_FOUND) ? m_extruder_variants[1]->GetString(sel1) : wxString::Format("Core 2 (%s)", size2);
+    
+    // Set recursion prevention flag
+    m_in_mismatch_dialog = true;
+    
+    // Create dialog similar to Bambu H2D pattern
+    MessageDialog dlg(this,
+                      _L("The selected print cores have different nozzle sizes. "
+                         "UltiMaker printers require both print cores to have the same nozzle size "
+                         "for dual extrusion printing.\n\n"
+                         "Please select which nozzle size you would like to use for both cores."),
+                      _L("Print Core Size Mismatch"),
+                      wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+    
+    // Set custom button labels showing core options
+    dlg.SetButtonLabel(wxID_YES, wxString::Format(_L("Use %s (%smm)"), core1, size1));
+    dlg.SetButtonLabel(wxID_NO, wxString::Format(_L("Use %s (%smm)"), core2, size2));
+    
+    // Show dialog and handle result
+    int result = dlg.ShowModal();
+    
+    // Clear recursion prevention flag
+    m_in_mismatch_dialog = false;
+    
+    if (result == wxID_YES) {
+        // User chose to use size from core 1
+        update_core_size(1, size1);  // Update core 2 to match size1
+        return true;
+    } else if (result == wxID_NO) {
+        // User chose to use size from core 2
+        update_core_size(0, size2);  // Update core 1 to match size2
+        return true;
+    }
+    
+    // User cancelled (shouldn't happen with YES_NO dialog, but handle anyway)
+    return false;
+}
+
+// Update a specific core to a new size while preserving its type
+// Returns true if selection was actually changed, false otherwise
+bool ExtruderVariantWidget::update_core_size(int extruder_idx, const wxString& new_size)
+{
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_core_size ENTER - extruder_idx=" << extruder_idx;
+    
+    if (extruder_idx < 0 || extruder_idx >= (int)m_extruder_variants.size()) {
+        BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_core_size EXIT - invalid index";
+        return false;
+    }
+    
+    wxChoice* combo = m_extruder_variants[extruder_idx];
+    
+    // Guard against null pointer
+    if (!combo) {
+        return false;
+    }
+    
+    // Guard against invalid selection
+    int current_sel = combo->GetSelection();
+    if (current_sel == wxNOT_FOUND) {
+        return false;
+    }
+    
+    // First, try to find an exact match with same core type and new size
+    wxString current_core = combo->GetString(current_sel);
+    wxArrayString parts = wxSplit(current_core, ' ');
+    if (parts.size() < 2) {
+        return false;  // Invalid format
+    }
+    
+    wxString core_type = parts[0];  // e.g., "AA", "BB", "CC"
+    wxString exact_match = wxString::Format("%s %s", core_type, new_size);
+    int new_sel = combo->FindString(exact_match);
+    
+    // If exact match not found, search for ANY core with the target size
+    if (new_sel == wxNOT_FOUND) {
+        // Iterate through all options to find one with the target size
+        for (int i = 0; i < combo->GetCount(); i++) {
+            wxString option = combo->GetString(i);
+            wxString option_size = extract_size_from_core(option);
+            if (option_size == new_size) {
+                new_sel = i;
+                break;
+            }
+        }
+    }
+    
+    // If we found a valid option, select it
+    if (new_sel != wxNOT_FOUND && new_sel != combo->GetSelection()) {
+        combo->SetSelection(new_sel);
+        
+        // Trigger the change event to update config
+        wxCommandEvent evt(wxEVT_CHOICE);
+        evt.SetEventObject(combo);
+        on_variant_changed(extruder_idx, combo->GetString(new_sel));
+        return true;
+    }
+    
+    return false;  // No valid option found or selection unchanged
+}
+
+// Determine which print core controls process selection based on printer type
+// Returns: 0 for Print Core 1, 1 for Print Core 2
+int ExtruderVariantWidget::get_controlling_core_index()
+{
+    // Get current printer preset
+    const Preset& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
+    const std::string& printer_name = printer_preset.name;
+    
+    // Factor 4 uses Print Core 2 for process selection
+    if (printer_name.find("Factor 4") != std::string::npos) {
+        return 1;  // Print Core 2
+    }
+    
+    // S Series (S3, S5, S6, S7, S8) use Print Core 1 for process selection
+    if (printer_name.find("S3") != std::string::npos ||
+        printer_name.find("S5") != std::string::npos ||
+        printer_name.find("S6") != std::string::npos ||
+        printer_name.find("S7") != std::string::npos ||
+        printer_name.find("S8") != std::string::npos) {
+        return 0;  // Print Core 1
+    }
+    
+    // Default to Print Core 1 for unknown UltiMaker printers
+    return 0;
+}
+
+// Extract core type from core string (e.g., "AA 0.4" -> "AA")
+wxString ExtruderVariantWidget::extract_type_from_core(const wxString& core)
+{
+    wxArrayString parts = wxSplit(core, ' ');
+    if (parts.size() >= 1) {
+        return parts[0];  // First part is the type
+    }
+    return wxString();
+}
+
+// Update process presets based on selected core type
+// Note: This is a placeholder implementation - actual process filtering requires
+// integration with the preset system
+void ExtruderVariantWidget::update_process_presets(const wxString& core_type)
+{
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets ENTER";
+    
+    // Get the controlling core index
+    int controlling_idx = get_controlling_core_index();
+    
+    // Get the selected core at controlling index
+    if (controlling_idx >= 0 && controlling_idx < (int)m_extruder_variants.size()) {
+        wxChoice* combo = m_extruder_variants[controlling_idx];
+        if (!combo) return;
+        
+        int sel = combo->GetSelection();
+        if (sel == wxNOT_FOUND) return;
+        
+        wxString selected_core = combo->GetString(sel);
+        wxString selected_type = extract_type_from_core(selected_core);
+        
+        // Log the selection for now (actual process preset filtering would go here)
+        // The process preset filtering should be implemented in the Tab or Sidebar class
+        // where preset compatibility is managed
+    }
 }
 
 }} // namespace Slic3r::GUI
