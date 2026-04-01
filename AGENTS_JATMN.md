@@ -141,6 +141,12 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 - ContainerFormatHelper class added to manage thumbnail generation
 - Thumbnail format in printer profiles must use `120x120/PNG` format (with PNG specifier)
 
+**Dual Extrusion on S/F Series (UltiMaker S3/S5/S6/S7/S8, Factor 4):**
+- ⚠️ **Needs more work** - Dual extrusion functionality is not fully implemented
+- Material usage is not properly reported in `.ufp` container files for dual extrusion prints
+- **Zero validation prints** have been performed for dual extrusion - completely untested
+- Single extrusion prints work correctly; dual extrusion requires additional development and testing
+
 ---
 
 ## UltiMaker Digital Factory Integration

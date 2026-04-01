@@ -1155,7 +1155,8 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
             }
         }
         
-        // Distribute filament across extruders
+        // Distribute filament across extruders using actual per-filament statistics
+        const auto& stats = m_fff_print->print_statistics();
         if (extruder_data.size() == 1 || is_single_material) {
             extruder_data[0].filament_mm = total_filament_mm;
             extruder_data[0].filament_g = total_filament_g;
@@ -1163,11 +1164,23 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
                 extruder_data[1].filament_mm = 0.0;
                 extruder_data[1].filament_g = 0.0;
             }
-        } else if (extruder_data.size() == 2 && !is_single_material) {
-            extruder_data[0].filament_mm = total_filament_mm / 2.0;
-            extruder_data[0].filament_g = total_filament_g / 2.0;
-            extruder_data[1].filament_mm = total_filament_mm / 2.0;
-            extruder_data[1].filament_g = total_filament_g / 2.0;
+        } else if (extruder_data.size() >= 2 && !is_single_material) {
+            // Use actual per-extruder filament statistics instead of 50/50 split
+            for (size_t i = 0; i < extruder_data.size() && i < 2; ++i) {
+                auto it = stats.filament_stats.find(i);
+                if (it != stats.filament_stats.end()) {
+                    extruder_data[i].filament_mm = it->second;
+                    // Calculate weight proportionally based on filament length ratio
+                    if (total_filament_mm > 0) {
+                        extruder_data[i].filament_g = total_filament_g * (it->second / total_filament_mm);
+                    } else {
+                        extruder_data[i].filament_g = 0.0;
+                    }
+                } else {
+                    extruder_data[i].filament_mm = 0.0;
+                    extruder_data[i].filament_g = 0.0;
+                }
+            }
         }
         
         BOOST_LOG_TRIVIAL(warning) << "build_container_format: Final filament distribution - extruder 0: " 
@@ -1181,44 +1194,24 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
     std::vector<uint8_t> thumbnail_data;
     std::vector<std::pair<std::vector<uint8_t>, std::string>> thumbnails;
     
-    bool is_makerbot_format = (format_type == "makerbot");
+    // Generate thumbnails using ContainerFormatHelper for both MakerBot and UFP formats
+    // The format_type parameter determines which config is loaded
+    std::string config_id = Slic3r::FormatConfig::parse_format_config_id(printer_notes, "");
+    auto requirements = Slic3r::ContainerFormatHelper::load_thumbnail_requirements(format_type, config_id);
     
-    if (is_makerbot_format) {
-        // MakerBot format: Use ContainerFormatHelper to generate thumbnails from config
-        std::string config_id = Slic3r::FormatConfig::parse_format_config_id(printer_notes, "");
-        auto requirements = Slic3r::ContainerFormatHelper::load_thumbnail_requirements(format_type, config_id);
-        
-        if (!requirements.empty() && m_thumbnail_cb) {
-            // Create a wrapper lambda that matches the expected signature
-            auto render_wrapper = [this](const ThumbnailsParams& params) -> ThumbnailsList {
-                return this->render_thumbnails(params);
-            };
-            thumbnails = Slic3r::ContainerFormatHelper::generate_thumbnails(requirements, render_wrapper);
-            BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated " << thumbnails.size()
-                                    << " MakerBot thumbnails from config";
-        } else if (requirements.empty()) {
-            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No thumbnail requirements found in MakerBot config";
-        } else {
-            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No render callback available for MakerBot thumbnails";
-        }
+    if (!requirements.empty() && m_thumbnail_cb) {
+        auto render_wrapper = [this](const ThumbnailsParams& params) -> ThumbnailsList {
+            return this->render_thumbnails(params);
+        };
+        thumbnails = Slic3r::ContainerFormatHelper::generate_thumbnails(requirements, render_wrapper);
+        BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated " << thumbnails.size()
+                                << " " << format_type << " thumbnails from config";
+    } else if (requirements.empty()) {
+        BOOST_LOG_TRIVIAL(warning) << "build_container_format: No thumbnail requirements found in "
+                                   << format_type << " config";
     } else {
-        // UFP format: Use ContainerFormatHelper to generate thumbnail from config
-        std::string config_id = Slic3r::FormatConfig::parse_format_config_id(printer_notes, "");
-        auto requirements = Slic3r::ContainerFormatHelper::load_thumbnail_requirements(format_type, config_id);
-        
-        if (!requirements.empty() && m_thumbnail_cb) {
-            // Create a wrapper lambda that matches the expected signature
-            auto render_wrapper = [this](const ThumbnailsParams& params) -> ThumbnailsList {
-                return this->render_thumbnails(params);
-            };
-            thumbnails = Slic3r::ContainerFormatHelper::generate_thumbnails(requirements, render_wrapper);
-            BOOST_LOG_TRIVIAL(info) << "build_container_format: Generated " << thumbnails.size()
-                                    << " UFP thumbnails from config";
-        } else if (requirements.empty()) {
-            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No thumbnail requirements found in UFP config";
-        } else {
-            BOOST_LOG_TRIVIAL(warning) << "build_container_format: No render callback available for UFP thumbnails";
-        }
+        BOOST_LOG_TRIVIAL(warning) << "build_container_format: No render callback available for "
+                                   << format_type << " thumbnails";
     }
     
     // Export to container format
