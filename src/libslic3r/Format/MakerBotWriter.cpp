@@ -29,6 +29,9 @@ static std::string material_name_to_code(const std::string& name) {
 }
 
 void MakerBotWriter::override_metadata(GCodeMetadata& meta) {
+    // Propagate extruder 0 data to extruder 1 if needed (for dual-extruder with same material)
+    m_context.propagate_extruder_data_if_needed();
+
     // Override print stats if provided via set_print_stats()
     if (m_context.has_print_stats()) {
         meta.duration_s = m_context.get_duration_s();
@@ -147,11 +150,10 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
         return false;
     }
 
-    // 4. Thumbnails (passed directly via set_thumbnails() or set_thumbnail_data(), never extracted from gcode)
+    // 4. Thumbnails (passed directly via set_thumbnails(), never extracted from gcode)
     // IMPORTANT: Thumbnails should NEVER be embedded in gcode comments - they are passed separately
     const auto& thumbnails = m_context.get_thumbnails();
     if (!thumbnails.empty()) {
-        // Multiple thumbnails provided via set_thumbnails()
         BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding " << thumbnails.size() << " thumbnails";
 
         for (const auto& [thumbnail_data, filename] : thumbnails) {
@@ -170,35 +172,6 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
                 BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESSFULLY added thumbnail '" << filename
                     << "' (" << thumbnail_data.size() << " bytes)";
             }
-        }
-    } else if (has_thumbnail_data()) {
-        // Single thumbnail provided via set_thumbnail_data() (backward compatibility)
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding single thumbnail, size=" << m_thumbnail_data.size();
-
-        // DEBUG: Log first few bytes of PNG to verify it's valid
-        if (m_thumbnail_data.size() > 8) {
-            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: PNG header bytes: "
-                << std::hex << (int)m_thumbnail_data[0] << " " << (int)m_thumbnail_data[1] << " "
-                << (int)m_thumbnail_data[2] << " " << (int)m_thumbnail_data[3] << " "
-                << (int)m_thumbnail_data[4] << " " << (int)m_thumbnail_data[5] << " "
-                << (int)m_thumbnail_data[6] << " " << (int)m_thumbnail_data[7] << std::dec;
-        }
-
-        // Determine naming convention based on printer type
-        // IMPORTANT: Both sketch_small and sketch_sprint use isometric_thumbnail naming
-        // This is required by the MakerBot firmware and Digital Factory
-        std::string filename = "isometric_thumbnail_320x320.png";
-
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Using isometric thumbnail naming for " << m_config.printer_name;
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Adding thumbnail with filename: " << filename;
-
-        if (!mz_zip_writer_add_mem(&archive, filename.c_str(),
-                                   m_thumbnail_data.data(), m_thumbnail_data.size(),
-                                   MZ_DEFAULT_COMPRESSION)) {
-            BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: FAILED to add thumbnail to archive";
-        } else {
-            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESSFULLY added thumbnail as " << filename
-                << " (" << m_thumbnail_data.size() << " bytes)";
         }
     } else {
         BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter::write_container: No thumbnail data available - THUMBNAIL WILL BE MISSING";

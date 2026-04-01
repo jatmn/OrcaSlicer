@@ -16,6 +16,11 @@ public:
         m_context.set_print_stats(duration_s, filament_mm, filament_g);
     }
     
+    // Add a thumbnail to the container
+    void add_thumbnail(const std::vector<uint8_t>& data, const std::string& filename) {
+        m_context.add_thumbnail(data, filename);
+    }
+    
     // Set extruder variants for multi-extruder support
     // variants: List of extruder variant names (e.g., ["AA 0.4", "BB 0.4"])
     void set_extruder_variants(const std::vector<std::string>& variants) {

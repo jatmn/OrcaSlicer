@@ -94,18 +94,21 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     }
 
     // 3. /Metadata/thumbnail.png (if available) - with leading slash
-    // IMPORTANT: Thumbnail is passed directly via set_thumbnail_data(), NEVER extracted from gcode comments
+    // IMPORTANT: Thumbnail is passed directly via set_thumbnails(), NEVER extracted from gcode comments
     // Thumbnails in gcode comments would cause firmware to reject the file
     bool has_thumbnail = false;
-    if (has_thumbnail_data()) {
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Writing thumbnail from passed data, size=" << m_thumbnail_data.size();
+    const auto& thumbnails = m_context.get_thumbnails();
+    if (!thumbnails.empty()) {
+        // Use the first thumbnail (UFP format expects a single thumbnail)
+        const auto& [thumbnail_data, filename] = thumbnails[0];
+        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Writing thumbnail from context, size=" << thumbnail_data.size();
         if (!mz_zip_writer_add_mem_ex(&archive, "/Metadata/thumbnail.png",
-                                      m_thumbnail_data.data(), m_thumbnail_data.size(),
+                                      thumbnail_data.data(), thumbnail_data.size(),
                                       nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
             BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to add thumbnail";
         } else {
             has_thumbnail = true;
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail from passed data";
+            BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail from context";
         }
     } else {
         BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: No thumbnail data available";
@@ -182,6 +185,9 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
 }
 
 void UFPWriter::override_metadata(GCodeMetadata& meta) {
+    // Propagate extruder 0 data to extruder 1 if needed (for dual-extruder with same material)
+    m_context.propagate_extruder_data_if_needed();
+
     // Override parsed metadata with injected values ONLY if they are non-zero
     // (zero means stats weren't captured; keep the parsed values from G-code comments)
     if (m_context.has_print_stats()) {
