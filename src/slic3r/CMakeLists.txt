@@ -701,6 +701,8 @@ list(APPEND SLIC3R_GUI_SOURCES
     Utils/UltiMaker.hpp
     Utils/UltiMakerLAN.cpp
     Utils/UltiMakerLAN.hpp
+    Utils/SecureStorage.cpp
+    Utils/SecureStorage.hpp
 )
 
 set(ORCA_UPDATER_SIG_KEY_B64 "${ORCA_UPDATER_SIG_KEY}")

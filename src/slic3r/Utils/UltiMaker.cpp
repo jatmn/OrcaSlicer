@@ -12,6 +12,7 @@
 #include <condition_variable>
 
 #include "slic3r/Utils/Http.hpp"
+#include "slic3r/Utils/SecureStorage.hpp"
 #include "nlohmann/json.hpp"
 #include "libslic3r/Utils.hpp"
 #include "libslic3r/Format/FormatConfig.hpp"
@@ -160,7 +161,23 @@ void UltiMaker::load_oauth_credential()
 {
     m_cred.clear();
     m_token_expires_at = std::chrono::system_clock::time_point{};
-    BOOST_LOG_TRIVIAL(error) << "UltiMaker: Loading OAuth credentials from " << m_oauth_cred_file;
+    
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Loading OAuth credentials";
+    
+    // Step 1: Try to load refresh token from secure keyring first
+    if (SecureStorage::is_available()) {
+        auto refresh_token = SecureStorage::retrieve(KEYRING_ACCOUNT);
+        if (refresh_token.has_value()) {
+            m_cred["refresh_token"] = refresh_token.value();
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refresh token loaded from OS keyring";
+        } else {
+            BOOST_LOG_TRIVIAL(debug) << "UltiMaker: No refresh token in keyring, checking JSON...";
+        }
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Secure storage not available, using JSON fallback";
+    }
+    
+    // Step 2: Load access token and metadata from JSON
     if (boost::filesystem::exists(m_oauth_cred_file)) {
         nlohmann::json j;
         try {
@@ -169,7 +186,21 @@ void UltiMaker::load_oauth_credential()
             ifs.close();
 
             m_cred["access_token"] = j["access_token"];
-            m_cred["refresh_token"] = j["refresh_token"];
+            
+            // Only load refresh_token from JSON if not already loaded from keyring
+            if (!m_cred.count("refresh_token") && j.contains("refresh_token")) {
+                m_cred["refresh_token"] = j["refresh_token"];
+                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refresh token loaded from JSON (migration needed)";
+                
+                // Migrate to keyring for next time
+                if (SecureStorage::is_available() && !j["refresh_token"].get<std::string>().empty()) {
+                    if (SecureStorage::store(KEYRING_ACCOUNT, j["refresh_token"])) {
+                        BOOST_LOG_TRIVIAL(info) << "UltiMaker: Migrated refresh token to keyring";
+                    } else {
+                        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Failed to migrate refresh token to keyring";
+                    }
+                }
+            }
             
             // Load token expiration time if available
             if (j.contains("expires_at")) {
@@ -177,7 +208,7 @@ void UltiMaker::load_oauth_credential()
                 m_token_expires_at = std::chrono::system_clock::from_time_t(expires_at_epoch);
                 auto now = std::chrono::system_clock::now();
                 auto remaining = std::chrono::duration_cast<std::chrono::seconds>(m_token_expires_at - now).count();
-                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Token expires in " << remaining << " seconds";
+                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Access token expires in " << remaining << " seconds";
             }
         } catch (std::exception& err) {
             BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": parse " << m_oauth_cred_file << " failed, reason = " << err.what();
@@ -188,23 +219,50 @@ void UltiMaker::load_oauth_credential()
 
 void UltiMaker::save_oauth_credential(const GUI::OAuthResult& cred) const
 {
-    BOOST_LOG_TRIVIAL(error) << "UltiMaker: Saving OAuth credentials to " << m_oauth_cred_file;
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Saving OAuth credentials";
+    
+    // Track whether we successfully stored in keyring
+    bool keyring_stored = false;
+    
+    // Step 1: Save refresh token to secure keyring
+    if (!cred.refresh_token.empty()) {
+        if (SecureStorage::is_available()) {
+            bool stored = SecureStorage::store(KEYRING_ACCOUNT, cred.refresh_token);
+            if (stored) {
+                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refresh token stored in OS keyring";
+                keyring_stored = true;
+            } else {
+                BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Failed to store refresh token in keyring, falling back to JSON";
+            }
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Secure storage not available, refresh token will be stored in JSON";
+        }
+    }
+    
+    // Step 2: Save access token and metadata to JSON (less sensitive)
     nlohmann::json j;
     j["access_token"] = cred.access_token;
-    j["refresh_token"] = cred.refresh_token;
+    
+    // Store refresh_token in JSON if:
+    // - Keyring is not available, OR
+    // - Keyring store failed, OR
+    // - No refresh token to store (for completeness)
+    if (!SecureStorage::is_available() || !keyring_stored || cred.refresh_token.empty()) {
+        j["refresh_token"] = cred.refresh_token;
+    }
     
     // Store token expiration time
     if (cred.expires_in > 0) {
         auto expires_at = std::chrono::system_clock::now() + std::chrono::seconds(cred.expires_in);
         j["expires_at"] = std::chrono::system_clock::to_time_t(expires_at);
-        BOOST_LOG_TRIVIAL(info) << "UltiMaker: Storing token expiration: " << cred.expires_in << " seconds";
+        BOOST_LOG_TRIVIAL(info) << "UltiMaker: Token expires in " << cred.expires_in << " seconds";
     }
 
     boost::nowide::ofstream c;
     c.open(m_oauth_cred_file, std::ios::out | std::ios::trunc);
     c << std::setw(4) << j << std::endl;
     c.close();
-    BOOST_LOG_TRIVIAL(error) << "UltiMaker: OAuth credentials saved successfully";
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker: OAuth credentials saved successfully";
 }
 
 bool UltiMaker::refresh_token() const
@@ -213,8 +271,6 @@ bool UltiMaker::refresh_token() const
         BOOST_LOG_TRIVIAL(warning) << "UltiMaker: No refresh token available";
         return false;
     }
-
-    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refreshing access token";
 
     // Build URL-encoded form body for refresh token request
     std::string post_body;
@@ -225,52 +281,106 @@ bool UltiMaker::refresh_token() const
     post_body += "&refresh_token=" + Http::url_encode(m_cred.at("refresh_token"));
     post_body += "&scope=" + Http::url_encode(SCOPES);
 
-    bool success = false;
-    
-    auto http = Http::post(TOKEN_URL);
-    http.timeout_connect(5)
-        .timeout_max(10)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .set_post_body(post_body)
-        .on_complete([this, &success](std::string body, unsigned http_status) {
-            GUI::OAuthResult r;
-            GUI::OAuthJob::parse_token_response(body, false, r);
-            if (r.success) {
-                BOOST_LOG_TRIVIAL(info) << "UltiMaker: Successfully refreshed access token";
-                this->save_oauth_credential(r);
-                
-                // Update in-memory credentials
-                this->m_cred["access_token"] = r.access_token;
-                this->m_cred["refresh_token"] = r.refresh_token;
-                
-                // Update expiration time
-                if (r.expires_in > 0) {
-                    this->m_token_expires_at = std::chrono::system_clock::now() + std::chrono::seconds(r.expires_in);
-                }
-                success = true;
-            } else {
-                BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse refresh token response: " << r.error_message;
-            }
-        })
-        .on_error([&success](std::string body, std::string error, unsigned http_status) {
-            BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to refresh token: " << error << ", HTTP " << http_status;
-            success = false;
-        })
-        .perform_sync();
+    // Retry loop matching Cura's behavior: 15 attempts with 1-second delays
+    for (int attempt = 0; attempt < TOKEN_REFRESH_MAX_RETRIES; ++attempt) {
+        if (attempt > 0) {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Retrying token refresh (attempt " << (attempt + 1) << "/" << TOKEN_REFRESH_MAX_RETRIES << ")";
+            std::this_thread::sleep_for(TOKEN_REFRESH_RETRY_DELAY);
+        } else {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refreshing access token";
+        }
 
-    return success;
+        bool success = false;
+        
+        auto http = Http::post(TOKEN_URL);
+        http.timeout_connect(5)
+            .timeout_max(10)
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .header("User-Agent", "UltiMaker OrcaSlicer Plugin")
+            .set_post_body(post_body)
+            .on_complete([this, &success](std::string body, unsigned http_status) {
+                GUI::OAuthResult r;
+                GUI::OAuthJob::parse_token_response(body, false, r);
+                if (r.success) {
+                    BOOST_LOG_TRIVIAL(info) << "UltiMaker: Successfully refreshed access token";
+                    this->save_oauth_credential(r);
+                    
+                    // Update in-memory credentials
+                    this->m_cred["access_token"] = r.access_token;
+                    this->m_cred["refresh_token"] = r.refresh_token;
+                    
+                    // Update expiration time
+                    if (r.expires_in > 0) {
+                        this->m_token_expires_at = std::chrono::system_clock::now() + std::chrono::seconds(r.expires_in);
+                    }
+                    success = true;
+                } else {
+                    BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to parse refresh token response: " << r.error_message;
+                    
+                    // Check if refresh token was revoked (specific error codes)
+                    if (r.error_message.find("invalid_grant") != std::string::npos ||
+                        r.error_message.find("invalid_request") != std::string::npos) {
+                        BOOST_LOG_TRIVIAL(error) << "UltiMaker: Refresh token appears to be revoked, clearing credentials";
+                        
+                        // Clear in-memory credentials
+                        this->m_cred.clear();
+                        this->m_token_expires_at = std::chrono::system_clock::time_point{};
+                        
+                        // Delete from secure storage
+                        if (SecureStorage::is_available()) {
+                            SecureStorage::remove(KEYRING_ACCOUNT);
+                        }
+                        // Delete credential file
+                        if (boost::filesystem::exists(this->m_oauth_cred_file)) {
+                            boost::filesystem::remove(this->m_oauth_cred_file);
+                        }
+                    }
+                }
+            })
+            .on_error([&success](std::string body, std::string error, unsigned http_status) {
+                BOOST_LOG_TRIVIAL(error) << "UltiMaker: Failed to refresh token: " << error << ", HTTP " << http_status;
+                success = false;
+            })
+            .perform_sync();
+
+        if (success) {
+            return true;
+        }
+    }
+
+    BOOST_LOG_TRIVIAL(error) << "UltiMaker: Token refresh failed after " << TOKEN_REFRESH_MAX_RETRIES << " attempts";
+    return false;
 }
 
 bool UltiMaker::ensure_token_fresh(const std::string& reason) const
 {
-    // If no expiration time stored, assume token is fresh
-    if (m_token_expires_at.time_since_epoch().count() == 0) {
+    auto now = std::chrono::system_clock::now();
+    std::chrono::system_clock::duration time_until_expiry{0};
+    bool has_expiry = false;
+    
+    // First try to use stored expiration time
+    if (m_token_expires_at.time_since_epoch().count() != 0) {
+        time_until_expiry = m_token_expires_at - now;
+        has_expiry = true;
+    }
+    // If no stored expiry, try to parse from JWT token itself
+    else if (m_cred.find("access_token") != m_cred.end()) {
+        auto jwt_expiry = parse_jwt_expiry(m_cred.at("access_token"));
+        if (jwt_expiry.has_value()) {
+            time_until_expiry = *jwt_expiry - now;
+            has_expiry = true;
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Parsed JWT expiry, token expires in " 
+                                    << std::chrono::duration_cast<std::chrono::seconds>(time_until_expiry).count() << " seconds";
+        }
+    }
+    
+    if (!has_expiry) {
+        // No expiry information available - assume token is fresh
+        // This maintains backward compatibility with tokens that don't have expiry info
+        BOOST_LOG_TRIVIAL(debug) << "UltiMaker: No token expiry information available, assuming fresh (reason: " << reason << ")";
         return true;
     }
 
-    auto now = std::chrono::system_clock::now();
-    auto time_until_expiry = m_token_expires_at - now;
-    
     BOOST_LOG_TRIVIAL(info) << "UltiMaker: Token expires in " << std::chrono::duration_cast<std::chrono::seconds>(time_until_expiry).count() 
                             << " seconds (check reason: " << reason << ")";
 
@@ -295,7 +405,18 @@ wxString UltiMaker::get_test_failed_msg(wxString& msg) const
 
 void UltiMaker::log_out() const
 {
+    // Clear refresh token from secure keyring
+    if (SecureStorage::is_available()) {
+        if (SecureStorage::remove(KEYRING_ACCOUNT)) {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refresh token removed from OS keyring";
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Failed to remove refresh token from keyring";
+        }
+    }
+    
+    // Remove JSON credential file (access token and metadata)
     boost::nowide::remove(m_oauth_cred_file.c_str());
+    BOOST_LOG_TRIVIAL(info) << "UltiMaker: OAuth credentials removed, user logged out";
 }
 
 namespace {
@@ -319,6 +440,79 @@ bool is_token_expired_error(const std::string& body, unsigned http_status)
     return false;
 }
 } // namespace
+
+// JWT token parsing to extract expiry time
+// JWT format: header.payload.signature (3 base64url-encoded parts separated by dots)
+// Payload contains claims including 'exp' (expiry time as Unix timestamp)
+std::optional<std::chrono::system_clock::time_point> UltiMaker::parse_jwt_expiry(const std::string& token)
+{
+    // Find the two dots separating the three parts
+    size_t first_dot = token.find('.');
+    if (first_dot == std::string::npos) {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Invalid JWT format - missing first dot";
+        return std::nullopt;
+    }
+    
+    size_t second_dot = token.find('.', first_dot + 1);
+    if (second_dot == std::string::npos) {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Invalid JWT format - missing second dot";
+        return std::nullopt;
+    }
+    
+    // Extract the payload (middle part)
+    std::string payload = token.substr(first_dot + 1, second_dot - first_dot - 1);
+    
+    // JWT uses base64url encoding (RFC 4648) which differs from standard base64:
+    // - '-' instead of '+'
+    // - '_' instead of '/'
+    // - No padding with '='
+    // Convert base64url to standard base64 for decoding
+    std::string base64_payload;
+    base64_payload.reserve(payload.size());
+    for (char c : payload) {
+        if (c == '-') base64_payload += '+';
+        else if (c == '_') base64_payload += '/';
+        else base64_payload += c;
+    }
+    
+    // Add padding if needed (base64 strings must be multiple of 4)
+    while (base64_payload.size() % 4 != 0) {
+        base64_payload += '=';
+    }
+    
+    // Decode base64 payload using boost::beast
+    std::string json_str;
+    try {
+        json_str.resize(boost::beast::detail::base64::decoded_size(base64_payload.size()));
+        auto result = boost::beast::detail::base64::decode(
+            reinterpret_cast<char*>(json_str.data()),
+            base64_payload.data(),
+            base64_payload.size()
+        );
+        json_str.resize(result.first);
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Failed to decode JWT payload: " << e.what();
+        return std::nullopt;
+    }
+    
+    // Parse JSON to extract 'exp' claim
+    try {
+        auto json = nlohmann::json::parse(json_str);
+        if (!json.contains("exp") || !json["exp"].is_number()) {
+            BOOST_LOG_TRIVIAL(warning) << "UltiMaker: JWT payload missing 'exp' claim";
+            return std::nullopt;
+        }
+        
+        // 'exp' is Unix timestamp (seconds since epoch)
+        auto exp_timestamp = json["exp"].get<int64_t>();
+        return std::chrono::system_clock::time_point{
+            std::chrono::seconds{exp_timestamp}
+        };
+    } catch (const nlohmann::json::exception& e) {
+        BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Failed to parse JWT payload JSON: " << e.what();
+        return std::nullopt;
+    }
+}
 
 bool UltiMaker::do_api_call(std::function<Http(bool)>                               build_request,
                             std::function<bool(std::string, unsigned)>              on_complete,
