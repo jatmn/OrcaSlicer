@@ -46,6 +46,15 @@ public:
     static std::vector<ThumbnailRequirement> get_default_thumbnail_requirements(
         const std::string& format_type
     );
+    
+    // Load a template file from the formats directory
+    // format_type: "ufp" or "makerbot"
+    // template_name: name of the template file (e.g., "manifest.json", "meta.json")
+    // Returns the file contents as string, or empty string if not found
+    static std::string load_template_file(
+        const std::string& format_type,
+        const std::string& template_name
+    );
 };
 
 } // namespace Slic3r

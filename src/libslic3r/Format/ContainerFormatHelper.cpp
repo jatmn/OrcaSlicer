@@ -4,6 +4,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/log/trivial.hpp>
+#include <boost/nowide/fstream.hpp>
 
 namespace Slic3r {
 
@@ -197,6 +198,37 @@ std::vector<ThumbnailRequirement> ContainerFormatHelper::get_default_thumbnail_r
                             << format_type << " (" << defaults.size() << " thumbnails)";
     
     return defaults;
+}
+
+std::string ContainerFormatHelper::load_template_file(
+    const std::string& format_type,
+    const std::string& template_name)
+{
+    fs::path template_path = get_formats_directory() / format_type / "templates" / template_name;
+    
+    if (!fs::exists(template_path)) {
+        BOOST_LOG_TRIVIAL(warning) << "ContainerFormatHelper: Template file not found: " << template_path.string();
+        return "";
+    }
+    
+    try {
+        // Read the entire file into a string
+        boost::nowide::ifstream file(template_path.string());
+        if (!file.is_open()) {
+            BOOST_LOG_TRIVIAL(error) << "ContainerFormatHelper: Failed to open template file: " << template_path.string();
+            return "";
+        }
+        
+        std::string content((std::istreambuf_iterator<char>(file)),
+                            std::istreambuf_iterator<char>());
+        
+        BOOST_LOG_TRIVIAL(info) << "ContainerFormatHelper: Loaded template file: " << template_name 
+                                << " (" << content.size() << " bytes)";
+        return content;
+    } catch (const std::exception& e) {
+        BOOST_LOG_TRIVIAL(error) << "ContainerFormatHelper: Failed to load template file: " << e.what();
+        return "";
+    }
 }
 
 } // namespace Slic3r
