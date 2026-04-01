@@ -55,7 +55,8 @@ public:
     
     // Set thumbnail PNG data (pass directly, never extracted from gcode)
     // This is the CORRECT way - thumbnails should NEVER be embedded in gcode comments
-    void set_thumbnail_data(const std::vector<uint8_t>& png_data) { m_thumbnail_data = png_data; }
+    // Marked virtual so subclasses can override (e.g., UFPWriter routes to m_context)
+    virtual void set_thumbnail_data(const std::vector<uint8_t>& png_data) { m_thumbnail_data = png_data; }
     
     // Check if thumbnail data is available
     bool has_thumbnail_data() const { return !m_thumbnail_data.empty(); }

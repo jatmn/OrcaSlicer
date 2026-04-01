@@ -21,6 +21,14 @@ public:
         m_context.add_thumbnail(data, filename);
     }
     
+    // Override set_thumbnail_data to route to m_context (fixes thumbnail bug)
+    // The base class method stores in m_thumbnail_data which UFPWriter never reads
+    void set_thumbnail_data(const std::vector<uint8_t>& png_data) override {
+        if (!png_data.empty()) {
+            m_context.add_thumbnail(png_data, "thumbnail.png");
+        }
+    }
+    
     // Set extruder variants for multi-extruder support
     // variants: List of extruder variant names (e.g., ["AA 0.4", "BB 0.4"])
     void set_extruder_variants(const std::vector<std::string>& variants) {
