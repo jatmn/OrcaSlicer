@@ -214,6 +214,8 @@ set(lisbslic3r_sources
     Format/ContainerFormatHelper.hpp
     Format/ContainerWriterContext.cpp
     Format/ContainerWriterContext.hpp
+    Format/JsonTemplatePatcher.cpp
+    Format/JsonTemplatePatcher.hpp
     GCode/AdaptivePAInterpolator.cpp
     GCode/AdaptivePAInterpolator.hpp
     GCode/AdaptivePAProcessor.cpp
