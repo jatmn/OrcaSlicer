@@ -7,7 +7,7 @@
     "instantiation": "true",
     "printer_model": "UltiMaker S3",
     "printer_variant": "0.4",
-    "default_print_profile": "0.20mm Standard @UltiMaker S3-S5-S7 0.4 nozzle",
+    "default_print_profile": "0.20mm Standard @UltiMaker S3-S5-S7 AA 0.4",
     "nozzle_diameter": [
         "0.4",
         "0.4"

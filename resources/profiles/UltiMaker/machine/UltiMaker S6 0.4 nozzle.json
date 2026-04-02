@@ -7,14 +7,14 @@
     "instantiation": "true",
     "printer_model": "UltiMaker S6",
     "printer_variant": "0.4",
-    "default_print_profile": "0.20mm Standard @UltiMaker S6-S8 0.4 nozzle",
+    "default_print_profile": "0.20mm Standard @UltiMaker S6-S8 AA 0.4",
     "nozzle_diameter": [
         "0.4",
         "0.4"
     ],
     "printer_extruder_variant": [
-        "AA+ 0.4",
-        "AA+ 0.4"
+        "AA 0.4",
+        "AA 0.4"
     ],
     "printable_area": [
         "0x0",
