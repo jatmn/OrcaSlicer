@@ -499,30 +499,44 @@ wxString ExtruderVariantWidget::extract_type_from_core(const wxString& core)
 }
 
 // Update process presets based on selected core type
-// Note: This is a placeholder implementation - actual process filtering requires
-// integration with the preset system
 void ExtruderVariantWidget::update_process_presets(const wxString& core_type)
 {
-    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets ENTER";
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets ENTER - core_type=" << core_type.ToStdString();
     
-    // Get the controlling core index
-    int controlling_idx = get_controlling_core_index();
-    
-    // Get the selected core at controlling index
-    if (controlling_idx >= 0 && controlling_idx < (int)m_extruder_variants.size()) {
-        wxChoice* combo = m_extruder_variants[controlling_idx];
-        if (!combo) return;
-        
-        int sel = combo->GetSelection();
-        if (sel == wxNOT_FOUND) return;
-        
-        wxString selected_core = combo->GetString(sel);
-        wxString selected_type = extract_type_from_core(selected_core);
-        
-        // Log the selection for now (actual process preset filtering would go here)
-        // The process preset filtering should be implemented in the Tab or Sidebar class
-        // where preset compatibility is managed
+    auto* preset_bundle = wxGetApp().preset_bundle;
+    if (!preset_bundle) {
+        BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets EXIT - null preset_bundle";
+        return;
     }
+    
+    // Re-evaluate which process presets are compatible with the new printer_extruder_variant
+    preset_bundle->update_compatible(PresetSelectCompatibleType::Always);
+    
+    // Explicitly select a process preset whose name matches the current extruder variant
+    // (e.g., "AA+ 0.4") if the current preset is not already a matching one.
+    // update_compatible() only switches when the current preset becomes INCOMPATIBLE;
+    // it does not proactively upgrade from a generic/default preset to a core-specific one.
+    auto* ev = preset_bundle->printers.get_edited_preset().config.option<ConfigOptionStrings>("printer_extruder_variant");
+    if (ev && !ev->values.empty()) {
+        const std::string& variant = ev->values[0];
+        const auto& current_print = preset_bundle->prints.get_edited_preset();
+        BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets - current_print=" << current_print.name << ", variant=" << variant;
+        
+        if (current_print.name.find(variant) == std::string::npos) {
+            for (const auto& preset : preset_bundle->prints) {
+                if (preset.is_visible && preset.is_compatible && preset.name.find(variant) != std::string::npos) {
+                    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets - selecting better match: " << preset.name;
+                    preset_bundle->prints.select_preset_by_name(preset.name, true);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Refresh the process preset dropdown in the sidebar
+    wxGetApp().plater()->sidebar().update_presets(Preset::TYPE_PRINT);
+    
+    BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets EXIT";
 }
 
 }} // namespace Slic3r::GUI

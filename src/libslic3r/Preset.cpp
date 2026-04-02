@@ -717,7 +717,14 @@ bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const Pre
     bool  has_compatible_printers = compatible_printers != nullptr && ! compatible_printers->values.empty();
     if (! has_compatible_printers && ! condition.empty()) {
         try {
-            return PlaceholderParser::evaluate_boolean_expression(condition, active_printer.preset.config, extra_config);
+            DynamicConfig extra;
+            if (extra_config)
+                extra = *extra_config;
+            if (auto* ev = active_printer.preset.config.option<ConfigOptionStrings>("printer_extruder_variant")) {
+                if (!ev->values.empty())
+                    extra.set_key_value("printer_extruder_variant_0", new ConfigOptionString(ev->values[0]));
+            }
+            return PlaceholderParser::evaluate_boolean_expression(condition, active_printer.preset.config, &extra);
         } catch (const std::runtime_error &err) {
             //FIXME in case of an error, return "compatible with everything".
             BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": parsing error of compatible_printers_condition %1%: %2%")%active_printer.preset.name %err.what();
