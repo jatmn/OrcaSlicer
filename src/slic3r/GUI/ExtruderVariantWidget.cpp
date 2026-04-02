@@ -65,33 +65,69 @@ void ExtruderVariantWidget::update_from_config()
     std::string preset_name = printer_preset.name;
     
     // Determine which variant list to use based on printer model
-    std::vector<std::string> variant_list;
+    std::vector<std::string> full_variant_list;
     if (preset_name.find("UltiMaker S3") != std::string::npos ||
         preset_name.find("UltiMaker S5") != std::string::npos ||
         preset_name.find("UltiMaker S7") != std::string::npos) {
         // S3/S5/S7 - basic cores only (AA, BB, CC)
-        variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6"};
+        full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6"};
     } else if (preset_name.find("UltiMaker S6") != std::string::npos ||
                preset_name.find("UltiMaker S8") != std::string::npos) {
         // S6/S8 - all cores including HT and (+) variants
-        variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "AA+ 0.4", "BB 0.4", "BB 0.8", 
+        full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "AA+ 0.4", "BB 0.4", "BB 0.8", 
                         "CC 0.4", "CC 0.6", "CC+ 0.4", "CC+ 0.6", "CC Red 0.6", "HT 0.6"};
     } else if (preset_name.find("UltiMaker Factor 4") != std::string::npos) {
         // Factor 4 - basic cores plus HT, but no (+) variants
-        variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6", "HT 0.6"};
+        full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6", "HT 0.6"};
     } else {
         Hide();
         return;
     }
     
-    // Clear existing rows
-    auto* sizer = GetSizer();
-    for (auto& row : m_extruder_rows) {
-        if (row.label) row.label->Destroy();
-        if (row.variant_choice) row.variant_choice->Destroy();
+    // Filter variants by current nozzle diameter so only compatible cores are shown
+    std::string active_nozzle;
+    if (auto* nd = printer_preset.config.option<ConfigOptionFloats>("nozzle_diameter")) {
+        if (!nd->values.empty()) {
+            std::ostringstream oss;
+            oss << nd->values[0];
+            active_nozzle = oss.str();
+            // Trim trailing zeros (0.40 -> 0.4)
+            if (active_nozzle.find('.') != std::string::npos) {
+                while (active_nozzle.back() == '0')
+                    active_nozzle.pop_back();
+                if (active_nozzle.back() == '.')
+                    active_nozzle.push_back('0');
+            }
+        }
     }
+    std::vector<std::string> variant_list;
+    for (const auto& variant : full_variant_list) {
+        if (active_nozzle.empty() || variant.size() >= active_nozzle.size() + 1) {
+            // Variant ends with " <nozzle>" (e.g., " 0.4")
+            if (variant.substr(variant.size() - active_nozzle.size()) == active_nozzle &&
+                variant[variant.size() - active_nozzle.size() - 1] == ' ') {
+                variant_list.push_back(variant);
+            }
+        }
+    }
+    if (variant_list.empty()) {
+        // Fallback: if filtering fails, show all variants
+        variant_list = full_variant_list;
+    }
+    
+    // Clear existing rows and old sizers safely.
+    // Using Clear(true) is critical: it destroys windows BEFORE deleting sizer items,
+    // avoiding use-after-free when wxSizerItem destructor calls SetContainingSizer().
+    auto* sizer = GetSizer();
+    sizer->Clear(true);
     m_extruder_rows.clear();
-    m_extruder_variants.clear();  // CRITICAL: Clear stale pointers to destroyed wxChoice controls
+    m_extruder_variants.clear();
+    
+    // Recreate static title and separator (also destroyed by Clear(true))
+    auto* title = new Label(this, Label::Head_14, _L("Print Core Configuration"));
+    sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
+    auto* line = new wxStaticLine(this, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(200), 1));
+    sizer->Add(line, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(5));
     
     // Get nozzle diameter count from full_config (determines extruder count)
     auto& full_config = preset_bundle->full_config();
@@ -181,11 +217,7 @@ void ExtruderVariantWidget::update_from_config()
     }
     
     // Center the row sizer horizontally
-    auto* center_sizer = new wxBoxSizer(wxHORIZONTAL);
-    center_sizer->AddStretchSpacer(1);
-    center_sizer->Add(row_sizer, 0, wxALIGN_CENTER_VERTICAL);
-    center_sizer->AddStretchSpacer(1);
-    sizer->Add(center_sizer, 0, wxEXPAND | wxBOTTOM, 5);
+    sizer->Add(row_sizer, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
     
     // Update filament count in sidebar if needed
     // This ensures filament combos match extruder count on first launch

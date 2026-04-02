@@ -589,7 +589,10 @@ void Sidebar::priv::layout_printer(bool isBBL, bool isDual)
 
     // NEEDFIX requires AMS check or any type of ???
     // Single nozzle & non ams
-    panel_nozzle_dia->Show(!isDual && preset_bundle.get_printer_extruder_count() < 2);
+    // UltiMaker: show nozzle diameter dropdown even for dual extruders so users can switch nozzle sizes
+    std::string printer_name = preset_bundle.printers.get_edited_preset().name;
+    bool is_ultimaker = printer_name.find("UltiMaker S") != std::string::npos || printer_name.find("UltiMaker Factor 4") != std::string::npos;
+    panel_nozzle_dia->Show((!isDual && preset_bundle.get_printer_extruder_count() < 2) || is_ultimaker);
     extruder_single_sizer->Show(false);
 }
 
@@ -1811,12 +1814,32 @@ Sidebar::Sidebar(Plater *parent)
         p->combo_nozzle_dia->SetMinSize(FromDIP(wxSize(PRINTER_PANEL_SIZE.GetWidth() - 4, 26))); // requires a static value in here
         p->combo_nozzle_dia->SetMaxSize(FromDIP(wxSize(PRINTER_PANEL_SIZE.GetWidth() - 4, 26))); // using -1 with wxEXPAND has issues
         p->combo_nozzle_dia->Bind(wxEVT_COMBOBOX, [this](auto &e) {
-            auto evt_combo = (*p->single_extruder).combo_diameter;
-            evt_combo->SetSelection(e.GetSelection());
-            wxCommandEvent evt(wxEVT_COMBOBOX, evt_combo->GetId());
-            evt.SetEventObject(evt_combo);
-            evt.SetInt(e.GetSelection());
-            wxPostEvent(evt_combo, evt);
+            auto& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
+            std::string preset_name = printer_preset.name;
+            bool is_ultimaker = preset_name.find("UltiMaker S") != std::string::npos || preset_name.find("UltiMaker Factor 4") != std::string::npos;
+            auto* nozzle_diameter = dynamic_cast<const ConfigOptionFloats*>(printer_preset.config.option("nozzle_diameter"));
+            bool is_dual = nozzle_diameter && nozzle_diameter->size() >= 2;
+            if (is_ultimaker && is_dual) {
+                // For UltiMaker dual extruders, changing the unified nozzle dropdown should switch both extruders
+                // and trigger the machine preset switch (just like switch_diameter does)
+                auto diameter = p->combo_nozzle_dia->GetValue();
+                auto* preset = wxGetApp().preset_bundle->get_similar_printer_preset({}, diameter.ToStdString());
+                if (preset) {
+                    preset->is_visible = true;
+                    wxGetApp().get_tab(Preset::TYPE_PRINTER)->select_preset(preset->name);
+                    // CRITICAL: Tab::select_preset bypasses Plater::on_select_preset, so the
+                    // extruder variant widget never gets refreshed. Explicitly update it here.
+                    wxGetApp().plater()->sidebar().show_extruder_variant_widget(
+                        ExtruderVariantWidget::printer_has_variants());
+                }
+            } else {
+                auto evt_combo = (*p->single_extruder).combo_diameter;
+                evt_combo->SetSelection(e.GetSelection());
+                wxCommandEvent evt(wxEVT_COMBOBOX, evt_combo->GetId());
+                evt.SetEventObject(evt_combo);
+                evt.SetInt(e.GetSelection());
+                wxPostEvent(evt_combo, evt);
+            }
             e.Skip();
         });
         // ORCA paint whole combobox on focus
@@ -2602,6 +2625,12 @@ void Sidebar::update_presets(Preset::Type preset_type)
             extruder.diameter = nozzle_dia;
         };
         auto image_path = get_cur_select_bed_image();
+        // ORCA sync unified nozzle combo box for both single and dual extruders
+        // (UltiMaker dual extruders use this dropdown for nozzle size switching)
+        p->combo_nozzle_dia->Clear();
+        for (size_t i = 0; i < diameters.size(); ++i)
+            p->combo_nozzle_dia->Append(diameters[i], {});
+
         if (is_dual_extruder) {
             AMSCountPopupWindow::UpdateAMSCount(0, p->left_extruder);
             AMSCountPopupWindow::UpdateAMSCount(1, p->right_extruder);
@@ -2609,16 +2638,15 @@ void Sidebar::update_presets(Preset::Type preset_type)
                 update_extruder_diameter(0, *p->left_extruder);
                 update_extruder_diameter(1, *p->right_extruder);
             //}
+            p->combo_nozzle_dia->SetSelection(p->left_extruder->combo_diameter->GetSelection());
+            p->label_nozzle_type->SetLabel("-");
+            p->label_nozzle_type->SetToolTip("");
             p->image_printer_bed->SetBitmap(create_scaled_bitmap(image_path, this, PRINTER_THUMBNAIL_SIZE.GetHeight()));
         } else {
             AMSCountPopupWindow::UpdateAMSCount(0, p->single_extruder);
             //if (!p->is_switching_diameter)
                 update_extruder_diameter(0, *p->single_extruder);
 
-            // ORCA sync unified nozzle combo box
-            p->combo_nozzle_dia->Clear();
-            for (size_t i = 0; i < diameters.size(); ++i)
-                p->combo_nozzle_dia->Append(diameters[i], {});
             p->combo_nozzle_dia->SetSelection((*p->single_extruder).combo_diameter->GetSelection());
             
             // ORCA update nozzle type
@@ -2647,6 +2675,7 @@ void Sidebar::update_presets(Preset::Type preset_type)
             GUI::wxGetApp().plater()->update_machine_sync_status();
 
         Layout();
+        update_extruder_variant_widget();
 
         break;
     }
