@@ -1,6 +1,6 @@
 {
-  "printer_name": "Ultimaker 2PC",
-  "target_machine": "Ultimaker 2PC",
+  "printer_name": "Ultimaker 2+ Connect",
+  "target_machine": "Ultimaker 2+ Connect",
   "header_template": "ultimaker",
   "opc_structure": true,
   "content_types": {

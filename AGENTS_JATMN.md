@@ -70,7 +70,7 @@ When working on Cura-related features (especially UltiMaker Digital Factory inte
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Container Format Export (.ufp) | ✅ Completed | Works for all UltiMaker printers |
-| Container Format Export (.makerbot) | ⚠️ Needs Work | Writer needs validation and testing |
+| Container Format Export (.makerbot) | ✅ Completed | Validated for Sketch series; Method configs reserved in code for future use |
 | Digital Factory Upload | ✅ Completed | Two-step upload with container conversion |
 | LAN Printing | ✅ Completed | Does not support UltiMaker 2+ Connect (firmware limitation) |
 | Printer Profiles | ⚠️ In Progress | Created but have known issues |
@@ -100,15 +100,14 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 | `ultimaker_s7` | UltiMaker | `.ufp` | `resources/formats/ufp/ultimaker_s7.json` |
 | `ultimaker_s8` | UltiMaker | `.ufp` | `resources/formats/ufp/ultimaker_s8.json` |
 | `ultimaker_factor4` | UltiMaker | `.ufp` | `resources/formats/ufp/ultimaker_factor4.json` |
-| `ultimaker2_plus_connect` | UltiMaker | `.ufp` | ⚠️ MISMATCH: file is `ultimaker_2pc.json` |
+| `ultimaker2_plus_connect` | UltiMaker | `.ufp` | `resources/formats/ufp/ultimaker2_plus_connect.json` |
 | `sketch_small` | MakerBot | `.makerbot` | `resources/formats/makerbot/sketch_small.json` |
 | `sketch_sprint` | MakerBot | `.makerbot` | `resources/formats/makerbot/sketch_sprint.json` |
 | `sketch_large` | MakerBot | `.makerbot` | `resources/formats/makerbot/sketch_large.json` |
-| `method_x` | MakerBot | `.makerbot` | `resources/formats/makerbot/method_x.json` |
-| `method_xl` | MakerBot | `.makerbot` | `resources/formats/makerbot/method_xl.json` |
+| `method_x` | MakerBot | `.makerbot` | Reserved in code (config removed) |
+| `method_xl` | MakerBot | `.makerbot` | Reserved in code (config removed) |
 
-**Orphan Files** (exist but not used by any printer):
-- `ultimaker_f4.json` — duplicate of `ultimaker_factor4.json`
+**Orphan Files:** None currently known.
 
 ### How It Works
 
@@ -128,18 +127,13 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 
 ### Known Issues
 
-**FORMAT_CONFIG_ID Mismatch:**
-- `ultimaker2_plus_connect` printer uses ID `ultimaker2_plus_connect` but config file is named `ultimaker_2pc.json`
-- Fix options: rename printer ID to `ultimaker_2pc` OR rename config file to `ultimaker2_plus_connect.json`
-
-**Orphan Config File:**
-- `ultimaker_f4.json` exists but no printer uses it (duplicate of `ultimaker_factor4.json`)
-- Recommendation: delete `ultimaker_f4.json` to avoid confusion
-
 **MakerBot Format:**
-- `.makerbot` writer needs validation and testing
-- ContainerFormatHelper class added to manage thumbnail generation
+- `.makerbot` writer is implemented for Sketch series; full validation still pending
+- `sketch_large` added to `makerbot/manifest.json`
+- `method_x.json` and `method_xl.json` config files removed (reserved in `FormatConfig` code for future use)
+- ContainerFormatHelper class manages thumbnail generation
 - Thumbnail format in printer profiles must use `120x120/PNG` format (with PNG specifier)
+- Oversized 960×1460 thumbnail removed from MakerBot configs and from `ContainerFormatHelper` default fallback
 
 **Dual Extrusion on S/F Series (UltiMaker S3/S5/S6/S7/S8, Factor 4):**
 - ⚠️ **Needs more work** - Dual extrusion functionality is not fully implemented
@@ -198,14 +192,11 @@ File upload to UltiMaker printers over LAN (no cloud, no mDNS) is working.
 
 **PrintHost Type**: `htUltiMakerLAN` added to `PrintHostType` enum in `PrintConfig.cpp`
 
-**Class**: `UltiMakerLANPrintHost` implemented in `src/slic3r/Utils/UltiMakerLAN.cpp`
+**Class**: `UltiMakerLAN` implemented in `src/slic3r/Utils/UltiMakerLAN.cpp`
 - Extends `PrintHost` base class
-- Stores: `host` (IP/hostname), `port` (default 80), `auth_id` (username), `auth_key` (password)
-- **Auth flow**: HTTP Digest authentication with 3-step flow:
-  1. `POST /api/v1/auth/request` with `application=OrcaSlicer` and `user=<username>`
-  2. Poll `GET /api/v1/auth/check/{id}` until user approves on printer
-  3. Cache `id`/`key` for digest auth on subsequent calls
-- **Upload**: `POST /api/v1/print_job` with multipart file data
+- Stores: `host` (IP/hostname), `port` (default 80), `username` (`printhost_user`), `password` (`printhost_password`)
+- **Auth flow**: HTTP Digest authentication via libcurl when credentials are provided. No manual auth request or printer-screen approval flow is implemented.
+- **Upload**: `POST /cluster-api/v1/print_jobs/` with multipart form-data (`owner` + `file` fields)
 - **Print control**: `PUT /api/v1/print_job/state` for pause/resume/abort
 - **Status monitoring**: `GET /api/v1/print_job` and `GET /api/v1/printer/status`
 
@@ -217,27 +208,20 @@ File upload to UltiMaker printers over LAN (no cloud, no mDNS) is working.
 
 **UI Integration**:
 - "UltiMaker (LAN)" option in host printer type dropdown
-- Fields: IP/hostname, username (for printer approval), port (default 80)
-- Auth approval flow shows "Check printer screen to approve access"
+- Fields: IP/hostname, username, port (default 80)
 - Upload progress and print status display
 
-### API Reference (confirmed from `/docs/api/` on S6 at 10.10.10.246)
+### API Reference (implemented endpoints)
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---|---|
-| `POST` | `/api/v1/auth/request` | None | Request auth credentials |
-| `GET` | `/api/v1/auth/check/{id}` | None | Poll for user approval |
-| `GET` | `/api/v1/auth/verify` | Digest | Test credentials |
-| `GET` | `/api/v1/printer` | None | Full printer state |
-| `GET` | `/api/v1/printer/status` | None | Printer status string |
-| `GET` | `/api/v1/system/name` | None | Printer display name |
-| `POST` | `/api/v1/print_job` | Digest | Upload file + start print |
+| `GET` | `/cluster-api/v1/system` | None / Digest | Test connection (with fallback to `/api/v1/system`) |
+| `POST` | `/cluster-api/v1/print_jobs/` | Digest | Upload file + start print |
 | `GET` | `/api/v1/print_job` | Digest | Current job status |
-| `GET` | `/api/v1/print_job/progress` | Digest | Print progress |
 | `PUT` | `/api/v1/print_job/state` | Digest | Pause/resume/abort |
-| `GET` | `/api/v1/history/print_jobs` | Digest | Print history |
+| `GET` | `/api/v1/printer/status` | Digest | Printer status string |
 
-**Authentication:** HTTP Digest (RFC 2617) — no fallback to basic. Auth flow: `POST /auth/request` → poll `GET /auth/check/{id}` → user approves on printer → use returned `id`/`key` as digest username/password for all subsequent calls.
+**Authentication:** HTTP Digest (RFC 2617) when credentials are configured. No fallback to basic. There is no auth-request/polling endpoint in the current implementation.
 
 ### Key Implementation Files
 
@@ -330,14 +314,11 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 
 ### Known Issues
 
-**1. Printer Extruder Variant (paused pending user decision):**
+**1. Printer Extruder Variant (deferred to future major project):**
 - All nozzle-specific machine profiles currently have `printer_extruder_variant: ["AA+ 0.4", "AA+ 0.4"]` regardless of actual nozzle size
-- This needs deeper analysis of UltiMaker core naming conventions:
-  - Should 0.25mm nozzle be "AA 0.25" or "AA+ 0.25"?
-  - Should 0.6mm nozzle be "CC 0.6" or "CC+ 0.6"?
-  - Should 0.8mm nozzle be "BB 0.8"?
+- This needs deeper analysis of UltiMaker core naming conventions and will be addressed in a dedicated profile cleanup project
 
-**2. Print Process Profiles:**
+**2. Print Process Profiles:
 - Currently exist for 0.2mm Standard but are not yet validated or updated
 - Exist only as basic templates that need selection and validation
 - **Known bug**: Changing print core size does not change possible print process selections
@@ -385,7 +366,7 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 - ✅ **Export**: .ufp container export works with FORMAT_CONFIG_ID
 - ✅ **Upload**: Digital Factory upload with container conversion works
 - ✅ **LAN Printing**: UltiMaker LAN upload and print works
-- ⚠️ **Core Variant**: `printer_extruder_variant` values need review
+- ⚠️ **Core Variant**: `printer_extruder_variant` values need review (deferred to future project)
 
 ### Reference Files
 
@@ -467,6 +448,15 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 ---
 
 ## Change Log
+
+### 2026-04-01
+- **Format Config Cleanup**
+  - Renamed `ultimaker_2pc.json` → `ultimaker2_plus_connect.json` and updated internal `printer_name`/`target_machine` to "Ultimaker 2+ Connect"
+  - Deleted orphan `ultimaker_f4.json`
+  - Added `sketch_large` to `makerbot/manifest.json`
+  - Removed unused `method_x.json` and `method_xl.json` MakerBot configs (reserved in code for future use)
+  - Removed 960×1460 thumbnail from `ContainerFormatHelper` default fallback
+  - Corrected `AGENTS_JATMN.md` LAN auth description to match actual implementation
 
 ### 2026-03-31
 - **MakerBot Thumbnail Generation Fix** (commit `762ff9d3ef`)

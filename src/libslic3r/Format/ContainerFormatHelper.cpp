@@ -185,7 +185,7 @@ std::vector<ThumbnailRequirement> ContainerFormatHelper::get_default_thumbnail_r
             {90, 90, "thumbnail_90x90.png"},
             {140, 106, "thumbnail_140x106.png"},
             {212, 300, "thumbnail_212x300.png"},
-            {960, 1460, "thumbnail_960x1460.png"}
+
         };
     } else if (format_type == "ufp") {
         // UFP only needs one thumbnail

@@ -37,7 +37,7 @@
     {
       "id": "ultimaker2_plus_connect",
       "name": "UltiMaker 2+ Connect",
-      "config_file": "ultimaker_2pc.json"
+      "config_file": "ultimaker2_plus_connect.json"
     }
   ]
 }
