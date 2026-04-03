@@ -18,7 +18,7 @@
         "6"
     ],
     "filament_vendor": [
-        "UltiMaker"
+        "Ultimaker"
     ],
     "filament_diameter": [
         "2.85"
@@ -35,5 +35,5 @@
     "filament_scarf_length": [
         "10"
     ],
-    "filament_notes": "MATERIAL_GUID: unknown (not available in Cura AnyColor profiles)"
+    "filament_notes": "MATERIAL_GUID: d86bf59a-9d10-4a25-99b6-2844e0bc1bfb"
 }

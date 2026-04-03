@@ -6,19 +6,19 @@
     "filament_id": "UFPTC00",
     "instantiation": "false",
     "filament_cost": [
-        "54.99"
+        "185"
     ],
     "filament_density": [
-        "1.32"
+        "1.33"
     ],
     "filament_flow_ratio": [
-        "0.95"
+        "0.98"
     ],
     "filament_max_volumetric_speed": [
         "8"
     ],
     "filament_vendor": [
-        "UltiMaker"
+        "Ultimaker"
     ],
     "filament_diameter": [
         "2.85"
@@ -35,5 +35,5 @@
     "filament_scarf_length": [
         "10"
     ],
-    "filament_notes": "MATERIAL_GUID: unknown (not available in Cura AnyColor profiles)"
+    "filament_notes": "MATERIAL_GUID: f0245d40-3657-4615-b9ab-19fc043944ca"
 }

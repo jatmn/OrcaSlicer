@@ -6,19 +6,19 @@
     "filament_id": "UFPLA00",
     "instantiation": "false",
     "filament_cost": [
-        "29.99"
+        "52"
     ],
     "filament_density": [
         "1.24"
     ],
     "filament_flow_ratio": [
-        "1.0"
+        "0.98"
     ],
     "filament_max_volumetric_speed": [
         "12"
     ],
     "filament_vendor": [
-        "UltiMaker"
+        "Ultimaker"
     ],
     "filament_diameter": [
         "2.85"
@@ -34,6 +34,9 @@
     ],
     "filament_scarf_length": [
         "10"
+    ],
+    "pellet_flow_coefficient": [
+        "0.156755"
     ],
     "filament_notes": "MATERIAL_GUID: 5b890432-a9f1-45e4-aad7-a73995600276"
 }

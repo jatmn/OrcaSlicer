@@ -229,6 +229,35 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
         BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: base_preset is NULL";
     }
     
+    // STEP 3b: Explicit search for @base presets
+    // When inheritance chain fails, try to find the base preset directly
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: STEP 3b - Searching for @base preset...";
+    {
+        Slic3r::PresetCollection& filaments = const_cast<Slic3r::PresetCollection&>(preset_bundle->filaments);
+        
+        // Try "{PresetName} @base" pattern (e.g., "UltiMaker PLA @base")
+        std::string base_name = preset_to_use->name;
+        size_t at_pos = base_name.find(" @");
+        if (at_pos != std::string::npos) {
+            base_name = base_name.substr(0, at_pos) + " @base";
+        } else {
+            base_name = base_name + " @base";
+        }
+        
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Looking for base preset: '" << base_name << "'";
+        const Slic3r::Preset* base_preset_direct = filaments.find_preset(base_name, false, true);
+        if (base_preset_direct) {
+            std::string base_guid = extract_guid_from_preset(base_preset_direct);
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Found @base preset '" << base_preset_direct->name << "', GUID: " << (base_guid.empty() ? "[EMPTY]" : base_guid);
+            if (!base_guid.empty()) {
+                BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: SUCCESS - Using GUID from @base preset: " << base_guid;
+                return base_guid;
+            }
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Could not find @base preset '" << base_name << "'";
+        }
+    }
+    
     // STEP 4: If we still don't have a GUID, return the selected preset's GUID if it exists
     if (!selected_guid.empty()) {
         BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Using selected preset's own GUID: " << selected_guid;
@@ -236,23 +265,63 @@ static std::string extract_material_guid_from_preset(const Slic3r::Preset* filam
         return selected_guid;
     }
     
-    // STEP 5: FALLBACK - Try to find any base preset with "PLA" or "Tough" in the name
-    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: STEP 5 - Trying fallback search for PLA-related presets...";
+    // STEP 5: FALLBACK - Try to find a matching preset with more specific criteria
+    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: STEP 5 - Trying fallback search...";
     {
         Slic3r::PresetCollection& filaments = const_cast<Slic3r::PresetCollection&>(preset_bundle->filaments);
+        
+        // First try: Look for presets matching the original preset name pattern
+        // Extract base material name from preset_name_for_debug (e.g., "UltiMaker Tough PLA @System" -> "UltiMaker Tough PLA")
+        std::string search_name = preset_name_for_debug;
+        size_t at_pos = search_name.find(" @");
+        if (at_pos != std::string::npos) {
+            search_name = search_name.substr(0, at_pos);
+        }
+        
+        // Try exact match first
+        for (const auto& preset : filaments) {
+            if (preset.is_system && preset.is_visible) {
+                std::string pname = preset.name;
+                // Remove @suffix for comparison
+                size_t preset_at_pos = pname.find(" @");
+                if (preset_at_pos != std::string::npos) {
+                    pname = pname.substr(0, preset_at_pos);
+                }
+                
+                // Look for exact match with the base name
+                if (pname == search_name) {
+                    std::string pguid = extract_guid_from_preset(&preset);
+                    if (!pguid.empty()) {
+                        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback - Found exact match: " << preset.name;
+                        return pguid;
+                    }
+                }
+            }
+        }
+        
+        // Second try: Look for partial matches where preset name contains search_name
+        for (const auto& preset : filaments) {
+            if (preset.is_system && preset.is_visible) {
+                std::string pname = preset.name;
+                if (pname.find(search_name) != std::string::npos) {
+                    std::string pguid = extract_guid_from_preset(&preset);
+                    if (!pguid.empty()) {
+                        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback - Found partial match: " << preset.name;
+                        return pguid;
+                    }
+                }
+            }
+        }
+        
+        // Third try: Legacy broad search (as last resort)
+        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: STEP 5b - Trying broad fallback search...";
         for (const auto& preset : filaments) {
             if (preset.is_system && preset.is_visible) {
                 std::string pname = preset.name;
                 if (pname.find("PLA") != std::string::npos || pname.find("Tough") != std::string::npos) {
                     std::string pguid = extract_guid_from_preset(&preset);
-                    BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback candidate: '" << preset.name << "' GUID: " << (pguid.empty() ? "[NONE]" : pguid);
-                    // FIX: Removed `&& base_preset == nullptr` condition that was preventing fallback from working
-                    // when a base_preset was already found (even if it had no GUID)
                     if (!pguid.empty()) {
-                        base_preset = &preset;
-                        base_preset_name = preset.name;
-                        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Fallback - Using preset '" << preset.name << "' with GUID: " << pguid;
-                        BOOST_LOG_TRIVIAL(warning) << "=== extract_material_guid_from_preset END (SUCCESS from fallback) ===";
+                        BOOST_LOG_TRIVIAL(warning) << "extract_material_guid_from_preset: Legacy fallback - Using preset '" << preset.name << "' with GUID: " << pguid;
                         return pguid;
                     }
                 }
@@ -976,10 +1045,20 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
                                                  << (filament_preset ? "found: " + filament_preset->name : "NOT FOUND");
                     }
                     
-                    // Fallback: If preset name is empty but filament_type exists, try multiple strategies to find preset
+                    // Fallback: Use the selected filament preset from the preset bundle
+                    // This is the most reliable way since we already know what material is selected
+                    if (!filament_preset && preset_bundle) {
+                        const Slic3r::Preset& selected_preset = preset_bundle->filaments.get_selected_preset();
+                        if (!selected_preset.is_default) {
+                            filament_preset = &selected_preset;
+                            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Using selected filament preset: " << selected_preset.name;
+                        }
+                    }
+                    
+                    // Last resort: If still no preset, search by filament_type (may find wrong preset!)
                     if (!filament_preset && i < filament_values.size() && !filament_values[i].empty()) {
                         std::string filament_type = filament_values[i];
-                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Fallback lookup for filament_type: " << filament_type;
+                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Last resort - searching by filament_type: " << filament_type;
                         
                         // Strategy 1: Try filament_id_by_type first (standard lookup)
                         std::string filament_id = preset_bundle->filaments.filament_id_by_type(filament_type);
@@ -1024,6 +1103,18 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
                             };
                             
                             // First pass: Find a preset with matching filament_type AND has a MATERIAL_GUID
+                            // Priority 1: UltiMaker presets (when on UltiMaker printer)
+                            // Priority 2: MakerBot presets (when on MakerBot printer)  
+                            // Priority 3: Any other preset with GUID
+                            
+                            // Get printer vendor to prioritize matching brand filaments
+                            std::string printer_vendor;
+                            if (const ConfigOptionString* vendor_opt = full_config.option<ConfigOptionString>("printer_vendor")) {
+                                printer_vendor = vendor_opt->value;
+                            }
+                            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Printer vendor: " << printer_vendor;
+                            
+                            // Try to find brand-specific match first
                             for (const auto& preset : preset_bundle->filaments) {
                                 if (preset.is_system && preset.is_visible) {
                                     if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
@@ -1031,9 +1122,76 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
                                             // Check if this preset has a MATERIAL_GUID
                                             std::string guid = extract_guid_from_preset_local(&preset);
                                             if (!guid.empty()) {
-                                                filament_preset = &preset;
-                                                BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found preset with GUID by filament_type field: " << preset.name;
-                                                break;
+                                                // Check if brand matches printer vendor
+                                                std::string filament_brand;
+                                                if (const Slic3r::ConfigOptionStrings* brand_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_vendor")) {
+                                                    if (!brand_opt->values.empty()) filament_brand = brand_opt->values[0];
+                                                }
+                                                
+                                                // If printer vendor matches filament brand, use this preset
+                                                if (!printer_vendor.empty() && !filament_brand.empty() && 
+                                                    (printer_vendor.find(filament_brand) != std::string::npos || 
+                                                     filament_brand.find(printer_vendor) != std::string::npos)) {
+                                                    filament_preset = &preset;
+                                                    BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found brand-matching preset: " << preset.name << " (brand: " << filament_brand << ")";
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // If no brand match, fall back to any preset with GUID
+                            // But prioritize UltiMaker over MakerBot for generic types
+                            if (!filament_preset) {
+                                // First try UltiMaker presets
+                                for (const auto& preset : preset_bundle->filaments) {
+                                    if (preset.is_system && preset.is_visible && preset.name.find("UltiMaker") != std::string::npos) {
+                                        if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
+                                            if (!type_opt->values.empty() && type_opt->values[0] == filament_type) {
+                                                std::string guid = extract_guid_from_preset_local(&preset);
+                                                if (!guid.empty()) {
+                                                    filament_preset = &preset;
+                                                    BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found UltiMaker preset: " << preset.name;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Then try any other preset with GUID (excluding MakerBot if we still don't have a match)
+                                if (!filament_preset) {
+                                    for (const auto& preset : preset_bundle->filaments) {
+                                        if (preset.is_system && preset.is_visible && preset.name.find("MakerBot") == std::string::npos) {
+                                            if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
+                                                if (!type_opt->values.empty() && type_opt->values[0] == filament_type) {
+                                                    std::string guid = extract_guid_from_preset_local(&preset);
+                                                    if (!guid.empty()) {
+                                                        filament_preset = &preset;
+                                                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found preset with GUID by filament_type field: " << preset.name;
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Last resort - accept MakerBot
+                                if (!filament_preset) {
+                                    for (const auto& preset : preset_bundle->filaments) {
+                                        if (preset.is_system && preset.is_visible) {
+                                            if (const Slic3r::ConfigOptionStrings* type_opt = preset.config.option<Slic3r::ConfigOptionStrings>("filament_type")) {
+                                                if (!type_opt->values.empty() && type_opt->values[0] == filament_type) {
+                                                    std::string guid = extract_guid_from_preset_local(&preset);
+                                                    if (!guid.empty()) {
+                                                        filament_preset = &preset;
+                                                        BOOST_LOG_TRIVIAL(warning) << "build_container_format: Found MakerBot preset: " << preset.name;
+                                                        break;
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1082,9 +1240,15 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
                     }
 
                     // Extract material GUID from filament preset (walks inheritance chain to find base preset)
-                    std::string material_guid = extract_material_guid_from_preset(filament_preset, preset_bundle, 
-                        i < filament_preset_values.size() ? filament_preset_values[i] : 
-                        (i < filament_values.size() ? filament_values[i] : "unknown"));
+                    std::string preset_name_for_lookup = i < filament_preset_values.size() ? filament_preset_values[i] : 
+                        (i < filament_values.size() ? filament_values[i] : "unknown");
+                    BOOST_LOG_TRIVIAL(warning) << "build_container_format: Calling extract_material_guid_from_preset with preset=" 
+                                             << (filament_preset ? filament_preset->name : "NULL")
+                                             << " preset_name_for_debug=" << preset_name_for_lookup;
+                    std::string material_guid = extract_material_guid_from_preset(filament_preset, preset_bundle, preset_name_for_lookup);
+                    
+                    BOOST_LOG_TRIVIAL(warning) << "build_container_format: extract_material_guid_from_preset returned GUID: " 
+                                             << (material_guid.empty() ? "[EMPTY]" : material_guid);
                     
                     // For container formats (.ufp/.makerbot), NEVER use generated GUIDs - they are always invalid
                     if (material_guid.empty()) {

@@ -6,10 +6,10 @@
     "filament_id": "UFPLA01",
     "instantiation": "false",
     "filament_cost": [
-        "34.99"
+        "66.6"
     ],
     "filament_density": [
-        "1.26"
+        "1.24"
     ],
     "filament_flow_ratio": [
         "0.98"
@@ -18,7 +18,7 @@
         "10"
     ],
     "filament_vendor": [
-        "UltiMaker"
+        "Ultimaker"
     ],
     "filament_diameter": [
         "2.85"
@@ -36,7 +36,7 @@
         "10"
     ],
     "filament_type": [
-        "PLA Tough"
+        "Tough PLA"
     ],
     "filament_notes": "MATERIAL_GUID: 2c31d5ae-a75c-4be6-83bf-377341fc6d24"
 }
