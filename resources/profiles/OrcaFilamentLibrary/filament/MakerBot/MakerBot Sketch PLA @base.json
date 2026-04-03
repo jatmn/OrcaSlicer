@@ -6,16 +6,16 @@
     "filament_id": "MKSKPLA00",
     "instantiation": "false",
     "filament_cost": [
-        "25.99"
+        "39.00"
     ],
     "filament_density": [
         "1.24"
     ],
     "filament_flow_ratio": [
-        "1.0"
+        "0.98"
     ],
     "filament_max_volumetric_speed": [
-        "12"
+        "20"
     ],
     "filament_vendor": [
         "MakerBot"

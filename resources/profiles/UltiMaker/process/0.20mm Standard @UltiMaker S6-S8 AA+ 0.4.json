@@ -1,7 +1,7 @@
 {
     "type": "process",
     "name": "0.20mm Standard @UltiMaker S6-S8 AA+ 0.4",
-    "inherits": "fdm_process_ultimaker_s68_common",
+    "inherits": "fdm_process_ultimaker_s68_aa+04_common",
     "from": "system",
     "instantiation": "true",
     "print_settings_id": "0.20mm Standard @UltiMaker S6-S8 AA+ 0.4",

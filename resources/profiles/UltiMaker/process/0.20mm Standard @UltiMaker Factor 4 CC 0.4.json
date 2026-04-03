@@ -1,7 +1,7 @@
 {
     "type": "process",
     "name": "0.20mm Standard @UltiMaker Factor 4 CC 0.4",
-    "inherits": "fdm_process_ultimaker_factor4_common",
+    "inherits": "fdm_process_ultimaker_factor4_cc04_common",
     "from": "system",
     "instantiation": "true",
     "print_settings_id": "0.20mm Standard @UltiMaker Factor 4 CC 0.4",

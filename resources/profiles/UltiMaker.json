@@ -56,6 +56,10 @@
             "sub_path": "process/fdm_process_common.json"
         },
         {
+            "name": "fdm_process_ultimaker_factor4_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_common.json"
+        },
+        {
             "name": "fdm_process_ultimaker_s35_common",
             "sub_path": "process/fdm_process_ultimaker_s35_common.json"
         },
@@ -64,100 +68,176 @@
             "sub_path": "process/fdm_process_ultimaker_s68_common.json"
         },
         {
-            "name": "fdm_process_ultimaker_factor4_common",
-            "sub_path": "process/fdm_process_ultimaker_factor4_common.json"
+            "name": "fdm_process_common_sketch",
+            "sub_path": "process/fdm_process_common_sketch.json"
+        },
+        {
+            "name": "fdm_process_common_sketch_large",
+            "sub_path": "process/fdm_process_common_sketch_large.json"
+        },
+        {
+            "name": "fdm_process_common_sketch_sprint",
+            "sub_path": "process/fdm_process_common_sketch_sprint.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_aa025_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_aa025_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_aa04_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_aa04_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_aa08_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_aa08_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_bb04_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_bb04_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_bb08_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_bb08_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_cc04_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_cc04_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_cc06_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_cc06_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_factor4_ht06_common",
+            "sub_path": "process/fdm_process_ultimaker_factor4_ht06_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_s35_aa025_common",
+            "sub_path": "process/fdm_process_ultimaker_s35_aa025_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_s35_aa04_common",
+            "sub_path": "process/fdm_process_ultimaker_s35_aa04_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_s35_aa08_common",
+            "sub_path": "process/fdm_process_ultimaker_s35_aa08_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_s35_bb04_common",
+            "sub_path": "process/fdm_process_ultimaker_s35_bb04_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_s35_bb08_common",
+            "sub_path": "process/fdm_process_ultimaker_s35_bb08_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_s35_cc04_common",
+            "sub_path": "process/fdm_process_ultimaker_s35_cc04_common.json"
+        },
+        {
+            "name": "fdm_process_ultimaker_s35_cc06_common",
+            "sub_path": "process/fdm_process_ultimaker_s35_cc06_common.json"
         },
         {
             "name": "fdm_process_ultimaker_s68_aa+04_common",
             "sub_path": "process/fdm_process_ultimaker_s68_aa+04_common.json"
         },
         {
-            "name": "0.15mm Standard @UltiMaker S3-S5-S7 AA 0.25",
-            "sub_path": "process/0.15mm Standard @UltiMaker S3-S5-S7 AA 0.25.json"
+            "name": "fdm_process_ultimaker_s68_aa025_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_aa025_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S3-S5-S7 AA 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 AA 0.4.json"
+            "name": "fdm_process_ultimaker_s68_aa04_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_aa04_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S3-S5-S7 BB 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 BB 0.4.json"
+            "name": "fdm_process_ultimaker_s68_aa08_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_aa08_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S3-S5-S7 CC 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 CC 0.4.json"
+            "name": "fdm_process_ultimaker_s68_bb04_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_bb04_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S3-S5-S7 CC 0.6",
-            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 CC 0.6.json"
+            "name": "fdm_process_ultimaker_s68_bb08_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_bb08_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S3-S5-S7 BB 0.8",
-            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 BB 0.8.json"
+            "name": "fdm_process_ultimaker_s68_cc+04_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_cc+04_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S3-S5-S7 AA 0.8",
-            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 AA 0.8.json"
+            "name": "fdm_process_ultimaker_s68_cc+06_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_cc+06_common.json"
         },
         {
-            "name": "0.15mm Standard @UltiMaker S6-S8 AA 0.25",
-            "sub_path": "process/0.15mm Standard @UltiMaker S6-S8 AA 0.25.json"
+            "name": "fdm_process_ultimaker_s68_cc04_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_cc04_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S6-S8 AA 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 AA 0.4.json"
+            "name": "fdm_process_ultimaker_s68_cc06_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_cc06_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S6-S8 BB 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 BB 0.4.json"
+            "name": "fdm_process_ultimaker_s68_ccred06_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_ccred06_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S6-S8 CC 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC 0.4.json"
+            "name": "fdm_process_ultimaker_s68_ht06_common",
+            "sub_path": "process/fdm_process_ultimaker_s68_ht06_common.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker S6-S8 AA+ 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 AA+ 0.4.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker S6-S8 CC+ 0.4",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC+ 0.4.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker S6-S8 CC 0.6",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC 0.6.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker S6-S8 CC+ 0.6",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC+ 0.6.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker S6-S8 CC Red 0.6",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC Red 0.6.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker S6-S8 HT 0.6",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 HT 0.6.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker S6-S8 BB 0.8",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 BB 0.8.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker S6-S8 AA 0.8",
-            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 AA 0.8.json"
+            "name": "0.12mm Fine @UltiMaker 2",
+            "sub_path": "process/0.12mm Fine @UltiMaker 2.json"
         },
         {
             "name": "0.15mm Standard @UltiMaker Factor 4 AA 0.25",
             "sub_path": "process/0.15mm Standard @UltiMaker Factor 4 AA 0.25.json"
         },
         {
+            "name": "0.15mm Standard @UltiMaker S3-S5-S7 AA 0.25",
+            "sub_path": "process/0.15mm Standard @UltiMaker S3-S5-S7 AA 0.25.json"
+        },
+        {
+            "name": "0.15mm Standard @UltiMaker S6-S8 AA 0.25",
+            "sub_path": "process/0.15mm Standard @UltiMaker S6-S8 AA 0.25.json"
+        },
+        {
+            "name": "0.18mm Standard @UltiMaker 2",
+            "sub_path": "process/0.18mm Standard @UltiMaker 2.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Sketch 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Sketch 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Sketch Large 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Sketch Large 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Sketch Sprint 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Sketch Sprint 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker 2+ Connect",
+            "sub_path": "process/0.20mm Standard @UltiMaker 2+ Connect.json"
+        },
+        {
             "name": "0.20mm Standard @UltiMaker Factor 4 AA 0.4",
             "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 AA 0.4.json"
         },
         {
+            "name": "0.20mm Standard @UltiMaker Factor 4 AA 0.8",
+            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 AA 0.8.json"
+        },
+        {
             "name": "0.20mm Standard @UltiMaker Factor 4 BB 0.4",
             "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 BB 0.4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker Factor 4 BB 0.8",
+            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 BB 0.8.json"
         },
         {
             "name": "0.20mm Standard @UltiMaker Factor 4 CC 0.4",
@@ -172,40 +252,76 @@
             "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 HT 0.6.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker Factor 4 BB 0.8",
-            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 BB 0.8.json"
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 AA 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 AA 0.4.json"
         },
         {
-            "name": "0.20mm Standard @UltiMaker Factor 4 AA 0.8",
-            "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 AA 0.8.json"
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 AA 0.8",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 AA 0.8.json"
         },
         {
-            "name": "0.12mm Fine @UltiMaker 2",
-            "sub_path": "process/0.12mm Fine @UltiMaker 2.json"
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 BB 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 BB 0.4.json"
         },
         {
-            "name": "0.18mm Standard @UltiMaker 2",
-            "sub_path": "process/0.18mm Standard @UltiMaker 2.json"
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 BB 0.8",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 BB 0.8.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 CC 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 CC 0.4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S3-S5-S7 CC 0.6",
+            "sub_path": "process/0.20mm Standard @UltiMaker S3-S5-S7 CC 0.6.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 AA 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 AA 0.4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 AA 0.8",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 AA 0.8.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 AA+ 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 AA+ 0.4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 BB 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 BB 0.4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 BB 0.8",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 BB 0.8.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 CC 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC 0.4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 CC 0.6",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC 0.6.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 CC Red 0.6",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC Red 0.6.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 CC+ 0.4",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC+ 0.4.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 CC+ 0.6",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 CC+ 0.6.json"
+        },
+        {
+            "name": "0.20mm Standard @UltiMaker S6-S8 HT 0.6",
+            "sub_path": "process/0.20mm Standard @UltiMaker S6-S8 HT 0.6.json"
         },
         {
             "name": "0.25mm Draft @UltiMaker 2",
             "sub_path": "process/0.25mm Darft @UltiMaker 2.json"
-        },
-        {
-            "name": "0.20mm Standard @UltiMaker 2+ Connect",
-            "sub_path": "process/0.20mm Standard @UltiMaker 2+ Connect.json"
-        },
-        {
-            "name": "0.20mm Standard @MakerBot Sketch 0.40",
-            "sub_path": "process/0.20mm Standard @MakerBot Sketch 0.40.json"
-        },
-        {
-            "name": "0.20mm Standard @MakerBot Sketch Large 0.40",
-            "sub_path": "process/0.20mm Standard @MakerBot Sketch Large 0.40.json"
-        },
-        {
-            "name": "0.20mm Standard @MakerBot Sketch Sprint 0.40",
-            "sub_path": "process/0.20mm Standard @MakerBot Sketch Sprint 0.40.json"
         }
     ],
     "filament_list": [],

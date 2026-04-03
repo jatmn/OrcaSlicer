@@ -6,7 +6,7 @@
     "setting_id": "MKSKTPLA01",
     "instantiation": "true",
     "filament_max_volumetric_speed": [
-        "12"
+        "20"
     ],
     "compatible_printers": []
 }

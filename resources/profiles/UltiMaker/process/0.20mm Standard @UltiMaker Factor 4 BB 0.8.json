@@ -1,11 +1,10 @@
 {
     "type": "process",
     "name": "0.20mm Standard @UltiMaker Factor 4 BB 0.8",
-    "inherits": "fdm_process_ultimaker_factor4_common",
+    "inherits": "fdm_process_ultimaker_factor4_bb08_common",
     "from": "system",
     "instantiation": "true",
     "print_settings_id": "0.20mm Standard @UltiMaker Factor 4 BB 0.8",
     "compatible_printers_condition": "printer_variant==\"0.8\" && printer_extruder_variant_0==\"BB 0.8\" && (printer_notes=~/.*ultimaker_factor4.*/)",
-    "layer_height": "0.20",
-    "sparse_infill_line_width": "0.8"
+    "layer_height": "0.20"
 }
