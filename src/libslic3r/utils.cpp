@@ -889,7 +889,28 @@ CopyFileResult copy_file(const std::string &from, const std::string &to, std::st
     BOOL result = CopyFileW(src_wstr, dst_wstr, FALSE);
     if (!result) {
         DWORD errCode = GetLastError();
-        error_message = "Error: " + errCode;
+        
+        // Get Windows error message
+        LPWSTR errMsg = nullptr;
+        DWORD msgLen = FormatMessageW(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            nullptr, errCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&errMsg, 0, nullptr);
+        
+        if (msgLen > 0 && errMsg) {
+            // Convert wide char message to UTF-8
+            int msgUtf8Len = WideCharToMultiByte(CP_UTF8, 0, errMsg, -1, nullptr, 0, nullptr, nullptr);
+            if (msgUtf8Len > 0) {
+                std::string msgUtf8(msgUtf8Len - 1, 0);  // -1 to exclude null terminator
+                WideCharToMultiByte(CP_UTF8, 0, errMsg, -1, &msgUtf8[0], msgUtf8Len, nullptr, nullptr);
+                error_message = std::to_string(errCode) + ": " + msgUtf8;
+            } else {
+                error_message = std::to_string(errCode);
+            }
+            LocalFree(errMsg);
+        } else {
+            error_message = std::to_string(errCode);
+        }
+        
         ret = FAIL_COPY_FILE;
         goto __finished;
     }

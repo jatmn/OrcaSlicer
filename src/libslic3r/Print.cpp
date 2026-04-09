@@ -3567,8 +3567,10 @@ std::string PrintStatistics::finalize_output_path(const std::string &path_in) co
         // .ufp and .makerbot files cannot have spaces in filenames
         std::string ext_lower = boost::to_lower_copy(path.extension().string());
         if (ext_lower == ".ufp" || ext_lower == ".makerbot") {
-            // Replace spaces in the final path (both stem and path)
-            std::replace(final_path.begin(), final_path.end(), ' ', '_');
+            // Only replace spaces in the filename (stem), not the directory path
+            std::string sanitized_stem = new_stem;
+            std::replace(sanitized_stem.begin(), sanitized_stem.end(), ' ', '_');
+            final_path = (path.parent_path() / (sanitized_stem + path.extension().string())).string();
             BOOST_LOG_TRIVIAL(info) << "finalize_output_path: Sanitized container filename: " << final_path;
         }
     } catch (const std::exception &ex) {

@@ -1045,15 +1045,10 @@ bool BackgroundSlicingProcess::build_container_format(const std::string& gcode_p
                                                  << (filament_preset ? "found: " + filament_preset->name : "NOT FOUND");
                     }
                     
-                    // Fallback: Use the selected filament preset from the preset bundle
-                    // This is the most reliable way since we already know what material is selected
-                    if (!filament_preset && preset_bundle) {
-                        const Slic3r::Preset& selected_preset = preset_bundle->filaments.get_selected_preset();
-                        if (!selected_preset.is_default) {
-                            filament_preset = &selected_preset;
-                            BOOST_LOG_TRIVIAL(warning) << "build_container_format: Using selected filament preset: " << selected_preset.name;
-                        }
-                    }
+                    // NOTE: Removed fallback to get_selected_preset() here.
+                    // For multi-material prints, get_selected_preset() returns the FIRST extruder's preset,
+                    // which is WRONG for other extruders. If the preset wasn't found by name above,
+                    // we'll search by filament_type below (lines 1059+) which handles multi-material correctly.
                     
                     // Last resort: If still no preset, search by filament_type (may find wrong preset!)
                     if (!filament_preset && i < filament_values.size() && !filament_values[i].empty()) {
@@ -1618,12 +1613,22 @@ bool BackgroundSlicingProcess::export_to_final_path(const std::string& source_pa
     try {
         copy_ret_val = copy_file(output_path, export_path, error_message, m_export_path_on_removable_media);
     }
+    catch (const std::exception& e) {
+        // Clean up container file if it was created
+        if (!container_path.empty()) {
+            boost::filesystem::remove(container_path);
+        }
+        error_message = std::string("Failed to copy file: ") + e.what();
+        BOOST_LOG_TRIVIAL(error) << "export_to_final_path: Exception during copy: " << e.what();
+        return false;
+    }
     catch (...) {
         // Clean up container file if it was created
         if (!container_path.empty()) {
             boost::filesystem::remove(container_path);
         }
-        error_message = "Unknown error when exporting G-code.";
+        error_message = "Unknown error when exporting G-code (copy failed).";
+        BOOST_LOG_TRIVIAL(error) << "export_to_final_path: Unknown exception during copy";
         return false;
     }
     
