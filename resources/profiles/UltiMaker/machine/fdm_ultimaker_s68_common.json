@@ -17,7 +17,7 @@
         "0x0",
         "0x0"
     ],
-    "gcode_flavor": "marlin2",
+    "gcode_flavor": "cheetah",
     "host_type": "ultimaker",
     "machine_max_acceleration_extruding": [
         "5000",

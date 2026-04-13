@@ -4833,12 +4833,22 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: condition_met=" << condition_met
         << ", will_insert=" << will_insert;
 
-    if (existed_page < n_before_extruders && (is_marlin_flavor || from_initial_build)) {
+    bool insert_condition = (existed_page < n_before_extruders && (is_marlin_flavor || from_initial_build));
+    bool clear_condition = (from_initial_build && !is_marlin_flavor);
+    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: insert_condition=" << insert_condition
+        << ", clear_condition=" << clear_condition;
+    
+    if (insert_condition) {
         auto page = build_kinematics_page();
-        if (from_initial_build && !is_marlin_flavor)
+        if (clear_condition) {
+            BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: clearing page (not inserting)";
             page->clear();
-        else
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: INSERTING page at n_before_extruders=" << n_before_extruders;
             m_pages.insert(m_pages.begin() + n_before_extruders, page);
+        }
+    } else {
+        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: NOT inserting page";
     }
 
 if (is_marlin_flavor)
