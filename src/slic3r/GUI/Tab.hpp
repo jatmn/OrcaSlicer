@@ -400,6 +400,8 @@ public:
 
 	virtual void    on_value_change(const std::string& opt_key, const boost::any& value);
 
+    void            update_jerk_unit_labels(GCodeFlavor flavor);
+
     void            update_wiping_button_visibility();
 	void			activate_option(const std::string& opt_key, const wxString& category);
     void			apply_searcher();
@@ -592,6 +594,7 @@ class TabPrinter : public Tab
 {
 private:
 	bool		m_use_silent_mode = false;
+	bool		m_last_is_marlin_flavor = false;
 	void		append_option_line(ConfigOptionsGroupShp optgroup, const std::string opt_key, const std::string& label_path = "");
 	bool		m_rebuild_kinematics_page = false;
 

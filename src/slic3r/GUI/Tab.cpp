@@ -1537,6 +1537,14 @@ void Tab::on_value_change(const std::string& opt_key, const boost::any& value)
     if (opt_key == "single_extruder_multi_material" || opt_key == "extruders_count" )
         update_wiping_button_visibility();
 
+    if (opt_key == "gcode_flavor") {
+        try {
+            GCodeFlavor flavor = boost::any_cast<GCodeFlavor>(value);
+            update_jerk_unit_labels(flavor);
+        } catch (const boost::bad_any_cast&) {
+            // Ignore cast errors
+        }
+    }
 
     if (opt_key == "pellet_flow_coefficient")
     {
@@ -4790,7 +4798,7 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
 {
     size_t		n_before_extruders = 2;			//	Count of pages before Extruder pages
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
-    bool		is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware);
+    bool		is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
 
     /* ! Freeze/Thaw in this function is needed to avoid call OnPaint() for erased pages
      * and be cause of application crash, when try to change Preset in moment,
@@ -5074,6 +5082,7 @@ if (is_marlin_flavor)
 
     Thaw();
 
+    m_rebuild_kinematics_page = false;
     m_extruders_count_old = m_extruders_count;
 
     if (from_initial_build && m_printer_technology == ptSLA)
@@ -5098,12 +5107,23 @@ void TabPrinter::on_preset_loaded()
     if (!base_printer)
         base_printer = &current_printer;
     std::string base_name = base_printer->name;
+
+    // Detect gcode flavor changes that require Motion ability page rebuild
+    auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
+    bool        is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
+    if (m_last_is_marlin_flavor != is_marlin_flavor) {
+        m_rebuild_kinematics_page = true;
+        m_last_is_marlin_flavor = is_marlin_flavor;
+    }
+
     // update the extruders count field
     auto   *nozzle_diameter = dynamic_cast<const ConfigOptionFloats*>(m_config->option("nozzle_diameter"));
     size_t extruders_count = nozzle_diameter->values.size();
     // update the GUI field according to the number of nozzle diameters supplied
     if (m_extruders_count != extruders_count)
         extruders_count_changed(extruders_count);
+    else if (m_rebuild_kinematics_page)
+        build_unregular_pages();
 
     m_extruder_variant_list = m_config->option<ConfigOptionStrings>("printer_extruder_variant")->values;
 
@@ -5369,6 +5389,42 @@ void TabPrinter::toggle_options()
         bool resonance_avoidance = m_config->opt_bool("resonance_avoidance");
         toggle_option("min_resonance_avoidance_speed", resonance_avoidance);
         toggle_option("max_resonance_avoidance_speed", resonance_avoidance);
+
+        // Update jerk unit labels based on G-code flavor
+        update_jerk_unit_labels(gcf);
+    }
+}
+
+void Tab::update_jerk_unit_labels(GCodeFlavor flavor)
+{
+    // Determine the appropriate label based on G-code flavor
+    wxString jerk_label = (flavor == gcfCheetah)
+        ? wxString::FromUTF8("mm/s\xc2\xb2 \xc3\x97 500,000")
+        : wxString::FromUTF8("mm/s");
+
+    // Jerk field names to update
+    const std::vector<std::string> jerk_fields = {
+        "machine_max_jerk_x",
+        "machine_max_jerk_y",
+        "machine_max_jerk_z",
+        "machine_max_jerk_e"
+    };
+
+    // Update each jerk field's label
+    for (const auto& field_name : jerk_fields) {
+        Page* page = nullptr;
+        Field* field = get_field(field_name, &page);
+
+        if (field && page) {
+            wxWindow* window = field->getWindow();
+            if (window) {
+                // TextCtrl fields use TextInput widget
+                TextInput* text_input = dynamic_cast<TextInput*>(window);
+                if (text_input) {
+                    text_input->SetLabel(jerk_label);
+                }
+            }
+        }
     }
 }
 
@@ -5389,9 +5445,13 @@ void TabPrinter::update()
 
 void TabPrinter::update_fff()
 {
-    if (m_use_silent_mode != m_config->opt_bool("silent_mode"))	{
+    auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
+    bool        is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
+
+    if (m_use_silent_mode != m_config->opt_bool("silent_mode") || m_last_is_marlin_flavor != is_marlin_flavor) {
         m_rebuild_kinematics_page = true;
         m_use_silent_mode = m_config->opt_bool("silent_mode");
+        m_last_is_marlin_flavor = is_marlin_flavor;
     }
 
     toggle_options();

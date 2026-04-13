@@ -2183,7 +2183,12 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("pressure_advance", coFloats);
     def->label = L("Pressure advance");
-    def->tooltip = L("Pressure advance (Klipper) AKA Linear advance factor (Marlin).");
+    def->tooltip = L("Pressure advance (Klipper) AKA Linear advance factor (Marlin/Cheetah).\n\n"
+                     "Different firmwares use different G-codes:\n"
+                     "• Marlin: M900 K<value>\n"
+                     "• Klipper: SET_PRESSURE_ADVANCE ADVANCE=<value>\n"
+                     "• Cheetah: M214 K<value> R0.04\n"
+                     "• RepRap: M572 D0 S<value>");
     def->max = 2;
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionFloats { 0.02 });
@@ -3600,7 +3605,14 @@ void PrintConfigDef::init_fff_params()
 
     def = this->add("gcode_flavor", coEnum);
     def->label = L("G-code flavor");
-    def->tooltip = L("What kind of G-code the printer is compatible with.");
+    def->tooltip = L("What kind of G-code the printer is compatible with.\n\n"
+                     "• Marlin(legacy): Standard Marlin firmware (M205 for jerk in mm/s)\n"
+                     "• Klipper: Klipper firmware with extended commands\n"
+                     "• RepRapFirmware: Duet/RepRapFirmware\n"
+                     "• Marlin 2: Newer Marlin with separate travel accel (P/T/R)\n"
+                     "• Cheetah (UltiMaker): Ultimaker S6/S8 firmware (M215 for jerk in mm/s³)\n\n"
+                     "Note: Cheetah requires different jerk units (m/s³ vs mm/s). "
+                     "Values are automatically converted.");
     def->enum_keys_map = &ConfigOptionEnum<GCodeFlavor>::get_enum_values();
     def->enum_values.push_back("marlin");
     def->enum_values.push_back("klipper");
@@ -4205,7 +4217,12 @@ void PrintConfigDef::init_fff_params()
             (void)L("Maximum jerk E");
             def->category = L("Machine limits");
             def->readonly = false;
-            def->tooltip  = (boost::format("Maximum jerk of the %1% axis") % axis_upper).str();
+            def->tooltip  = (boost::format("Maximum jerk of the %1% axis.\n\n"
+                                            "Input values are always in mm/s.\n\n"
+                                            "Output depends on G-code flavor:\n"
+                                            "• Marlin/Repetier/Klipper: M205 (mm/s)\n"
+                                            "• Cheetah: M215 (m/s³, auto-converted from mm/s)\n\n"
+                                            "Conversion for Cheetah: Value × 500,000 = m/s³") % axis_upper).str();
             (void)L("Maximum jerk of the X axis");
             (void)L("Maximum jerk of the Y axis");
             (void)L("Maximum jerk of the Z axis");
