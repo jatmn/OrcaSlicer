@@ -1988,10 +1988,11 @@ void GCodeProcessor::apply_config(const PrintConfig& config)
         m_result.filament_costs[i]      = static_cast<float>(config.filament_cost.get_at(i));
     }
 
-    if (m_flavor == gcfMarlinLegacy || m_flavor == gcfMarlinFirmware || m_flavor == gcfKlipper || m_flavor == gcfRepRapFirmware) {
+    if (m_flavor == gcfMarlinLegacy || m_flavor == gcfMarlinFirmware || m_flavor == gcfKlipper || m_flavor == gcfRepRapFirmware || m_flavor == gcfCheetah) {
         m_time_processor.machine_limits = reinterpret_cast<const MachineEnvelopeConfig&>(config);
-        if (m_flavor == gcfMarlinLegacy || m_flavor == gcfKlipper) {
+        if (m_flavor == gcfMarlinLegacy || m_flavor == gcfKlipper || m_flavor == gcfCheetah) {
             // Legacy Marlin does not have separate travel acceleration, it uses the 'extruding' value instead.
+            // Cheetah uses the same pattern.
             m_time_processor.machine_limits.machine_max_acceleration_travel = m_time_processor.machine_limits.machine_max_acceleration_extruding;
         }
         if (m_flavor == gcfRepRapFirmware) {

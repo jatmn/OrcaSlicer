@@ -3812,24 +3812,29 @@ PlaceholderParserIntegration &ppi = m_placeholder_parser_integration;
 void GCode::print_machine_envelope(GCodeOutputStream &file, Print &print)
 {
     const auto flavor = print.config().gcode_flavor.value;
-    if ((flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware) &&
+    if ((flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfRepRapFirmware || flavor == gcfCheetah) &&
         print.config().emit_machine_limits_to_gcode.value == true) {
         int factor = flavor == gcfRepRapFirmware ? 60 : 1; // RRF M203 and M566 are in mm/min
-        file.write_format("M201 X%d Y%d Z%d E%d\n",
-            int(print.config().machine_max_acceleration_x.values.front() + 0.5),
-            int(print.config().machine_max_acceleration_y.values.front() + 0.5),
-            int(print.config().machine_max_acceleration_z.values.front() + 0.5),
-            int(print.config().machine_max_acceleration_e.values.front() + 0.5));
-        file.write_format("M203 X%d Y%d Z%d E%d\n",
-            int(print.config().machine_max_speed_x.values.front() * factor + 0.5),
-            int(print.config().machine_max_speed_y.values.front() * factor + 0.5),
-            int(print.config().machine_max_speed_z.values.front() * factor + 0.5),
-            int(print.config().machine_max_speed_e.values.front() * factor + 0.5));
+
+        // Cheetah doesn't use M201/M203 for max limits, only M204 and M215
+        if (flavor != gcfCheetah) {
+            file.write_format("M201 X%d Y%d Z%d E%d\n",
+                int(print.config().machine_max_acceleration_x.values.front() + 0.5),
+                int(print.config().machine_max_acceleration_y.values.front() + 0.5),
+                int(print.config().machine_max_acceleration_z.values.front() + 0.5),
+                int(print.config().machine_max_acceleration_e.values.front() + 0.5));
+            file.write_format("M203 X%d Y%d Z%d E%d\n",
+                int(print.config().machine_max_speed_x.values.front() * factor + 0.5),
+                int(print.config().machine_max_speed_y.values.front() * factor + 0.5),
+                int(print.config().machine_max_speed_z.values.front() * factor + 0.5),
+                int(print.config().machine_max_speed_e.values.front() * factor + 0.5));
+        }
 
         // Now M204 - acceleration. This one is quite hairy thanks to how Marlin guys care about
         // Legacy Marlin should export travel acceleration the same as printing acceleration.
         // MarlinFirmware has the two separated.
-        int travel_acc = flavor == gcfMarlinLegacy
+        // Cheetah uses simple M204 S format like Marlin Legacy.
+        int travel_acc = (flavor == gcfMarlinLegacy || flavor == gcfCheetah)
                        ? int(print.config().machine_max_acceleration_extruding.values.front() + 0.5)
                        : int(print.config().machine_max_acceleration_travel.values.front() + 0.5);
         if (flavor == gcfRepRapFirmware)
@@ -3842,6 +3847,10 @@ void GCode::print_machine_envelope(GCodeOutputStream &file, Print &print)
                 int(print.config().machine_max_acceleration_extruding.values.front() + 0.5),
                 int(print.config().machine_max_acceleration_retracting.values.front() + 0.5),
                 int(print.config().machine_max_acceleration_travel.values.front() + 0.5));
+        else if (flavor == gcfCheetah)
+            // Cheetah uses simple M204 S format with print acceleration
+            file.write_format("M204 S%d ; sets acceleration, mm/sec^2\n",
+                int(print.config().machine_max_acceleration_extruding.values.front() + 0.5));
         else
             file.write_format("M204 P%d R%d T%d\n",
                 int(print.config().machine_max_acceleration_extruding.values.front() + 0.5),
@@ -3849,16 +3858,26 @@ void GCode::print_machine_envelope(GCodeOutputStream &file, Print &print)
                 travel_acc);
 
         assert(is_decimal_separator_point());
-        file.write_format(flavor == gcfRepRapFirmware
-            ? "M566 X%.2lf Y%.2lf Z%.2lf E%.2lf ; sets the jerk limits, mm/min\n"
-            : "M205 X%.2lf Y%.2lf Z%.2lf E%.2lf ; sets the jerk limits, mm/sec\n",
-            print.config().machine_max_jerk_x.values.front() * factor,
-            print.config().machine_max_jerk_y.values.front() * factor,
-            print.config().machine_max_jerk_z.values.front() * factor,
-            print.config().machine_max_jerk_e.values.front() * factor);
+        if (flavor == gcfCheetah) {
+            // Cheetah uses M215 with integer values in m/s³ (not mm/s like M205)
+            // Conversion: mm/s × 500,000 = m/s³
+            long jerk_x = std::lrint(print.config().machine_max_jerk_x.values.front() * 500000.0);
+            long jerk_y = std::lrint(print.config().machine_max_jerk_y.values.front() * 500000.0);
+            file.write_format("M215 X%ld Y%ld ; sets the jerk limits, m/s^3\n", jerk_x, jerk_y);
+        } else {
+            file.write_format(flavor == gcfRepRapFirmware
+                ? "M566 X%.2lf Y%.2lf Z%.2lf E%.2lf ; sets the jerk limits, mm/min\n"
+                : "M205 X%.2lf Y%.2lf Z%.2lf E%.2lf ; sets the jerk limits, mm/sec\n",
+                print.config().machine_max_jerk_x.values.front() * factor,
+                print.config().machine_max_jerk_y.values.front() * factor,
+                print.config().machine_max_jerk_z.values.front() * factor,
+                print.config().machine_max_jerk_e.values.front() * factor);
+        }
 
         // New Marlin uses M205 J[mm] for junction deviation (only apply if it is > 0)
-        file.write_format(writer().set_junction_deviation(config().machine_max_junction_deviation.values.front()).c_str());
+        // Cheetah doesn't support junction deviation
+        if (flavor != gcfCheetah)
+            file.write_format(writer().set_junction_deviation(config().machine_max_junction_deviation.values.front()).c_str());
     }
 }
 

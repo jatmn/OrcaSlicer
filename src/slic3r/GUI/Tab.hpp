@@ -627,6 +627,7 @@ public:
 	void		activate_selected_page(std::function<void()> throw_if_canceled) override;
 	void		clear_pages() override;
 	void		toggle_options() override;
+	void		update_jerk_unit_labels(GCodeFlavor flavor);
     void		update() override;
     void		update_fff();
     void		update_sla();

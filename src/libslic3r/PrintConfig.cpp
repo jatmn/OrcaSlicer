@@ -153,6 +153,7 @@ static t_config_enum_values s_keys_map_GCodeFlavor {
     { "smoothie",       gcfSmoothie },
     { "mach3",          gcfMach3 },
     { "machinekit",     gcfMachinekit },
+    { "cheetah",        gcfCheetah },
     { "no-extrusion",   gcfNoExtrusion }
 };
 CONFIG_OPTION_ENUM_DEFINE_STATIC_MAPS(GCodeFlavor)
@@ -3608,6 +3609,7 @@ void PrintConfigDef::init_fff_params()
     //def->enum_values.push_back("teacup");
     //def->enum_values.push_back("makerware");
     def->enum_values.push_back("marlin2");
+    def->enum_values.push_back("cheetah");
     //def->enum_values.push_back("sailfish");
     //def->enum_values.push_back("mach3");
     //def->enum_values.push_back("machinekit");
@@ -3621,6 +3623,7 @@ void PrintConfigDef::init_fff_params()
     //def->enum_labels.push_back("Teacup");
     //def->enum_labels.push_back("MakerWare (MakerBot)");
     def->enum_labels.push_back("Marlin 2");
+    def->enum_labels.push_back("Cheetah (UltiMaker)");
     //def->enum_labels.push_back("Sailfish (MakerBot)");
     //def->enum_labels.push_back("Mach3/LinuxCNC");
     //def->enum_labels.push_back("Machinekit");

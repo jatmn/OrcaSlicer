@@ -5369,6 +5369,34 @@ void TabPrinter::toggle_options()
         bool resonance_avoidance = m_config->opt_bool("resonance_avoidance");
         toggle_option("min_resonance_avoidance_speed", resonance_avoidance);
         toggle_option("max_resonance_avoidance_speed", resonance_avoidance);
+
+        // Update jerk unit labels based on G-code flavor
+        // Cheetah uses m/s³ instead of mm/s
+        update_jerk_unit_labels(gcf);
+    }
+}
+
+void TabPrinter::update_jerk_unit_labels(GCodeFlavor flavor)
+{
+    auto page = get_page(L("Motion ability"));
+    if (!page) return;
+
+    for (auto& optgroup : page->m_optgroups) {
+        if (optgroup->title == L("Jerk limitation")) {
+            // All flavors use mm/s internally for the jerk settings
+            // The conversion to the correct G-code format happens during G-code generation
+            const char* unit = "mm/s";
+
+            for (const std::string& axis : {"x", "y", "z", "e"}) {
+                std::string opt_key = "machine_max_jerk_" + axis;
+                auto* option = optgroup->get_option(opt_key);
+                if (option) {
+                    option->opt.sidetext = wxString(unit);
+                }
+            }
+            optgroup->reload_settings();
+            break;
+        }
     }
 }
 

@@ -29,7 +29,8 @@ void GCodeWriter::apply_print_config(const PrintConfig &print_config)
     this->config.apply(print_config, true);
     m_single_extruder_multi_material = print_config.single_extruder_multi_material.value;
     bool use_mach_limits = print_config.gcode_flavor.value == gcfMarlinLegacy || print_config.gcode_flavor.value == gcfMarlinFirmware ||
-                           print_config.gcode_flavor.value == gcfKlipper || print_config.gcode_flavor.value == gcfRepRapFirmware;
+                           print_config.gcode_flavor.value == gcfKlipper || print_config.gcode_flavor.value == gcfRepRapFirmware ||
+                           print_config.gcode_flavor.value == gcfCheetah;
     if (use_mach_limits) {
         // For Klipper, SET_VELOCITY_LIMIT ACCEL= applies to all moves, so the effective cap
         // is the minimum of the extruding limit and the per-axis X/Y limits.
@@ -267,6 +268,23 @@ std::string GCodeWriter::set_jerk_xy(double jerk)
             jerk = m_max_jerk_y;
         
         gcode << "SET_VELOCITY_LIMIT SQUARE_CORNER_VELOCITY=" << jerk;
+    } else if (FLAVOR_IS(gcfCheetah)) {
+        // Cheetah uses M215 with jerk in proprietary units (mm/s³ input scaled ×500,000)
+        // Conversion: Cheetah_value = mm/s³_jerk × 500,000
+        // Example: 20 mm/s³ → 10,000,000 (Cheetah units)
+        double jerk_x = jerk;
+        double jerk_y = jerk;
+        // Clamp the axis jerk to the allowed maximum.
+        if (m_max_jerk_x > 0 && jerk_x > m_max_jerk_x)
+            jerk_x = m_max_jerk_x;
+        if (m_max_jerk_y > 0 && jerk_y > m_max_jerk_y)
+            jerk_y = m_max_jerk_y;
+        
+        // Convert from mm/s³ to Cheetah proprietary units and output as integers
+        long cheetah_jerk_x = std::lrint(jerk_x * 500000.0);
+        long cheetah_jerk_y = std::lrint(jerk_y * 500000.0);
+        
+        gcode << "M215 X" << cheetah_jerk_x << " Y" << cheetah_jerk_y;
     } else {
         double jerk_x = jerk;
         double jerk_y = jerk;
@@ -277,10 +295,10 @@ std::string GCodeWriter::set_jerk_xy(double jerk)
             jerk_y = m_max_jerk_y;
         
         gcode << "M205 X" << jerk_x << " Y" << jerk_y;
+        
+        if (m_is_bbl_printers)
+            gcode << std::setprecision(2) << " Z" << m_max_jerk_z << " E" << m_max_jerk_e;
     }
-      
-    if (m_is_bbl_printers)
-        gcode << std::setprecision(2) << " Z" << m_max_jerk_z << " E" << m_max_jerk_e;
 
     if (GCodeWriter::full_gcode_comment) gcode << " ; adjust jerk";
     gcode << "\n";
@@ -365,6 +383,8 @@ std::string GCodeWriter::set_pressure_advance(double pa) const
             gcode << "SET_PRESSURE_ADVANCE ADVANCE=" << std::setprecision(4) << pa << "; Override pressure advance value\n";
         else if(FLAVOR_IS(gcfRepRapFirmware))
             gcode << ("M572 D0 S") << std::setprecision(4) << pa << "; Override pressure advance value\n";
+        else if(FLAVOR_IS(gcfCheetah))
+            gcode << "M214 K" << std::setprecision(4) << pa << " R0.04 ; Linear advance\n";
         else
             gcode << "M900 K" <<std::setprecision(4)<< pa << "; Override pressure advance value\n";
     }
