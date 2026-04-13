@@ -2586,6 +2586,12 @@ void Sidebar::update_presets(Preset::Type preset_type)
             printer_tab->on_preset_loaded();
         }
 
+        // Notify Print tab that printer changed so it can refresh tooltips
+        Tab* print_tab = wxGetApp().get_tab(Preset::TYPE_PRINT);
+        if (print_tab) {
+            print_tab->on_preset_loaded();
+        }
+
         Preset& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
 
         bool isBBL = preset_bundle.is_bbl_vendor();

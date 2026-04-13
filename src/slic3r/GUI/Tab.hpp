@@ -464,11 +464,16 @@ public:
 	void		toggle_options() override;
 	void		update() override;
 	void		clear_pages() override;
+	void		OnActivate() override;
+	void		activate_selected_page(std::function<void()> throw_if_canceled) override;
+	void		on_preset_loaded() override;  // Called when printer preset changes to refresh tooltips
 	bool 		supports_printer_technology(const PrinterTechnology tech) const override { return tech == ptFFF; }
 
 private:
 	ogStaticText*	m_recommended_thin_wall_thickness_description_line = nullptr;
 	ogStaticText*	m_top_bottom_shell_thickness_explanation = nullptr;
+
+	void		refresh_jerk_tooltips();
 };
 
 class TabPrintModel : public TabPrint

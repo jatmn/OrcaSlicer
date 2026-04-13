@@ -171,6 +171,19 @@ wxString get_formatted_tooltip_text(const ConfigOptionDef& opt, const t_config_o
         }
     }
 
+    // Orca: Add Cheetah-specific information for jerk settings when using Cheetah firmware
+    if (opt_id.find("_jerk") != std::string::npos) {
+        const Preset& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
+        const DynamicPrintConfig& printer_config = printer_preset.config;
+        if (const auto* gcode_flavor_option = printer_config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")) {
+            if (gcode_flavor_option->value == GCodeFlavor::gcfCheetah) {
+                tooltip += "\n\n" + _L("Input values are always in mm/s.") + "\n\n" +
+                           _L("Output for Cheetah: M215 (m/s³, auto-converted from mm/s)") + "\n" +
+                           _L("Conversion: Value × 500,000 = m/s³");
+            }
+        }
+    }
+
     edit_tooltip(tooltip);
 
     return tooltip;

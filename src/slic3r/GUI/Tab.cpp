@@ -2863,6 +2863,107 @@ void TabPrint::clear_pages()
     m_top_bottom_shell_thickness_explanation = nullptr;
 }
 
+void TabPrint::OnActivate()
+{
+    // Call parent implementation first
+    Tab::OnActivate();
+
+    BOOST_LOG_TRIVIAL(warning) << "TabPrint::OnActivate() called - refreshing jerk tooltips";
+    // Refresh jerk tooltips to reflect current G-code flavor
+    refresh_jerk_tooltips();
+}
+
+void TabPrint::activate_selected_page(std::function<void()> throw_if_canceled)
+{
+    // Call parent implementation first
+    Tab::activate_selected_page(throw_if_canceled);
+    
+    // Check if the Speed page is now active
+    if (m_active_page && m_active_page->title() == L("Speed")) {
+        BOOST_LOG_TRIVIAL(warning) << "TabPrint::activate_selected_page: Speed page activated, refreshing jerk tooltips";
+        refresh_jerk_tooltips();
+    }
+}
+
+void TabPrint::refresh_jerk_tooltips()
+{
+    // Find the Speed page first
+    Page* speed_page = nullptr;
+    for (auto& page : m_pages) {
+        if (page->title() == L("Speed")) {
+            speed_page = page.get();
+            break;
+        }
+    }
+    
+    if (!speed_page) {
+        BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: Speed page not found";
+        return;
+    }
+    
+    // Check if the Speed page has been activated (fields created)
+    // A page is activated when its optgroups are activated (sizer != nullptr)
+    bool page_activated = false;
+    for (auto& optgroup : speed_page->m_optgroups) {
+        if (optgroup->is_activated()) {
+            page_activated = true;
+            break;
+        }
+    }
+    
+    if (!page_activated) {
+        BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: Speed page not yet activated, skipping";
+        return;
+    }
+    
+    BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: Speed page is activated, refreshing tooltips";
+
+    // List of jerk-related fields that need tooltip refresh
+    std::vector<std::string> jerk_fields = {
+        "default_jerk",
+        "outer_wall_jerk",
+        "inner_wall_jerk",
+        "top_surface_jerk",
+        "infill_jerk",
+        "initial_layer_jerk",
+        "travel_jerk"
+    };
+
+    int found_count = 0;
+    for (const auto& field_name : jerk_fields) {
+        // Search only in the Speed page
+        Field* field = nullptr;
+        for (auto& optgroup : speed_page->m_optgroups) {
+            field = optgroup->get_fieldc(field_name, -1);
+            if (field) break;
+        }
+
+        if (field) {
+            found_count++;
+            wxWindow* window = field->getWindow();
+            if (window) {
+                // Regenerate tooltip with current G-code flavor
+                wxString new_tooltip = field->get_tooltip_text(wxEmptyString);
+                BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: field=" << field_name
+                    << " tooltip_len=" << new_tooltip.Length();
+                if (!new_tooltip.IsEmpty()) {
+                    window->SetToolTip(new_tooltip);
+                }
+            }
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: field=" << field_name << " NOT FOUND in Speed page";
+        }
+    }
+    BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: total fields found=" << found_count << "/" << jerk_fields.size();
+}
+
+void TabPrint::on_preset_loaded()
+{
+    BOOST_LOG_TRIVIAL(warning) << "TabPrint::on_preset_loaded() called - printer preset changed, refreshing jerk tooltips";
+    // Refresh jerk tooltips to reflect new G-code flavor from printer preset
+    refresh_jerk_tooltips();
+}
+
 //BBS: GUI refactor
 
 static std::vector<std::string> intersect(std::vector<std::string> const& l, std::vector<std::string> const& r)
@@ -4851,8 +4952,9 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
         BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: NOT inserting page";
     }
 
-if (is_marlin_flavor)
-    n_before_extruders++;
+    if (is_marlin_flavor) {
+        n_before_extruders++;
+    }
     size_t		n_after_single_extruder_MM = 2; //	Count of pages after single_extruder_multi_material page
 
     if (from_initial_build) {
@@ -4966,8 +5068,13 @@ if (is_marlin_flavor)
     }
 
     // Orca: build missed extruder pages
+    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: extruder loop START - m_extruders_count_old="
+        << m_extruders_count_old << ", m_extruders_count=" << m_extruders_count
+        << ", n_before_extruders=" << n_before_extruders << ", m_pages.size=" << m_pages.size();
     for (auto extruder_idx = m_extruders_count_old; extruder_idx < m_extruders_count; ++extruder_idx) {
         const wxString& page_name = (m_extruders_count > 1) ? wxString::Format("Extruder %d", int(extruder_idx + 1)) : wxString::Format("Extruder");
+        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: creating extruder page " << extruder_idx
+            << " at position " << (n_before_extruders + extruder_idx);
 
         //# build page
         //const wxString& page_name = wxString::Format("Extruder %d", int(extruder_idx + 1));
@@ -5434,7 +5541,7 @@ void Tab::update_jerk_unit_labels(GCodeFlavor flavor)
         ? wxString::FromUTF8("mm/s\xc2\xb2 \xc3\x97 500,000")
         : wxString::FromUTF8("mm/s");
 
-    // Jerk field names to update
+    // Jerk field names to update (Motion ability page)
     const std::vector<std::string> jerk_fields = {
         "machine_max_jerk_x",
         "machine_max_jerk_y",
@@ -5454,6 +5561,39 @@ void Tab::update_jerk_unit_labels(GCodeFlavor flavor)
                 TextInput* text_input = dynamic_cast<TextInput*>(window);
                 if (text_input) {
                     text_input->SetLabel(jerk_label);
+                }
+            }
+        }
+    }
+
+    // Orca: Update tooltips for Speed tab jerk fields when G-code flavor changes
+    // This ensures Cheetah-specific tooltip info appears/disappears immediately
+    const std::vector<std::string> speed_jerk_fields = {
+        "default_jerk",
+        "outer_wall_jerk",
+        "inner_wall_jerk",
+        "infill_jerk",
+        "top_surface_jerk",
+        "initial_layer_jerk",
+        "travel_jerk"
+    };
+
+    // Get the Print tab to access Speed settings fields
+    Tab* print_tab = wxGetApp().get_tab(Preset::TYPE_PRINT);
+    if (print_tab) {
+        for (const auto& field_name : speed_jerk_fields) {
+            Page* page = nullptr;
+            // Search in Print tab's pages
+            Field* field = print_tab->get_field(field_name, &page);
+
+            if (field && page) {
+                wxWindow* window = field->getWindow();
+                if (window) {
+                    // Regenerate tooltip with current G-code flavor
+                    wxString new_tooltip = field->get_tooltip_text(wxEmptyString);
+                    if (!new_tooltip.IsEmpty()) {
+                        window->SetToolTip(new_tooltip);
+                    }
                 }
             }
         }
