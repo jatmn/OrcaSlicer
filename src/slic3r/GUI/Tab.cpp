@@ -4335,12 +4335,14 @@ void TabPrinter::build()
     //std::string def_preset_name = "- default " + std::string(m_printer_technology == ptSLA ? "FFF" : "SLA") + " -";
     std::string def_preset_name = "Default Printer";
     m_config = &m_presets->find_preset(def_preset_name)->config;
+    BOOST_LOG_TRIVIAL(warning) << "TabPrinter::build: initial build starting with def_preset_name=" << def_preset_name;
     m_printer_technology == ptSLA ? build_fff() : build_sla();
     if (m_printer_technology == ptSLA)
         m_extruders_count_old = 0;// revert this value
 
     // ... and than for selected printer technology
     load_initial_data();
+    BOOST_LOG_TRIVIAL(warning) << "TabPrinter::build: after load_initial_data, calling build_fff/build_sla";
     m_printer_technology == ptSLA ? build_sla() : build_fff();
 }
 
@@ -4800,6 +4802,11 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool		is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
 
+    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: flavor=" << (int)flavor
+        << ", is_marlin_flavor=" << is_marlin_flavor
+        << ", from_initial_build=" << from_initial_build
+        << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
+
     /* ! Freeze/Thaw in this function is needed to avoid call OnPaint() for erased pages
      * and be cause of application crash, when try to change Preset in moment,
      * when one of unregular pages is selected.
@@ -4816,6 +4823,15 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
                 existed_page = i;
             break;
         }
+
+    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: existed_page=" << existed_page
+        << ", n_before_extruders=" << n_before_extruders
+        << ", m_pages.size=" << m_pages.size();
+
+    bool condition_met = (existed_page < n_before_extruders && (is_marlin_flavor || from_initial_build));
+    bool will_insert = !(from_initial_build && !is_marlin_flavor);
+    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: condition_met=" << condition_met
+        << ", will_insert=" << will_insert;
 
     if (existed_page < n_before_extruders && (is_marlin_flavor || from_initial_build)) {
         auto page = build_kinematics_page();
@@ -5111,6 +5127,12 @@ void TabPrinter::on_preset_loaded()
     // Detect gcode flavor changes that require Motion ability page rebuild
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool        is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
+    
+    BOOST_LOG_TRIVIAL(warning) << "on_preset_loaded: flavor=" << (int)flavor
+        << ", is_marlin_flavor=" << is_marlin_flavor
+        << ", m_last_is_marlin_flavor=" << m_last_is_marlin_flavor
+        << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
+    
     if (m_last_is_marlin_flavor != is_marlin_flavor) {
         m_rebuild_kinematics_page = true;
         m_last_is_marlin_flavor = is_marlin_flavor;
@@ -5447,6 +5469,11 @@ void TabPrinter::update_fff()
 {
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool        is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
+
+    BOOST_LOG_TRIVIAL(warning) << "update_fff: flavor=" << (int)flavor
+        << ", is_marlin_flavor=" << is_marlin_flavor
+        << ", m_last_is_marlin_flavor=" << m_last_is_marlin_flavor
+        << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
 
     if (m_use_silent_mode != m_config->opt_bool("silent_mode") || m_last_is_marlin_flavor != is_marlin_flavor) {
         m_rebuild_kinematics_page = true;
