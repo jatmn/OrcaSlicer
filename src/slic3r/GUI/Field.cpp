@@ -1525,7 +1525,42 @@ void Choice::set_selection()
     choice_ctrl* field = dynamic_cast<choice_ctrl*>(window);
 	switch (m_opt.type) {
 	case coEnum:{
-        field->SetSelection(m_opt.default_value->getInt());
+	       int enum_value = m_opt.default_value->getInt();
+	       // Find the key corresponding to this enum value in enum_keys_map
+	       std::string key;
+	       if (m_opt.enum_keys_map) {
+	           for (const auto& it : *m_opt.enum_keys_map) {
+	               if (int(it.second) == enum_value) {
+	                   key = it.first;
+	                   break;
+	               }
+	           }
+	       }
+	       // Find the index of this key in enum_values
+	       size_t idx = 0;
+	       if (!key.empty()) {
+	           for (size_t i = 0; i < m_opt.enum_values.size(); ++i) {
+	               if (m_opt.enum_values[i] == key) {
+	                   idx = i;
+	                   break;
+	               }
+	           }
+	       }
+	       // Diagnostic logging for gcode_flavor
+	       if (m_opt.opt_key == "gcode_flavor") {
+	           BOOST_LOG_TRIVIAL(warning) << "Field::set_selection gcode_flavor: enum_value=" << enum_value
+	               << ", key='" << key << "', idx=" << idx
+	               << ", enum_keys_map=" << (m_opt.enum_keys_map ? "valid" : "null")
+	               << ", enum_values.size=" << m_opt.enum_values.size();
+	           if (!m_opt.enum_values.empty()) {
+	               std::string values_str;
+	               for (size_t i = 0; i < m_opt.enum_values.size() && i < 10; ++i) {
+	                   values_str += m_opt.enum_values[i] + " ";
+	               }
+	               BOOST_LOG_TRIVIAL(warning) << "Field::set_selection gcode_flavor enum_values: " << values_str;
+	           }
+	       }
+	       field->SetSelection(idx);
 		break;
 	}
 	case coFloat:
@@ -1650,7 +1685,8 @@ void Choice::set_value(const boost::any& value, bool change_event)
             m_opt_id == "internal_solid_infill_pattern" || m_opt_id == "sparse_infill_pattern" ||
             m_opt_id == "support_base_pattern" || m_opt_id == "support_interface_pattern" ||
             m_opt_id == "ironing_pattern" || m_opt_id == "support_ironing_pattern" ||
-            m_opt_id == "support_style" || m_opt_id == "curr_bed_type" || m_opt_id == "wipe_tower_wall_type")
+            m_opt_id == "support_style" || m_opt_id == "curr_bed_type" || m_opt_id == "wipe_tower_wall_type" ||
+            m_opt_id == "gcode_flavor")
 		{
 			std::string key;
 			const t_config_enum_values& map_names = *m_opt.enum_keys_map;

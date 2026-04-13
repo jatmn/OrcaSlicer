@@ -4903,7 +4903,13 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool		is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
 
-    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: flavor=" << (int)flavor
+    // Also get flavor from preset config to compare
+    const auto& preset_config = m_preset_bundle->printers.get_edited_preset().config;
+    auto preset_flavor = preset_config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
+
+    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: m_config flavor=" << (int)flavor
+        << ", preset_config flavor=" << (int)preset_flavor
+        << ", preset_name=" << m_preset_bundle->printers.get_edited_preset().name
         << ", is_marlin_flavor=" << is_marlin_flavor
         << ", from_initial_build=" << from_initial_build
         << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
@@ -4916,18 +4922,43 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
 
     // Add/delete Kinematics page according to is_marlin_flavor
     size_t existed_page = 0;
+    bool kinematics_page_erased = false;
     for (size_t i = n_before_extruders; i < m_pages.size(); ++i) // first make sure it's not there already
         if (m_pages[i]->title().find(L("Motion ability")) != std::string::npos) {
-            if (m_rebuild_kinematics_page)
+            if (m_rebuild_kinematics_page) {
                 m_pages.erase(m_pages.begin() + i);
-            else
+                kinematics_page_erased = true;
+            } else
                 existed_page = i;
             break;
         }
+    
+    // If we erased the Motion Ability page, we need to also erase all existing extruder pages
+    // because their positions have shifted and the extruder creation loop will create duplicates.
+    // Erase extruder pages from the end to avoid index shifting issues.
+    if (kinematics_page_erased && m_extruders_count_old > 0) {
+        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: Motion Ability page erased, clearing "
+            << m_extruders_count_old << " existing extruder pages to prevent duplicates";
+        // Find and erase all extruder pages
+        for (int i = (int)m_pages.size() - 1; i >= (int)n_before_extruders; --i) {
+            std::string title = m_pages[i]->title().ToStdString();
+            if (title.find("Extruder") != std::string::npos) {
+                BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: erasing existing extruder page at index " << i << ": " << title;
+                m_pages.erase(m_pages.begin() + i);
+            }
+        }
+        // Reset m_extruders_count_old since we erased all extruder pages
+        m_extruders_count_old = 0;
+    }
 
     BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: existed_page=" << existed_page
         << ", n_before_extruders=" << n_before_extruders
         << ", m_pages.size=" << m_pages.size();
+    
+    // Log page titles for debugging
+    for (size_t i = 0; i < m_pages.size(); ++i) {
+        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: page[" << i << "]=" << m_pages[i]->title().ToStdString();
+    }
 
     bool condition_met = (existed_page < n_before_extruders && (is_marlin_flavor || from_initial_build));
     bool will_insert = !(from_initial_build && !is_marlin_flavor);
@@ -5071,6 +5102,11 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: extruder loop START - m_extruders_count_old="
         << m_extruders_count_old << ", m_extruders_count=" << m_extruders_count
         << ", n_before_extruders=" << n_before_extruders << ", m_pages.size=" << m_pages.size();
+    
+    // Log page titles before extruder loop
+    for (size_t i = 0; i < m_pages.size(); ++i) {
+        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: BEFORE loop page[" << i << "]=" << m_pages[i]->title().ToStdString();
+    }
     for (auto extruder_idx = m_extruders_count_old; extruder_idx < m_extruders_count; ++extruder_idx) {
         const wxString& page_name = (m_extruders_count > 1) ? wxString::Format("Extruder %d", int(extruder_idx + 1)) : wxString::Format("Extruder");
         BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: creating extruder page " << extruder_idx
@@ -5213,6 +5249,11 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
             searcher.add_key(opt.first + "#0", m_type, group->title, first_extruder_title);
     }
 
+    // Log page titles after extruder loop
+    for (size_t i = 0; i < m_pages.size(); ++i) {
+        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: AFTER loop page[" << i << "]=" << m_pages[i]->title().ToStdString();
+    }
+
     Thaw();
 
     m_rebuild_kinematics_page = false;
@@ -5245,7 +5286,13 @@ void TabPrinter::on_preset_loaded()
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool        is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
     
-    BOOST_LOG_TRIVIAL(warning) << "on_preset_loaded: flavor=" << (int)flavor
+    // Get the actual preset config to compare
+    const auto& preset_config = m_preset_bundle->printers.get_edited_preset().config;
+    auto preset_flavor = preset_config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
+    
+    BOOST_LOG_TRIVIAL(warning) << "on_preset_loaded: m_config flavor=" << (int)flavor
+        << ", preset_config flavor=" << (int)preset_flavor
+        << ", preset_name=" << m_preset_bundle->printers.get_edited_preset().name
         << ", is_marlin_flavor=" << is_marlin_flavor
         << ", m_last_is_marlin_flavor=" << m_last_is_marlin_flavor
         << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
