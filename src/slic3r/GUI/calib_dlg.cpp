@@ -51,6 +51,46 @@ std::vector<std::string> get_shaper_type_values()
     return {"Default"};
 }
 
+const ConfigOptionEnum<GCodeFlavor>* get_active_gcode_flavor_option()
+{
+    if (auto* preset_bundle = wxGetApp().preset_bundle)
+        return preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor");
+    return nullptr;
+}
+
+bool current_printer_supports_input_shaping()
+{
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
+    if (gcode_flavor_option == nullptr)
+        return false;
+
+    switch (gcode_flavor_option->value) {
+    case GCodeFlavor::gcfKlipper:
+    case GCodeFlavor::gcfRepRapFirmware:
+    case GCodeFlavor::gcfMarlinFirmware:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool current_printer_is_cheetah()
+{
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
+    return gcode_flavor_option != nullptr && gcode_flavor_option->value == GCodeFlavor::gcfCheetah;
+}
+
+bool current_printer_uses_junction_deviation()
+{
+    const auto* preset_bundle = wxGetApp().preset_bundle;
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
+    if (preset_bundle == nullptr || gcode_flavor_option == nullptr || gcode_flavor_option->value != GCodeFlavor::gcfMarlinFirmware)
+        return false;
+
+    const auto* max_jd_option = preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation");
+    return max_jd_option != nullptr && !max_jd_option->values.empty() && max_jd_option->values[0] > 0.0;
+}
+
 std::vector<wxString> make_shaper_type_labels()
 {
     auto values = get_shaper_type_values();
@@ -847,11 +887,9 @@ Input_Shaping_Freq_Test_Dlg::Input_Shaping_Freq_Test_Dlg(wxWindow* parent, wxWin
     SetForegroundColour(wxColour("#363636"));
     SetFont(Label::Body_14);
 
-    const auto* preset_bundle = wxGetApp().preset_bundle;
-    const auto* gcode_flavor_option = (preset_bundle != nullptr)
-        ? preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")
-        : nullptr;
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
     const bool reprap_firmware = gcode_flavor_option && gcode_flavor_option->value == GCodeFlavor::gcfRepRapFirmware;
+    const bool input_shaping_supported = current_printer_supports_input_shaping();
 
     wxBoxSizer* v_sizer = new wxBoxSizer(wxVERTICAL);
     SetSizer(v_sizer);
@@ -885,6 +923,9 @@ Input_Shaping_Freq_Test_Dlg::Input_Shaping_Freq_Test_Dlg(wxWindow* parent, wxWin
             break;
         case GCodeFlavor::gcfRepRapFirmware:
             firmware_note = _L("RepRap firmware version => 3.4.0\nCheck your firmware documentation for supported shaper types.");
+            break;
+        case GCodeFlavor::gcfCheetah:
+            firmware_note = _L("Cheetah does not support OrcaSlicer input shaping calibration.\nUse Cornering test to tune M215 cornering instead.");
             break;
         default:
             break;
@@ -980,7 +1021,19 @@ Input_Shaping_Freq_Test_Dlg::Input_Shaping_Freq_Test_Dlg(wxWindow* parent, wxWin
     bottom_sizer->Add(dlg_btns, 0, wxEXPAND);
     v_sizer->Add(bottom_sizer, 0, wxEXPAND);
 
-    dlg_btns->GetOK()->Bind(wxEVT_BUTTON, &Input_Shaping_Freq_Test_Dlg::on_start, this);
+    if (input_shaping_supported) {
+        dlg_btns->GetOK()->Bind(wxEVT_BUTTON, &Input_Shaping_Freq_Test_Dlg::on_start, this);
+    } else {
+        dlg_btns->GetOK()->SetLabel(_L("Close"));
+        m_rbModel->Enable(false);
+        m_rbType->Enable(false);
+        m_tiFreqStartX->Enable(false);
+        m_tiFreqEndX->Enable(false);
+        m_tiFreqStartY->Enable(false);
+        m_tiFreqEndY->Enable(false);
+        m_tiDampingFactor->Enable(false);
+        dlg_btns->GetOK()->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { EndModal(wxID_CANCEL); });
+    }
 
     wxGetApp().UpdateDlgDarkUI(this);
 
@@ -994,14 +1047,17 @@ Input_Shaping_Freq_Test_Dlg::~Input_Shaping_Freq_Test_Dlg() {
 }
 
 void Input_Shaping_Freq_Test_Dlg::on_start(wxCommandEvent& event) {
+    if (!current_printer_supports_input_shaping()) {
+        MessageDialog msg_dlg(nullptr, _L("The active G-code flavor does not support OrcaSlicer input shaping calibration.\nUse Cornering test for Cheetah firmware."), wxEmptyString, wxICON_WARNING | wxOK);
+        msg_dlg.ShowModal();
+        return;
+    }
+
     bool read_double = false;
     read_double = m_tiFreqStartX->GetTextCtrl()->GetValue().ToDouble(&m_params.freqStartX);
     read_double = read_double && m_tiFreqEndX->GetTextCtrl()->GetValue().ToDouble(&m_params.freqEndX);
 
-    const auto* preset_bundle = wxGetApp().preset_bundle;
-    const auto* gcode_flavor_option = (preset_bundle != nullptr)
-        ? preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")
-        : nullptr;
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
     const bool reprap_firmware = gcode_flavor_option && gcode_flavor_option->value == GCodeFlavor::gcfRepRapFirmware;
 
     if (!reprap_firmware) {
@@ -1065,11 +1121,9 @@ Input_Shaping_Damp_Test_Dlg::Input_Shaping_Damp_Test_Dlg(wxWindow* parent, wxWin
     SetForegroundColour(wxColour("#363636"));
     SetFont(Label::Body_14);
 
-    const auto* preset_bundle = wxGetApp().preset_bundle;
-    const auto* gcode_flavor_option = (preset_bundle != nullptr)
-        ? preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")
-        : nullptr;
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
     const bool reprap_firmware = gcode_flavor_option && gcode_flavor_option->value == GCodeFlavor::gcfRepRapFirmware;
+    const bool input_shaping_supported = current_printer_supports_input_shaping();
 
     wxBoxSizer* v_sizer = new wxBoxSizer(wxVERTICAL);
     SetSizer(v_sizer);
@@ -1103,6 +1157,9 @@ Input_Shaping_Damp_Test_Dlg::Input_Shaping_Damp_Test_Dlg(wxWindow* parent, wxWin
             break;
         case GCodeFlavor::gcfRepRapFirmware:
             firmware_note = _L("RepRap firmware version => 3.4.0\nCheck your firmware documentation for supported shaper types.");
+            break;
+        case GCodeFlavor::gcfCheetah:
+            firmware_note = _L("Cheetah does not support OrcaSlicer input shaping calibration.\nUse Cornering test to tune M215 cornering instead.");
             break;
         default:
             break;
@@ -1179,7 +1236,18 @@ Input_Shaping_Damp_Test_Dlg::Input_Shaping_Damp_Test_Dlg(wxWindow* parent, wxWin
     bottom_sizer->Add(dlg_btns, 0, wxEXPAND);
     v_sizer->Add(bottom_sizer, 0, wxEXPAND);
 
-    dlg_btns->GetOK()->Bind(wxEVT_BUTTON, &Input_Shaping_Damp_Test_Dlg::on_start, this);
+    if (input_shaping_supported) {
+        dlg_btns->GetOK()->Bind(wxEVT_BUTTON, &Input_Shaping_Damp_Test_Dlg::on_start, this);
+    } else {
+        dlg_btns->GetOK()->SetLabel(_L("Close"));
+        m_rbModel->Enable(false);
+        m_rbType->Enable(false);
+        m_tiFreqX->Enable(false);
+        m_tiFreqY->Enable(false);
+        m_tiDampingFactorStart->Enable(false);
+        m_tiDampingFactorEnd->Enable(false);
+        dlg_btns->GetOK()->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { EndModal(wxID_CANCEL); });
+    }
 
     wxGetApp().UpdateDlgDarkUI(this);
 
@@ -1193,12 +1261,15 @@ Input_Shaping_Damp_Test_Dlg::~Input_Shaping_Damp_Test_Dlg() {
 }
 
 void Input_Shaping_Damp_Test_Dlg::on_start(wxCommandEvent& event) {
+    if (!current_printer_supports_input_shaping()) {
+        MessageDialog msg_dlg(nullptr, _L("The active G-code flavor does not support OrcaSlicer input shaping calibration.\nUse Cornering test for Cheetah firmware."), wxEmptyString, wxICON_WARNING | wxOK);
+        msg_dlg.ShowModal();
+        return;
+    }
+
     bool read_double = false;
     read_double = m_tiFreqX->GetTextCtrl()->GetValue().ToDouble(&m_params.freqStartX);
-    const auto* preset_bundle = wxGetApp().preset_bundle;
-    const auto* gcode_flavor_option = (preset_bundle != nullptr)
-        ? preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")
-        : nullptr;
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
     const bool reprap_firmware = gcode_flavor_option && gcode_flavor_option->value == GCodeFlavor::gcfRepRapFirmware;
 
     if (!reprap_firmware) {
@@ -1282,29 +1353,32 @@ Cornering_Test_Dlg::Cornering_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* 
 
     // Detect GCode Flavor and set appropriate values and units
     const auto* preset_bundle = wxGetApp().preset_bundle;
-    const auto* gcode_flavor_option = (preset_bundle != nullptr)
-        ? preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")
-        : nullptr;
+    const auto* gcode_flavor_option = get_active_gcode_flavor_option();
+    const bool cheetah_firmware = current_printer_is_cheetah();
 
     wxString start_value_str;
     wxString end_value_str;
     wxString units_str;
 
-    if (gcode_flavor_option &&
-        gcode_flavor_option->value == GCodeFlavor::gcfMarlinFirmware &&
-        preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation") &&
-        !preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation")->values.empty() &&
-        preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation")->values[0] > 0) {
+    if (current_printer_uses_junction_deviation()) {
             // Using Junction Deviation (mm)
             start_value_str = wxString::Format("%.3f", 0.000);
             end_value_str   = wxString::Format("%.3f", 0.250);
             units_str = "mm";
+        } else if (cheetah_firmware) {
+            // Cheetah cornering is tuned through M215 X/Y, which Orca maps from jerk values in mm/s.
+            start_value_str = wxString::Format("%.3f", 4.0);
+            end_value_str   = wxString::Format("%.3f", 20.0);
+            units_str = "mm/s";
         } else {
             // Using Classic Jerk (mm/s)
-                start_value_str = wxString::Format("%.3f", 1.0);
-                end_value_str   = wxString::Format("%.3f", 15.0);
-                units_str = "mm/s";
+            start_value_str = wxString::Format("%.3f", 1.0);
+            end_value_str   = wxString::Format("%.3f", 15.0);
+            units_str = "mm/s";
         }
+
+    if (cheetah_firmware)
+        m_rbModel->SetSelection(2);
 
     auto st_size = wxSize(text_max, -1);
     auto ti_size = FromDIP(wxSize(120, -1));
@@ -1330,7 +1404,9 @@ Cornering_Test_Dlg::Cornering_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* 
     settings_sizer->AddSpacer(FromDIP(5));
 
     // Add note about cornering based on GCode Flavor
-    wxString note_msg = _L("Note: Lower values = sharper corners but slower speeds.");
+    wxString note_msg = cheetah_firmware
+        ? _L("Cheetah uses M215 X/Y for cornering. Lower values slow more for corners; higher values carry more speed but can worsen ringing or overshoot.")
+        : _L("Note: Lower values = sharper corners but slower speeds.");
     auto note_text = new wxStaticText(this, wxID_ANY, note_msg, wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
     note_text->SetForegroundColour(wxColour(128, 128, 128));
     note_text->Wrap(FromDIP(300));
@@ -1351,6 +1427,9 @@ Cornering_Test_Dlg::Cornering_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* 
             }
             case GCodeFlavor::gcfRepRapFirmware:
                 note_msg_2 += _L("RepRap detected: Jerk in mm/s.\nOrcaSlicer will convert the values to mm/min when necessary.");
+                break;
+            case GCodeFlavor::gcfCheetah:
+                note_msg_2 += _L("Cheetah detected: OrcaSlicer sweeps XY jerk in mm/s and converts it to M215 X/Y.\nSCV-V2 is the recommended model for corner-quality comparisons.");
                 break;
             default:
                 break;
@@ -1396,16 +1475,7 @@ void Cornering_Test_Dlg::on_start(wxCommandEvent& event) {
     // Get max values based on GCode Flavor
     double max_end_value = 100.0;
     double warning_threshold = 20.0;
-    const auto* preset_bundle = wxGetApp().preset_bundle;
-    const auto* gcode_flavor_option = (preset_bundle != nullptr)
-        ? preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")
-        : nullptr;
-
-    if (gcode_flavor_option &&
-        gcode_flavor_option->value == GCodeFlavor::gcfMarlinFirmware &&
-        preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation") &&
-        !preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation")->values.empty() &&
-        preset_bundle->printers.get_edited_preset().config.option<ConfigOptionFloats>("machine_max_junction_deviation")->values[0] > 0) {
+    if (current_printer_uses_junction_deviation()) {
             // Using Junction Deviation (mm)
             max_end_value = 1.0;
             warning_threshold = 0.3;

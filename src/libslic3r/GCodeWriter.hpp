@@ -23,6 +23,7 @@ public:
         m_last_acceleration(0), m_max_acceleration(0),m_last_travel_acceleration(0), m_max_travel_acceleration(0),
         m_last_jerk(0), m_max_jerk_x(0), m_max_jerk_y(0),
         m_last_bed_temperature(0), m_last_bed_temperature_reached(true),
+        m_last_pressure_advance(0.0), m_pressure_advance_set(false),
         m_lifted(0),
         m_to_lift(0),
         m_to_lift_type(LiftType::NormalLift),
@@ -57,7 +58,7 @@ public:
     // Orca: set acceleration and jerk in one command for Klipper
     std::string set_accel_and_jerk(unsigned int acceleration, double jerk);
     std::string set_junction_deviation(double junction_deviation); 
-    std::string set_pressure_advance(double pa) const;
+    std::string set_pressure_advance(double pa);
     std::string set_input_shaping(char axis, float damp, float freq, std::string type) const;
     std::string reset_e(bool force = false);
     std::string update_progress(unsigned int num, unsigned int tot, bool allow_100 = false) const;
@@ -155,6 +156,8 @@ public:
     unsigned int    m_last_additional_fan_speed;
     int             m_last_bed_temperature;
     bool            m_last_bed_temperature_reached;
+    double          m_last_pressure_advance;
+    bool            m_pressure_advance_set;
     double          m_lifted;
 
     // BBS

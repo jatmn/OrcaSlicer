@@ -5583,10 +5583,8 @@ void TabPrinter::toggle_options()
 
 void Tab::update_jerk_unit_labels(GCodeFlavor flavor)
 {
-    // Determine the appropriate label based on G-code flavor
-    wxString jerk_label = (flavor == gcfCheetah)
-        ? wxString::FromUTF8("mm/s\xc2\xb2 \xc3\x97 500,000")
-        : wxString::FromUTF8("mm/s");
+    // Jerk values are always entered in mm/s. Cheetah converts them to M215 units at export time.
+    wxString jerk_label = wxString::FromUTF8("mm/s");
 
     // Jerk field names to update (Motion ability page)
     const std::vector<std::string> jerk_fields = {

@@ -28,6 +28,8 @@ bool GCodeWriter::supports_separate_travel_acceleration(GCodeFlavor flavor)
 void GCodeWriter::apply_print_config(const PrintConfig &print_config)
 {
     this->config.apply(print_config, true);
+    m_pressure_advance_set = false;
+    m_last_pressure_advance = 0.0;
     m_single_extruder_multi_material = print_config.single_extruder_multi_material.value;
     bool use_mach_limits = print_config.gcode_flavor.value == gcfMarlinLegacy || print_config.gcode_flavor.value == gcfMarlinFirmware ||
                            print_config.gcode_flavor.value == gcfKlipper || print_config.gcode_flavor.value == gcfRepRapFirmware ||
@@ -379,7 +381,7 @@ std::string GCodeWriter::set_junction_deviation(double junction_deviation){
     return gcode.str();
 }
 
-std::string GCodeWriter::set_pressure_advance(double pa) const
+std::string GCodeWriter::set_pressure_advance(double pa)
 {
     std::ostringstream gcode;
     if (pa < 0)
@@ -389,15 +391,24 @@ std::string GCodeWriter::set_pressure_advance(double pa) const
         gcode << "M900 K" <<std::setprecision(4)<< pa << " L1000 M10 ; Override pressure advance value\n";
     }
     else{
+        if (FLAVOR_IS(gcfCheetah) && m_pressure_advance_set && is_approx(pa, m_last_pressure_advance))
+            return gcode.str();
+
         if (FLAVOR_IS(gcfKlipper))
             gcode << "SET_PRESSURE_ADVANCE ADVANCE=" << std::setprecision(4) << pa << "; Override pressure advance value\n";
         else if(FLAVOR_IS(gcfRepRapFirmware))
             gcode << ("M572 D0 S") << std::setprecision(4) << pa << "; Override pressure advance value\n";
-        else if(FLAVOR_IS(gcfCheetah))
-            gcode << "M214 K" << std::setprecision(4) << pa << " R0.04 ; Linear advance\n";
+        else if(FLAVOR_IS(gcfCheetah)) {
+            // Cheetah buffers a 2kHz setpoint stream and applies PA in a post-processing
+            // stage, so each actual K change must first flush queued motion with M400.
+            gcode << "M400 ; flush motion buffer before PA change\n";
+            gcode << "M214 D0 K" << std::setprecision(4) << pa << " R0.04 ; Linear advance\n";
+        }
         else
             gcode << "M900 K" <<std::setprecision(4)<< pa << "; Override pressure advance value\n";
     }
+    m_last_pressure_advance = pa;
+    m_pressure_advance_set  = true;
     return gcode.str();
 }
 

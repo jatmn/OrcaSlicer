@@ -2187,7 +2187,7 @@ void PrintConfigDef::init_fff_params()
                      "Different firmwares use different G-codes:\n"
                      "• Marlin: M900 K<value>\n"
                      "• Klipper: SET_PRESSURE_ADVANCE ADVANCE=<value>\n"
-                     "• Cheetah: M214 K<value> R0.04\n"
+                     "• Cheetah: M214 D0 K<value> R0.04\n"
                      "• RepRap: M572 D0 S<value>");
     def->max = 2;
     def->mode = comAdvanced;

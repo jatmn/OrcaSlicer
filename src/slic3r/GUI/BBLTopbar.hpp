@@ -57,6 +57,7 @@ public:
     void OnPublishClicked(wxAuiToolBarEvent &event);
 
     wxAuiToolBarItem* FindToolByCurrentPosition();
+    wxAuiToolBarItem* FindToolByScreenPosition(const wxPoint& screen_pos);
 	
     void SetFileMenu(wxMenu* file_menu);
     void AddDropDownSubMenu(wxMenu* sub_menu, const wxString& title);

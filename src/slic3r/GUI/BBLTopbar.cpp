@@ -767,7 +767,12 @@ wxAuiToolBarItem* BBLTopbar::FindToolByCurrentPosition()
 #endif
 
     wxPoint mouse_pos = ::wxGetMousePosition();
-    wxPoint client_pos = this->ScreenToClient(mouse_pos);
+    return this->FindToolByScreenPosition(mouse_pos);
+}
+
+wxAuiToolBarItem* BBLTopbar::FindToolByScreenPosition(const wxPoint& screen_pos)
+{
+    wxPoint client_pos = this->ScreenToClient(screen_pos);
     return this->FindToolByPosition(client_pos.x, client_pos.y);
 }
 
@@ -788,7 +793,8 @@ WXLRESULT BBLTopbar::MSWWindowProc(WXUINT nMsg, WXWPARAM wParam, WXLPARAM lParam
 {
     switch (nMsg) {
     case WM_NCHITTEST: {
-        wxAuiToolBarItem* item = this->FindToolByCurrentPosition();
+        const wxPoint screen_pos(static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam)));
+        wxAuiToolBarItem* item = this->FindToolByScreenPosition(screen_pos);
         if (item != NULL && item->GetWindow() != m_title_ctrl) {
             break;
         }

@@ -692,7 +692,6 @@ CustomGCode::Info CalibPressureAdvancePattern::generate_custom_gcodes(const Dyna
         gcode << move_to(Vec2d(to_x, to_y), m_writer, "Move to pattern start",zhop_height,layer_height);
 
         for (int j = 0; j < num_patterns; ++j) {
-            // increment pressure advance
             gcode << m_writer.set_pressure_advance(m_params.start + (j * m_params.step));
 
             for (int k = 0; k < wall_count(); ++k) {
