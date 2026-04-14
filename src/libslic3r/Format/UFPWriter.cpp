@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <ctime>
 #include <fstream>
+#include <cmath>
 
 namespace Slic3r {
 
@@ -309,6 +310,15 @@ std::string UFPWriter::generate_extruder_block(int idx, const ExtruderData& data
 }
 
 std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
+    auto format_bound = [](double value) {
+        std::ostringstream oss;
+        if (std::fabs(value - std::round(value)) < 1e-6)
+            oss << static_cast<long long>(std::llround(value));
+        else
+            oss << std::fixed << std::setprecision(3) << value;
+        return oss.str();
+    };
+
     std::map<std::string, std::string> values;
     values["flavor"] = m_config.gcode_metadata.flavor;
     values["generator_name"] = m_config.gcode_metadata.generator_name;
@@ -317,13 +327,12 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["target_machine"] = m_config.target_machine;
     values["bed_temp"] = std::to_string(meta.bed_temp);
     values["print_time"] = std::to_string(meta.duration_s);
-    // Use fixed machine bounds for Ultimaker S6 instead of computed print bounds
-    values["print_size_min_x"] = "0";
-    values["print_size_min_y"] = "0";
-    values["print_size_min_z"] = "0";
-    values["print_size_max_x"] = "330";
-    values["print_size_max_y"] = "240";
-    values["print_size_max_z"] = "300";
+    values["print_size_min_x"] = format_bound(meta.min_x);
+    values["print_size_min_y"] = format_bound(meta.min_y);
+    values["print_size_min_z"] = format_bound(meta.min_z);
+    values["print_size_max_x"] = format_bound(meta.max_x);
+    values["print_size_max_y"] = format_bound(meta.max_y);
+    values["print_size_max_z"] = format_bound(meta.max_z);
     values["build_volume_temp"] = "28";
     values["print_groups"] = "1";
     values["slice_uuid"] = meta.slice_uuid;
@@ -350,9 +359,6 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     
     // Generate per-extruder metadata blocks (temperature, material GUID, volume) - only for active extruders
     values["extruder0_block"] = generate_extruder_block(0, extruders[0]);
-    // Only include extruder 1 if it has filament data
-    std::string extruder1_block = generate_extruder_block(1, extruders[1]);
-    values["extruder1_block"] = extruder1_block;
     
     return substitute_template(m_config.header_template_content, values);
 }

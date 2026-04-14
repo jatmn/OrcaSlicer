@@ -15,6 +15,15 @@
 
 namespace Slic3r { namespace GUI {
 
+static wxStaticText* create_prepare_tab_label(wxWindow* parent, const wxString& text, const wxFont& font)
+{
+    auto* label = new wxStaticText(parent, wxID_ANY, text);
+    label->SetFont(font);
+    label->SetForegroundColour(wxColour("#262E30"));
+    label->SetBackgroundStyle(wxBG_STYLE_TRANSPARENT);
+    return label;
+}
+
 // Parse combined variant string like "AA 0.4" into core type and nozzle size
 static std::pair<std::string, std::string> parse_variant(const std::string& variant)
 {
@@ -40,8 +49,8 @@ ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
 {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     
-    // Title - use Label class with Head_14 font (bold, larger) to match section titles
-    auto* title = new Label(this, Label::Head_14, _L("Print Core Configuration"));
+    // Match Prepare tab section styling without the custom label background fill.
+    auto* title = create_prepare_tab_label(this, _L("Print Core Configuration"), Label::Head_14);
     sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
 
     // Add separator line to match optgroup visual style
@@ -124,7 +133,7 @@ void ExtruderVariantWidget::update_from_config()
     m_extruder_variants.clear();
     
     // Recreate static title and separator (also destroyed by Clear(true))
-    auto* title = new Label(this, Label::Head_14, _L("Print Core Configuration"));
+    auto* title = create_prepare_tab_label(this, _L("Print Core Configuration"), Label::Head_14);
     sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
     auto* line = new wxStaticLine(this, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(200), 1));
     sizer->Add(line, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(5));
@@ -160,9 +169,9 @@ void ExtruderVariantWidget::update_from_config()
     
     // Create dropdown for each extruder
     for (size_t i = 0; i < num_extruders; i++) {
-        // Print Core label - use Label class with Body_13 to match option label styling
+        // Match option-row labels like "First layer height" in the Prepare tab.
         wxString label_text = wxString::Format(_L("Print Core %d"), (int)(i + 1));
-        auto* label = new Label(this, Label::Body_13, label_text);
+        auto* label = create_prepare_tab_label(this, label_text, Label::Body_13);
         row_sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
         
         // Combined variant choice (e.g., "AA 0.4", "BB 0.4", "CC 0.6")

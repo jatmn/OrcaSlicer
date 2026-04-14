@@ -14,7 +14,6 @@
 namespace Slic3r {
 
 bool GCodeContainerWriter::write(const std::string& input_gcode_path, const std::string& output_path) {
-    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::write: input=" << input_gcode_path << ", output=" << output_path;
     try {
         boost::nowide::ifstream file(input_gcode_path);
         if (!file.is_open()) {
@@ -29,7 +28,6 @@ bool GCodeContainerWriter::write(const std::string& input_gcode_path, const std:
             BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::write: Failed to get file size: " << ec.message();
             return false;
         }
-        BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::write: Input file size=" << file_size;
         
         std::vector<std::string> lines;
         lines.reserve(file_size / 80);  // Rough estimate of line count
@@ -37,11 +35,8 @@ bool GCodeContainerWriter::write(const std::string& input_gcode_path, const std:
         while (std::getline(file, line)) {
             lines.push_back(line + "\n");
         }
-        BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::write: Read " << lines.size() << " lines from G-code file";
         
-        bool result = write_from_lines(lines, output_path);
-        BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::write: write_from_lines returned " << result;
-        return result;
+        return write_from_lines(lines, output_path);
     } catch (const std::exception& e) {
         BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::write: Exception: " << e.what();
         return false;
@@ -61,21 +56,8 @@ bool GCodeContainerWriter::write_from_memory(const std::string& gcode_data, cons
 bool GCodeContainerWriter::write_from_lines(const std::vector<std::string>& lines, const std::string& output_path) {
     GCodeMetadata meta = parse_gcode(lines);
     
-    BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::write_from_lines: parsed metadata - "
-                          << "duration_s=" << meta.duration_s
-                          << ", filament_mm=" << meta.filament_mm
-                          << ", filament_g=" << meta.filament_g
-                          << ", material_type=" << meta.material_type
-                          << ", material_guid=" << meta.material_guid
-                          << ", gcode_body lines=" << meta.gcode_body.size();
-    
     // Allow subclasses to override metadata with injected values
     override_metadata(meta);
-    
-    BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::write_from_lines: after override - "
-                          << "duration_s=" << meta.duration_s
-                          << ", filament_mm=" << meta.filament_mm
-                          << ", filament_g=" << meta.filament_g;
     
     // Build G-code content with Python-script-style processing (pass original lines for proper body extraction, retraction fix, etc.)
     std::string gcode_content = build_gcode_content(meta, lines);
@@ -150,9 +132,8 @@ GCodeMetadata GCodeContainerWriter::parse_gcode(const std::vector<std::string>& 
     boost::regex time_regex(R"(; estimated printing time \([^)]+\)\s*=\s*([\dhms ]+))");
     if (boost::regex_search(content, match, time_regex)) {
         meta.duration_s = parse_time_string(match[1]);
-        BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::parse_gcode: Parsed duration_s=" << meta.duration_s << " from: " << match[1];
     } else {
-        BOOST_LOG_TRIVIAL(error) << "GCodeContainerWriter::parse_gcode: Failed to parse estimated printing time";
+        BOOST_LOG_TRIVIAL(warning) << "GCodeContainerWriter::parse_gcode: Failed to parse estimated printing time";
     }
     
     // Parse filament
@@ -314,10 +295,6 @@ std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta,
     
     // Generate new Cura-style header from template
     std::string header = generate_header(meta);
-    
-    // Debug: Log the generated header (first 500 chars to avoid log spam)
-    BOOST_LOG_TRIVIAL(info) << "GCodeContainerWriter::build_gcode_content: Generated header (first 500 chars):\n" 
-                           << header.substr(0, std::min(header.length(), size_t(500)));
     
     // Build body from original lines starting at body_start
     std::string body;

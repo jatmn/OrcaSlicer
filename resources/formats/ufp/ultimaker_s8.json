@@ -15,6 +15,7 @@
     "sizes": ["320x320"],
     "location": "/Metadata/thumbnail.png"
   },
+  "machine_bounds": [0, 0, 0, 330, 240, 300],
   "gcode_metadata": {
     "flavor": "Cheetah",
     "generator_name": "OrcaSlicer",

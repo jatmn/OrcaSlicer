@@ -28,6 +28,18 @@ static std::string material_name_to_code(const std::string& name) {
     return code;
 }
 
+void MakerBotWriter::set_thumbnail_data(const std::vector<uint8_t>& png_data)
+{
+    if (png_data.empty())
+        return;
+
+    std::string filename = "thumbnail.png";
+    if (!m_config.thumbnails.empty() && !m_config.thumbnails.front().filename.empty())
+        filename = m_config.thumbnails.front().filename;
+
+    m_context.set_thumbnails({ { png_data, filename } });
+}
+
 void MakerBotWriter::override_metadata(GCodeMetadata& meta) {
     // Propagate extruder 0 data to extruder 1 if needed (for dual-extruder with same material)
     m_context.propagate_extruder_data_if_needed();
@@ -37,17 +49,12 @@ void MakerBotWriter::override_metadata(GCodeMetadata& meta) {
         meta.duration_s = m_context.get_duration_s();
         meta.filament_mm = m_context.get_filament_mm();
         meta.filament_g = m_context.get_filament_g();
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Override metadata with injected stats - "
-                               << "duration=" << m_context.get_duration_s() << "s, "
-                               << "filament=" << m_context.get_filament_mm() << "mm, "
-                               << "weight=" << m_context.get_filament_g() << "g";
     }
 
     // Override material GUID from extruder data if available
     const auto& extruders = m_context.get_extruder_data();
     if (m_context.has_any_extruder_data() && !extruders[0].material_guid.empty()) {
         meta.material_guid = extruders[0].material_guid;
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Override metadata with GUID from extruder data: " << extruders[0].material_guid;
     }
 
     // Override material name from extruder data if available
@@ -68,8 +75,6 @@ std::pair<std::string, std::string> MakerBotWriter::get_bot_and_tool_type() cons
 
     const std::string& bot_type = m_config.bot_type;
     const std::string& tool_type = m_config.tool_type;
-
-    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Using bot_type='" << bot_type << "', tool_type='" << tool_type << "' from config";
 
     // Return bot_type as-is and tool_type as-is
     // The config values are the authoritative source for MakerBot compatibility
@@ -154,23 +159,16 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     // IMPORTANT: Thumbnails should NEVER be embedded in gcode comments - they are passed separately
     const auto& thumbnails = m_context.get_thumbnails();
     if (!thumbnails.empty()) {
-        BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: Adding " << thumbnails.size() << " thumbnails";
-
         for (const auto& [thumbnail_data, filename] : thumbnails) {
             if (thumbnail_data.empty()) {
                 BOOST_LOG_TRIVIAL(warning) << "MakerBotWriter: Skipping empty thumbnail: " << filename;
                 continue;
             }
 
-            BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: Adding thumbnail '" << filename << "', size=" << thumbnail_data.size();
-
             if (!mz_zip_writer_add_mem(&archive, filename.c_str(),
                                        thumbnail_data.data(), thumbnail_data.size(),
                                        MZ_DEFAULT_COMPRESSION)) {
                 BOOST_LOG_TRIVIAL(error) << "MakerBotWriter::write_container: FAILED to add thumbnail '" << filename << "' to archive";
-            } else {
-                BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESSFULLY added thumbnail '" << filename
-                    << "' (" << thumbnail_data.size() << " bytes)";
             }
         }
     } else {
@@ -185,7 +183,6 @@ bool MakerBotWriter::write_container(const GCodeMetadata& meta, const std::strin
     }
 
     cleanup();
-    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::write_container: SUCCESS";
     return true;
 }
 
@@ -196,16 +193,6 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     std::pair<std::string, std::string> bot_and_tool = get_bot_and_tool_type();
     const std::string& bot_type = bot_and_tool.first;
     const std::string& tool_type = bot_and_tool.second;
-
-    // DEBUG: Log all metadata values
-    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::generate_meta_json: BEGIN";
-    BOOST_LOG_TRIVIAL(info) << "  bot_type=" << bot_type << ", tool_type=" << tool_type;
-    BOOST_LOG_TRIVIAL(info) << "  duration_s=" << meta.duration_s;
-    BOOST_LOG_TRIVIAL(info) << "  filament_mm=" << meta.filament_mm << ", filament_g=" << meta.filament_g;
-    BOOST_LOG_TRIVIAL(info) << "  material_name=" << meta.material_name;
-    BOOST_LOG_TRIVIAL(info) << "  material_guid=" << meta.material_guid;
-    BOOST_LOG_TRIVIAL(info) << "  extruder_temp=" << meta.extruder_temp << ", bed_temp=" << meta.bed_temp;
-    BOOST_LOG_TRIVIAL(info) << "  layer_height=" << meta.layer_height;
 
     json << "{\n";
     json << "  \"bot_type\": \"" << bot_type << "\",\n";
@@ -221,7 +208,6 @@ std::string MakerBotWriter::generate_meta_json(const GCodeMetadata& meta) {
     std::string file_uuid = generate_uuid();
     json << "  \"uuid\": \"" << file_uuid << "\",\n";
     std::string material_code = material_name_to_code(meta.material_name);
-    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter: material_name='" << meta.material_name << "' -> material_code='" << material_code << "'";
     json << "  \"material\": \"" << material_code << "\",\n";
     json << "  \"materials\": [\"" << material_code << "\"],\n";
     json << "  \"extruder_temperature\": " << meta.extruder_temp << ",\n";
@@ -278,20 +264,14 @@ std::string MakerBotWriter::generate_slicemetadata_json(const GCodeMetadata& met
         template_filename
     };
 
-    BOOST_LOG_TRIVIAL(info) << "MakerBotWriter::generate_slicemetadata_json: Looking for template " << template_filename;
-
     std::string template_content;
     bool found = false;
-    std::string found_path;
     for (const auto& path : template_paths) {
-        BOOST_LOG_TRIVIAL(info) << "  Trying path: " << path;
         boost::nowide::ifstream file(path);
         if (file.is_open()) {
             template_content = std::string((std::istreambuf_iterator<char>(file)),
                                            std::istreambuf_iterator<char>());
             found = true;
-            found_path = path;
-            BOOST_LOG_TRIVIAL(info) << "  FOUND template at: " << path << " (" << template_content.size() << " bytes)";
             break;
         }
     }

@@ -35,6 +35,9 @@ public:
         m_context.set_thumbnails(thumbnails);
     }
 
+    // Route single-thumbnail exports into the container context using the first configured filename.
+    void set_thumbnail_data(const std::vector<uint8_t>& png_data) override;
+
     // Check if extruder data has been set
     bool has_extruder_data() const {
         return m_context.has_any_extruder_data();
