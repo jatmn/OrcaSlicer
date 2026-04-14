@@ -218,14 +218,18 @@ std::string GCodeWriter::set_chamber_temperature(int temperature, bool wait)
 // copied from PrusaSlicer
 std::string GCodeWriter::set_acceleration_internal(Acceleration type, unsigned int acceleration)
 {
+    // Are we setting travel acceleration for a flavour that supports separate travel and print acc?
+    bool separate_travel = (type == Acceleration::Travel && supports_separate_travel_acceleration(this->config.gcode_flavor));
+
     // Clamp the acceleration to the allowed maximum.
     if (type == Acceleration::Print && m_max_acceleration > 0 && acceleration > m_max_acceleration)
         acceleration = m_max_acceleration;
-    if (type == Acceleration::Travel && m_max_travel_acceleration > 0 && acceleration > m_max_travel_acceleration)
-        acceleration = m_max_travel_acceleration;
-
-    // Are we setting travel acceleration for a flavour that supports separate travel and print acc?
-    bool separate_travel = (type == Acceleration::Travel && supports_separate_travel_acceleration(this->config.gcode_flavor));
+    if (type == Acceleration::Travel) {
+        if (separate_travel && m_max_travel_acceleration > 0 && acceleration > m_max_travel_acceleration)
+            acceleration = m_max_travel_acceleration;
+        else if (FLAVOR_IS(gcfCheetah) && !separate_travel && m_max_acceleration > 0 && acceleration > m_max_acceleration)
+            acceleration = m_max_acceleration;
+    }
 
     auto& last_value = separate_travel ? m_last_travel_acceleration : m_last_acceleration ;
     if (acceleration == 0 || acceleration == last_value)

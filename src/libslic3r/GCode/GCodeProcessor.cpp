@@ -1722,6 +1722,8 @@ void GCodeProcessor::register_commands()
         {"M203", [this](const GCodeReader::GCodeLine& line) { process_M203(line); }}, // Set maximum feedrate
         {"M204", [this](const GCodeReader::GCodeLine& line) { process_M204(line); }}, // Set default acceleration
         {"M205", [this](const GCodeReader::GCodeLine& line) { process_M205(line); }}, // Advanced settings
+        {"M214", [this](const GCodeReader::GCodeLine& line) { process_M214(line); }}, // Cheetah: Set pressure advance
+        {"M215", [this](const GCodeReader::GCodeLine& line) { process_M215(line); }}, // Cheetah: Set jerk limits
         {"M221", [this](const GCodeReader::GCodeLine& line) { process_M221(line); }}, // Set extrude factor override percentage
 
         {"M400", [this](const GCodeReader::GCodeLine& line) { process_M400(line); }}, // BBS delay
@@ -2322,9 +2324,9 @@ void GCodeProcessor::apply_config(const DynamicPrintConfig& config)
         if (machine_max_acceleration_retracting != nullptr)
             m_time_processor.machine_limits.machine_max_acceleration_retracting.values = machine_max_acceleration_retracting->values;
 
-
         // Legacy Marlin does not have separate travel acceleration, it uses the 'extruding' value instead.
-        const ConfigOptionFloats* machine_max_acceleration_travel = config.option<ConfigOptionFloats>(m_flavor == gcfMarlinLegacy || m_flavor == gcfKlipper
+        // Cheetah uses the same single-acceleration M204 S model.
+        const ConfigOptionFloats* machine_max_acceleration_travel = config.option<ConfigOptionFloats>(m_flavor == gcfMarlinLegacy || m_flavor == gcfKlipper || m_flavor == gcfCheetah
                                                                                                     ? "machine_max_acceleration_extruding"
                                                                                                     : "machine_max_acceleration_travel");
         if (machine_max_acceleration_travel != nullptr)
@@ -4930,6 +4932,37 @@ void GCodeProcessor::process_M106(const GCodeReader::GCodeLine& line)
 }
 
 // ORCA: Add Pressure Advance visualization support
+void GCodeProcessor::process_M214(const GCodeReader::GCodeLine& line)
+{
+    if (m_flavor != gcfCheetah)
+        return;
+
+    float pa_value = m_pressure_advance;
+    line.has_value('K', pa_value);
+    m_pressure_advance = std::max(0.0f, pa_value);
+}
+
+void GCodeProcessor::process_M215(const GCodeReader::GCodeLine& line)
+{
+    if (m_flavor != gcfCheetah)
+        return;
+
+    constexpr float cheetah_jerk_scale = 500000.0f;
+    for (size_t i = 0; i < static_cast<size_t>(PrintEstimatedStatistics::ETimeMode::Count); ++i) {
+        if (static_cast<PrintEstimatedStatistics::ETimeMode>(i) == PrintEstimatedStatistics::ETimeMode::Normal ||
+            m_time_processor.machine_envelope_processing_enabled) {
+            if (line.has_x()) {
+                const float max_jerk = line.x() / cheetah_jerk_scale;
+                set_option_value(m_time_processor.machine_limits.machine_max_jerk_x, i, max_jerk);
+                set_option_value(m_time_processor.machine_limits.machine_max_jerk_y, i, max_jerk);
+            }
+
+            if (line.has_y())
+                set_option_value(m_time_processor.machine_limits.machine_max_jerk_y, i, line.y() / cheetah_jerk_scale);
+        }
+    }
+}
+
 void GCodeProcessor::process_M900(const GCodeReader::GCodeLine &line)
 {
     float pa_value = m_pressure_advance;
@@ -5118,6 +5151,8 @@ void GCodeProcessor::process_M204(const GCodeReader::GCodeLine& line)
                 set_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
                 set_travel_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
                 if (line.has_value('T', value))
+                    set_retract_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
+                else if (m_flavor == gcfCheetah)
                     set_retract_acceleration(static_cast<PrintEstimatedStatistics::ETimeMode>(i), value);
             }
             else {

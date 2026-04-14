@@ -987,6 +987,8 @@ class Print;
 
 // ORCA: Add Pressure Advance visualization support
         // Set pressure advance
+        void process_M214(const GCodeReader::GCodeLine& line);
+        void process_M215(const GCodeReader::GCodeLine& line);
         void process_M900(const GCodeReader::GCodeLine& line);
         void process_M572(const GCodeReader::GCodeLine &line);
         void process_SET_PRESSURE_ADVANCE(const GCodeReader::GCodeLine& line);
