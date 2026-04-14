@@ -9,44 +9,31 @@ namespace GUI {
 
 std::string url_get_param(const std::string& url, const std::string& key)
 {
-    BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: Looking for key '" << key << "' in URL: " << url;
-    
     // Look for either start of string, '?' or '&' before the key
     size_t start = 0;
     size_t pos = url.find(key);
     
     while (pos != std::string::npos) {
-        BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: Found key at position " << pos;
-        
         // Check if this is the start of a parameter (either at string start, preceded by '?', or preceded by '&')
         bool is_boundary = (pos == 0 || url[pos - 1] == '&' || url[pos - 1] == '?');
-        BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: Is boundary: " << (is_boundary ? "YES" : "NO") 
-                                   << " (char before: '" << (pos > 0 ? std::string(1, url[pos-1]) : "START") << "')";
-        
+
         if (is_boundary) {
             // Check if there's an '=' immediately after the key
             size_t eq_pos = pos + key.size();
-            BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: Checking for '=' at position " << eq_pos;
-            
+
             if (eq_pos < url.length() && url[eq_pos] == '=') {
                 // Found the parameter!
                 start = eq_pos + 1;
                 size_t end = url.find('&', start);
                 if (end == std::string::npos) end = url.length();
                 std::string result = url.substr(start, end - start);
-                BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: Raw value before decode: " << result;
-                std::string decoded = Http::url_decode(result);
-                BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: Decoded value: " << decoded;
-                return decoded;
-            } else {
-                BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: No '=' found at position " << eq_pos;
+                return Http::url_decode(result);
             }
         }
         // Keep searching for the next occurrence
         pos = url.find(key, pos + 1);
     }
     
-    BOOST_LOG_TRIVIAL(warning) << "===== url_get_param: Key not found, returning empty";
     return "";
 }
 

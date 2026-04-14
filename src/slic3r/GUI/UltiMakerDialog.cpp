@@ -108,7 +108,6 @@ UltiMakerDialog::~UltiMakerDialog()
 
 bool UltiMakerDialog::show_and_lookup()
 {
-	BOOST_LOG_TRIVIAL(warning) << "UltiMakerDialog::show_and_lookup() called";
 	Show();   // Because we need GetId() to work before ShowModal()
 
 	timer->Stop();
@@ -126,7 +125,6 @@ bool UltiMakerDialog::show_and_lookup()
 	// UltiMaker-specific TXT keys: type, model, version, firmware
 	Bonjour::TxtKeys txt_keys { "type", "model", "version", "firmware" };
 
-    BOOST_LOG_TRIVIAL(warning) << "UltiMakerDialog: Starting Bonjour lookup for service '_ultimaker._tcp.local.'";
     bonjour = Bonjour("_ultimaker._tcp.local.")
 		.set_txt_keys(std::move(txt_keys))
 		.set_retries(3)
@@ -140,7 +138,6 @@ bool UltiMakerDialog::show_and_lookup()
 			}
 		})
 		.on_complete([dguard]() {
-			BOOST_LOG_TRIVIAL(warning) << "UltiMakerDialog Bonjour lookup completed";
 			std::lock_guard<std::mutex> lock_guard(dguard->mutex);
 			auto dialog = dguard->dialog;
 			if (dialog != nullptr) {
@@ -149,7 +146,6 @@ bool UltiMakerDialog::show_and_lookup()
 			}
 		})
 		.lookup();
-    BOOST_LOG_TRIVIAL(warning) << "UltiMakerDialog: Bonjour lookup started";
 
 	bool res = ShowModal() == wxID_OK && list->GetFirstSelected() >= 0;
 	{
@@ -171,11 +167,9 @@ wxString UltiMakerDialog::get_selected() const
 
 void UltiMakerDialog::on_reply(BonjourReplyEvent &e)
 {
-	BOOST_LOG_TRIVIAL(warning) << "UltiMakerDialog::on_reply() called for service: " << e.reply.service_name << ", hostname: " << e.reply.hostname << ", address: " << e.reply.full_address;
 	// Filter by type="printer" as Cura does
 	const auto type = e.reply.txt_data.find("type");
 	if (type == e.reply.txt_data.end() || type->second != "printer") {
-		BOOST_LOG_TRIVIAL(warning) << "UltiMakerDialog::on_reply() - skipping non-printer or missing type field";
 		// Not an UltiMaker printer, skip
 		return;
 	}
@@ -192,7 +186,6 @@ void UltiMakerDialog::on_reply(BonjourReplyEvent &e)
 		// return;
 	}
 
-    BOOST_LOG_TRIVIAL(warning) << "UltiMakerDialog::on_reply() - adding printer to list: " << e.reply.service_name;
     replies->insert(std::move(e.reply));
 
 	auto selected = get_selected();

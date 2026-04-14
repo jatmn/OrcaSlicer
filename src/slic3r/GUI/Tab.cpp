@@ -2868,7 +2868,6 @@ void TabPrint::OnActivate()
     // Call parent implementation first
     Tab::OnActivate();
 
-    BOOST_LOG_TRIVIAL(warning) << "TabPrint::OnActivate() called - refreshing jerk tooltips";
     // Refresh jerk tooltips to reflect current G-code flavor
     refresh_jerk_tooltips();
 }
@@ -2880,7 +2879,6 @@ void TabPrint::activate_selected_page(std::function<void()> throw_if_canceled)
     
     // Check if the Speed page is now active
     if (m_active_page && m_active_page->title() == L("Speed")) {
-        BOOST_LOG_TRIVIAL(warning) << "TabPrint::activate_selected_page: Speed page activated, refreshing jerk tooltips";
         refresh_jerk_tooltips();
     }
 }
@@ -2897,7 +2895,6 @@ void TabPrint::refresh_jerk_tooltips()
     }
     
     if (!speed_page) {
-        BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: Speed page not found";
         return;
     }
     
@@ -2912,11 +2909,8 @@ void TabPrint::refresh_jerk_tooltips()
     }
     
     if (!page_activated) {
-        BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: Speed page not yet activated, skipping";
         return;
     }
-    
-    BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: Speed page is activated, refreshing tooltips";
 
     // List of jerk-related fields that need tooltip refresh
     std::vector<std::string> jerk_fields = {
@@ -2929,7 +2923,6 @@ void TabPrint::refresh_jerk_tooltips()
         "travel_jerk"
     };
 
-    int found_count = 0;
     for (const auto& field_name : jerk_fields) {
         // Search only in the Speed page
         Field* field = nullptr;
@@ -2939,27 +2932,20 @@ void TabPrint::refresh_jerk_tooltips()
         }
 
         if (field) {
-            found_count++;
             wxWindow* window = field->getWindow();
             if (window) {
                 // Regenerate tooltip with current G-code flavor
                 wxString new_tooltip = field->get_tooltip_text(wxEmptyString);
-                BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: field=" << field_name
-                    << " tooltip_len=" << new_tooltip.Length();
                 if (!new_tooltip.IsEmpty()) {
                     window->SetToolTip(new_tooltip);
                 }
             }
-        } else {
-            BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: field=" << field_name << " NOT FOUND in Speed page";
         }
     }
-    BOOST_LOG_TRIVIAL(warning) << "refresh_jerk_tooltips: total fields found=" << found_count << "/" << jerk_fields.size();
 }
 
 void TabPrint::on_preset_loaded()
 {
-    BOOST_LOG_TRIVIAL(warning) << "TabPrint::on_preset_loaded() called - printer preset changed, refreshing jerk tooltips";
     // Refresh jerk tooltips to reflect new G-code flavor from printer preset
     refresh_jerk_tooltips();
 }
@@ -4436,14 +4422,12 @@ void TabPrinter::build()
     //std::string def_preset_name = "- default " + std::string(m_printer_technology == ptSLA ? "FFF" : "SLA") + " -";
     std::string def_preset_name = "Default Printer";
     m_config = &m_presets->find_preset(def_preset_name)->config;
-    BOOST_LOG_TRIVIAL(warning) << "TabPrinter::build: initial build starting with def_preset_name=" << def_preset_name;
     m_printer_technology == ptSLA ? build_fff() : build_sla();
     if (m_printer_technology == ptSLA)
         m_extruders_count_old = 0;// revert this value
 
     // ... and than for selected printer technology
     load_initial_data();
-    BOOST_LOG_TRIVIAL(warning) << "TabPrinter::build: after load_initial_data, calling build_fff/build_sla";
     m_printer_technology == ptSLA ? build_sla() : build_fff();
 }
 
@@ -4903,17 +4887,6 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool		is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
 
-    // Also get flavor from preset config to compare
-    const auto& preset_config = m_preset_bundle->printers.get_edited_preset().config;
-    auto preset_flavor = preset_config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
-
-    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: m_config flavor=" << (int)flavor
-        << ", preset_config flavor=" << (int)preset_flavor
-        << ", preset_name=" << m_preset_bundle->printers.get_edited_preset().name
-        << ", is_marlin_flavor=" << is_marlin_flavor
-        << ", from_initial_build=" << from_initial_build
-        << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
-
     /* ! Freeze/Thaw in this function is needed to avoid call OnPaint() for erased pages
      * and be cause of application crash, when try to change Preset in moment,
      * when one of unregular pages is selected.
@@ -4937,13 +4910,10 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     // because their positions have shifted and the extruder creation loop will create duplicates.
     // Erase extruder pages from the end to avoid index shifting issues.
     if (kinematics_page_erased && m_extruders_count_old > 0) {
-        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: Motion Ability page erased, clearing "
-            << m_extruders_count_old << " existing extruder pages to prevent duplicates";
         // Find and erase all extruder pages
         for (int i = (int)m_pages.size() - 1; i >= (int)n_before_extruders; --i) {
             std::string title = m_pages[i]->title().ToStdString();
             if (title.find("Extruder") != std::string::npos) {
-                BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: erasing existing extruder page at index " << i << ": " << title;
                 m_pages.erase(m_pages.begin() + i);
             }
         }
@@ -4951,36 +4921,16 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
         m_extruders_count_old = 0;
     }
 
-    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: existed_page=" << existed_page
-        << ", n_before_extruders=" << n_before_extruders
-        << ", m_pages.size=" << m_pages.size();
-    
-    // Log page titles for debugging
-    for (size_t i = 0; i < m_pages.size(); ++i) {
-        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: page[" << i << "]=" << m_pages[i]->title().ToStdString();
-    }
-
-    bool condition_met = (existed_page < n_before_extruders && (is_marlin_flavor || from_initial_build));
-    bool will_insert = !(from_initial_build && !is_marlin_flavor);
-    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: condition_met=" << condition_met
-        << ", will_insert=" << will_insert;
-
     bool insert_condition = (existed_page < n_before_extruders && (is_marlin_flavor || from_initial_build));
     bool clear_condition = (from_initial_build && !is_marlin_flavor);
-    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: insert_condition=" << insert_condition
-        << ", clear_condition=" << clear_condition;
     
     if (insert_condition) {
         auto page = build_kinematics_page();
         if (clear_condition) {
-            BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: clearing page (not inserting)";
             page->clear();
         } else {
-            BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: INSERTING page at n_before_extruders=" << n_before_extruders;
             m_pages.insert(m_pages.begin() + n_before_extruders, page);
         }
-    } else {
-        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: NOT inserting page";
     }
 
     if (is_marlin_flavor) {
@@ -5099,18 +5049,8 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
     }
 
     // Orca: build missed extruder pages
-    BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: extruder loop START - m_extruders_count_old="
-        << m_extruders_count_old << ", m_extruders_count=" << m_extruders_count
-        << ", n_before_extruders=" << n_before_extruders << ", m_pages.size=" << m_pages.size();
-    
-    // Log page titles before extruder loop
-    for (size_t i = 0; i < m_pages.size(); ++i) {
-        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: BEFORE loop page[" << i << "]=" << m_pages[i]->title().ToStdString();
-    }
     for (auto extruder_idx = m_extruders_count_old; extruder_idx < m_extruders_count; ++extruder_idx) {
         const wxString& page_name = (m_extruders_count > 1) ? wxString::Format("Extruder %d", int(extruder_idx + 1)) : wxString::Format("Extruder");
-        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: creating extruder page " << extruder_idx
-            << " at position " << (n_before_extruders + extruder_idx);
 
         //# build page
         //const wxString& page_name = wxString::Format("Extruder %d", int(extruder_idx + 1));
@@ -5249,11 +5189,6 @@ void TabPrinter::build_unregular_pages(bool from_initial_build/* = false*/)
             searcher.add_key(opt.first + "#0", m_type, group->title, first_extruder_title);
     }
 
-    // Log page titles after extruder loop
-    for (size_t i = 0; i < m_pages.size(); ++i) {
-        BOOST_LOG_TRIVIAL(warning) << "build_unregular_pages: AFTER loop page[" << i << "]=" << m_pages[i]->title().ToStdString();
-    }
-
     Thaw();
 
     m_rebuild_kinematics_page = false;
@@ -5285,18 +5220,7 @@ void TabPrinter::on_preset_loaded()
     // Detect gcode flavor changes that require Motion ability page rebuild
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool        is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
-    
-    // Get the actual preset config to compare
-    const auto& preset_config = m_preset_bundle->printers.get_edited_preset().config;
-    auto preset_flavor = preset_config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
-    
-    BOOST_LOG_TRIVIAL(warning) << "on_preset_loaded: m_config flavor=" << (int)flavor
-        << ", preset_config flavor=" << (int)preset_flavor
-        << ", preset_name=" << m_preset_bundle->printers.get_edited_preset().name
-        << ", is_marlin_flavor=" << is_marlin_flavor
-        << ", m_last_is_marlin_flavor=" << m_last_is_marlin_flavor
-        << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
-    
+
     if (m_last_is_marlin_flavor != is_marlin_flavor) {
         m_rebuild_kinematics_page = true;
         m_last_is_marlin_flavor = is_marlin_flavor;
@@ -5664,11 +5588,6 @@ void TabPrinter::update_fff()
 {
     auto        flavor = m_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor")->value;
     bool        is_marlin_flavor = (flavor == gcfMarlinLegacy || flavor == gcfMarlinFirmware || flavor == gcfKlipper || flavor == gcfRepRapFirmware || flavor == gcfCheetah);
-
-    BOOST_LOG_TRIVIAL(warning) << "update_fff: flavor=" << (int)flavor
-        << ", is_marlin_flavor=" << is_marlin_flavor
-        << ", m_last_is_marlin_flavor=" << m_last_is_marlin_flavor
-        << ", m_rebuild_kinematics_page=" << m_rebuild_kinematics_page;
 
     if (m_use_silent_mode != m_config->opt_bool("silent_mode") || m_last_is_marlin_flavor != is_marlin_flavor) {
         m_rebuild_kinematics_page = true;

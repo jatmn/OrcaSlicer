@@ -15,14 +15,10 @@
 namespace Slic3r {
 
 bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gcode_content, const std::string& output_path) {
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: output=" << output_path;
-    
     // Check if output file already exists and can be written
     boost::filesystem::path out_path(output_path);
     boost::system::error_code ec;
-    if (boost::filesystem::exists(out_path, ec)) {
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Output file exists, will overwrite";
-    }
+    (void)boost::filesystem::exists(out_path, ec);
     
     mz_zip_archive archive;
     mz_zip_zero_struct(&archive);
@@ -31,16 +27,11 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     std::string normalized_path = output_path;
     std::replace(normalized_path.begin(), normalized_path.end(), '\\', '/');
     
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Opening zip for writing, normalized_path=" << normalized_path;
-    
     if (!open_zip_writer(&archive, normalized_path)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to open zip writer, last_error=" 
                                  << archive.m_last_error;
         return false;
     }
-    
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Zip writer opened successfully, mode=" << archive.m_zip_mode 
-                           << ", archive_size=" << archive.m_archive_size;
     
     // Debug: verify archive is ready
     if (archive.m_zip_mode != MZ_ZIP_MODE_WRITING) {
@@ -49,13 +40,9 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Archive is ready for writing";
-    
     auto cleanup = [&]() {
         close_zip_writer(&archive);
     };
-    
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: gcode_content size=" << gcode_content.length();
     
     if (gcode_content.empty()) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: gcode_content is EMPTY!";
@@ -72,8 +59,6 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     
     // Write files in exact order matching valid UFP format:
     // 1. /3D/model.gcode (with leading slash)
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Adding /3D/model.gcode, size=" << gcode_content.length();
-    
     if (!mz_zip_writer_add_mem_ex(&archive, "/3D/model.gcode",
                               gcode_content.c_str(), gcode_content.length(),
                               nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
@@ -100,18 +85,14 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     const auto& thumbnails = m_context.get_thumbnails();
     if (!thumbnails.empty()) {
         // Use the first thumbnail (UFP format expects a single thumbnail)
-        const auto& [thumbnail_data, filename] = thumbnails[0];
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Writing thumbnail from context, size=" << thumbnail_data.size();
+        const auto& thumbnail_data = thumbnails[0].first;
         if (!mz_zip_writer_add_mem_ex(&archive, "/Metadata/thumbnail.png",
                                       thumbnail_data.data(), thumbnail_data.size(),
                                       nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
             BOOST_LOG_TRIVIAL(warning) << "UFPWriter::write_container: Failed to add thumbnail";
         } else {
             has_thumbnail = true;
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Added thumbnail from context";
         }
-    } else {
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: No thumbnail data available";
     }
     
     // Prepare material filename (needed for UFP_Global, material, and gcode.rels)
@@ -172,7 +153,6 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     }
     
     // Finalize archive
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: Finalizing archive";
     if (!mz_zip_writer_finalize_archive(&archive)) {
         BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to finalize archive";
         cleanup();
@@ -180,7 +160,6 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     }
     
     cleanup();
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::write_container: SUCCESS";
     return true;
 }
 
@@ -191,12 +170,6 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
     // Override parsed metadata with injected values ONLY if they are non-zero
     // (zero means stats weren't captured; keep the parsed values from G-code comments)
     if (m_context.has_print_stats()) {
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Injected stats - "
-                               << "duration_s=" << m_context.get_duration_s()
-                               << ", filament_mm=" << m_context.get_filament_mm()
-                               << ", filament_g=" << m_context.get_filament_g()
-                               << " (parsed: duration_s=" << meta.duration_s
-                               << ", filament_mm=" << meta.filament_mm << ")";
         if (m_context.get_duration_s() > 0)
             meta.duration_s = m_context.get_duration_s();
         if (m_context.get_filament_mm() > 0)
@@ -214,9 +187,6 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
     if (!extruders[0].material_guid.empty()) {
         // Extruder has GUID, use it to override metadata
         if (meta.material_guid != extruders[0].material_guid) {
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder 0 GUID '" 
-                                   << extruders[0].material_guid 
-                                   << "' (overriding metadata GUID '" << meta.material_guid << "')";
             meta.material_guid = extruders[0].material_guid;
         }
     }
@@ -225,9 +195,6 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
     // This ensures "PLA Tough" is correctly identified instead of default "PLA"
     if (!extruders[0].material_name.empty()) {
         if (meta.material_type != extruders[0].material_name) {
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using extruder 0 material name '" 
-                                   << extruders[0].material_name 
-                                   << "' (overriding metadata material type '" << meta.material_type << "')";
             meta.material_type = extruders[0].material_name;
         }
     }
@@ -240,10 +207,6 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
         meta.max_x = m_config.machine_bounds[3];
         meta.max_y = m_config.machine_bounds[4];
         meta.max_z = m_config.machine_bounds[5];
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::override_metadata: Using machine bounds - "
-                               << "X[" << meta.min_x << "," << meta.max_x << "] "
-                               << "Y[" << meta.min_y << "," << meta.max_y << "] "
-                               << "Z[" << meta.min_z << "," << meta.max_z << "]";
     }
 }
 
@@ -306,7 +269,6 @@ std::map<std::string, std::pair<std::string, std::string>> UFPWriter::load_nozzl
                         std::string display_name = value.value("display_name", key);
                         variants[key] = std::make_pair(diameter, display_name);
                     }
-                    BOOST_LOG_TRIVIAL(info) << "UFPWriter: Loaded " << variants.size() << " nozzle variants from " << path;
                     return variants;
                 }
             } catch (const std::exception& e) {
@@ -314,8 +276,7 @@ std::map<std::string, std::pair<std::string, std::string>> UFPWriter::load_nozzl
             }
         }
     }
-    
-    BOOST_LOG_TRIVIAL(warning) << "UFPWriter: Could not find nozzle_variants.json, using fallback parsing";
+
     return variants;
 }
 
@@ -371,30 +332,19 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     std::string extruder_block;
     const auto& extruder_variants = m_context.get_extruder_variants();
     const auto& extruders = m_context.get_extruder_data();
-    BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: extruder_variants.size()=" << extruder_variants.size()
-                           << ", extruder0 filament_mm=" << extruders[0].filament_mm
-                           << ", extruder1 filament_mm=" << extruders[1].filament_mm;
     if (!extruder_variants.empty()) {
         for (size_t i = 0; i < extruder_variants.size() && i < 2; ++i) {
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: Checking extruder " << i
-                                   << ", variant=" << extruder_variants[i]
-                                   << ", filament_mm=" << extruders[i].filament_mm;
             // Only include nozzle info if extruder was actually used
             if (extruders[i].filament_mm > 0.0) {
                 const std::string& variant = extruder_variants[i];
                 auto nozzle_info = get_nozzle_info(variant);
                 extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
                 extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second + "\n";
-                BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: Added NOZZLE info for extruder " << i;
-            } else {
-                BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_header: Skipping NOZZLE info for inactive extruder " << i;
             }
         }
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter: Generated extruder block";
     } else {
         // Fallback for backward compatibility - use default values
         extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:0.4\n;EXTRUDER_TRAIN.0.NOZZLE.NAME:AA 0.4\n";
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter: No extruder variants configured, using default extruder 0";
     }
     values["extruder_block"] = extruder_block;
     
@@ -427,13 +377,12 @@ std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
             template_content = std::string((std::istreambuf_iterator<char>(file)),
                                            std::istreambuf_iterator<char>());
             found = true;
-            BOOST_LOG_TRIVIAL(info) << "UFPWriter: Loaded slicemetadata template from " << path;
             break;
         }
     }
     
     if (!found) {
-        BOOST_LOG_TRIVIAL(error) << "UFPWriter: Could not find slicemetadata_template.json, using minimal fallback";
+        BOOST_LOG_TRIVIAL(warning) << "UFPWriter: Could not find slicemetadata_template.json, using minimal fallback";
         return "{\"machine_id\": \"" + m_config.target_machine + "\", \"version\": 1}";
     }
     
@@ -510,7 +459,6 @@ std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
     std::string brand = "Generic";
     if (!extruders[0].brand.empty()) {
         brand = extruders[0].brand;
-        BOOST_LOG_TRIVIAL(info) << "UFPWriter::generate_material_xml: Using brand from extruder data: " << brand;
     }
     xml << "      <brand>" << brand << "</brand>\n";
     

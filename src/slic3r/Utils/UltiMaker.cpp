@@ -120,7 +120,6 @@ GUI::OAuthParams UltiMaker::get_oauth_params() const
     const auto callback_port = static_cast<boost::asio::ip::port_type>(std::stoi(callback_url.substr(callback_url.rfind(':') + 1, callback_url.rfind('/') - callback_url.rfind(':') - 1)));
 
     BOOST_LOG_TRIVIAL(info) << "UltiMaker OAuth: Starting authorization with PKCE S512";
-    BOOST_LOG_TRIVIAL(info) << "UltiMaker OAuth: verification_code length = " << verification_code.length();
 
     const std::vector<std::pair<std::string, std::string>> query_parameters{
         {"client_id", CLIENT_ID},
@@ -132,9 +131,6 @@ GUI::OAuthParams UltiMaker::get_oauth_params() const
         {"code_challenge_method", "S512"},
     };
     const auto login_url = (boost::format(URL_ACCOUNT "/authorize?%s") % url_encode(query_parameters)).str();
-
-    BOOST_LOG_TRIVIAL(warning) << "===== UltiMaker OAuth: Dynamic callback URL: " << callback_url;
-    BOOST_LOG_TRIVIAL(warning) << "===== UltiMaker OAuth: Generated login URL (truncated): " << login_url.substr(0, 150) << "...";
 
     // Use a separate success URL to avoid the browser re-requesting the callback URL
     // which would cause the code to be missing and trigger an error

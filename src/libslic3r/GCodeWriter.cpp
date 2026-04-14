@@ -258,11 +258,9 @@ std::string GCodeWriter::set_acceleration_internal(Acceleration type, unsigned i
 std::string GCodeWriter::set_jerk_xy(double jerk)
 {
     if (jerk < 0.01) {
-        BOOST_LOG_TRIVIAL(warning) << "GCodeWriter::set_jerk_xy early return: jerk=" << jerk << " below threshold 0.01";
         return std::string();
     }
     if (is_approx(jerk, m_last_jerk)) {
-        BOOST_LOG_TRIVIAL(warning) << "GCodeWriter::set_jerk_xy early return: jerk=" << jerk << " approx equal to m_last_jerk=" << m_last_jerk;
         return std::string();
     }
 
@@ -292,9 +290,6 @@ std::string GCodeWriter::set_jerk_xy(double jerk)
         // Convert from mm/s³ to Cheetah proprietary units and output as integers
         long cheetah_jerk_x = std::lrint(jerk_x * 500000.0);
         long cheetah_jerk_y = std::lrint(jerk_y * 500000.0);
-
-        BOOST_LOG_TRIVIAL(warning) << "GCodeWriter::set_jerk_xy Cheetah M215 output: X=" << cheetah_jerk_x << " Y=" << cheetah_jerk_y
-                                   << " (source jerk=" << jerk << ", max_x=" << m_max_jerk_x << ", max_y=" << m_max_jerk_y << ")";
 
         gcode << "M215 X" << cheetah_jerk_x << " Y" << cheetah_jerk_y;
     } else {

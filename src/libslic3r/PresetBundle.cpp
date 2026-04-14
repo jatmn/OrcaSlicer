@@ -1456,8 +1456,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
     if (validation_mode)
         dir = (boost::filesystem::path(data_dir())).make_preferred();
     
-    BOOST_LOG_TRIVIAL(warning) << "load_system_presets_from_json: scanning directory " << dir.string();
-
     PresetsConfigSubstitutions  substitutions;
     std::string                 errors_cummulative;
     bool                        first = true;
@@ -1473,7 +1471,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_pre
         // Remove the .json suffix.
         vendor_name.erase(vendor_name.size() - 5);
         vendor_names.push_back(vendor_name);
-        BOOST_LOG_TRIVIAL(warning) << "Found vendor JSON: " << vendor_name;
     }
     // Move ORCA_FILAMENT_LIBRARY to the beginning of the list
     for (size_t i = 0; i < vendor_names.size(); ++ i) {
@@ -1568,7 +1565,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
 
 std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_filaments_json(ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
-    BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(" enter, compatibility_rule %1%") % compatibility_rule;
     if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSystemSilent)
         // Loading system presets, don't log substitutions.
         compatibility_rule = ForwardCompatibilitySubstitutionRule::EnableSilent;
@@ -1578,8 +1574,6 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
 
     // Here the vendor specific read only Config Bundles are stored.
     boost::filesystem::path    dir = (boost::filesystem::path(resources_dir()) / "profiles").make_preferred();
-    BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: scanning directory " << dir.string();
-    
     PresetsConfigSubstitutions substitutions;
     std::string                errors_cummulative;
     bool                       first = true;
@@ -1591,18 +1585,15 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
             // Remove the .json suffix.
             vendor_name.erase(vendor_name.size() - 5);
             vendor_count++;
-            BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: processing vendor " << vendor_count << ": " << vendor_name;
             try {
                 if (first) {
                     // Reset this PresetBundle and load the first vendor config.
-                    BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: loading first vendor: " << vendor_name;
                     append(substitutions, this->load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem | PresetBundle::LoadFilamentOnly, compatibility_rule).first);
                     first = false;
                 } else {
                     // Load the other vendor configs, merge them with this PresetBundle.
                     // Report duplicate profiles.
                     PresetBundle other;
-                    BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: loading vendor: " << vendor_name;
                     append(substitutions, other.load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem | PresetBundle::LoadFilamentOnly, compatibility_rule).first);
                     std::vector<std::string> duplicates = this->merge_presets(std::move(other));
                     if (!duplicates.empty()) {
@@ -1621,7 +1612,8 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
         }
     }
 
-    BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(" finished, vendors processed: %1%, errors: %2%") % vendor_count % errors_cummulative;
+    if (!errors_cummulative.empty())
+        BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(" finished, vendors processed: %1%, errors: %2%") % vendor_count % errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
 }
 
@@ -3782,9 +3774,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
     ConfigSubstitutionContext  substitution_context { compatibility_rule };
     PresetsConfigSubstitutions substitutions;
 
-    //BBS: add config related logs
-    BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(" enter, path %1%, compatibility_rule %2%")%path.c_str()%compatibility_rule;
-    BOOST_LOG_TRIVIAL(warning) << "load_vendor_configs_from_json: vendor_name = " << vendor_name;
     if (flags.has(LoadConfigBundleAttribute::ResetUserProfile) || flags.has(LoadConfigBundleAttribute::LoadSystem))
         // Reset this bundle, delete user profile files if SaveImported.
         this->reset(flags.has(LoadConfigBundleAttribute::SaveImported));
@@ -3827,7 +3816,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         }
     };
     try {
-        BOOST_LOG_TRIVIAL(warning) << "Opening vendor root file: " << root_file;
         boost::nowide::ifstream ifs(root_file);
         if (!ifs.is_open()) {
             BOOST_LOG_TRIVIAL(error) << "Failed to open vendor root file: " << root_file;
@@ -3835,7 +3823,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         }
         json j;
         ifs >> j;
-        BOOST_LOG_TRIVIAL(warning) << "Successfully parsed vendor root file for: " << vendor_name;
         //parse the json elements
         for (auto it = j.begin(); it != j.end(); it++) {
             if (boost::iequals(it.key(), BBL_JSON_KEY_VERSION)) {
@@ -3855,7 +3842,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
             }
             else if (boost::iequals(it.key(), BBL_JSON_KEY_DESCRIPTION)) {
                 //get description
-                BOOST_LOG_TRIVIAL(info) << __FUNCTION__<< ": parse "<<root_file<<", got description:  " << it.value();
             }
             else if (boost::iequals(it.key(), BBL_JSON_KEY_NAME)) {
                 //get name
@@ -3890,7 +3876,6 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         machine_model_subfiles.clear();
         machine_subfiles.clear();
         process_subfiles.clear();
-        BOOST_LOG_TRIVIAL(warning) << "load_vendor_configs_from_json: LoadFilamentOnly mode - filament_subfiles count: " << filament_subfiles.size();
     }
 
     //2) paste the machine model

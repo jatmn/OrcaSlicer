@@ -3863,9 +3863,6 @@ void GCode::print_machine_envelope(GCodeOutputStream &file, Print &print)
             // Conversion: mm/s × 500,000 = m/s³
             long jerk_x = std::lrint(print.config().machine_max_jerk_x.values.front() * 500000.0);
             long jerk_y = std::lrint(print.config().machine_max_jerk_y.values.front() * 500000.0);
-            BOOST_LOG_TRIVIAL(warning) << "print_machine_envelope Cheetah M215 output: X=" << jerk_x << " Y=" << jerk_y
-                                       << " (source jerk_x=" << print.config().machine_max_jerk_x.values.front()
-                                       << ", jerk_y=" << print.config().machine_max_jerk_y.values.front() << ")";
             file.write_format("M215 X%ld Y%ld ; sets the jerk limits, m/s^3\n", jerk_x, jerk_y);
         } else {
             file.write_format(flavor == gcfRepRapFirmware
