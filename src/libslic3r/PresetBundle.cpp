@@ -1568,7 +1568,7 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_mod
 
 std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_filaments_json(ForwardCompatibilitySubstitutionRule compatibility_rule)
 {
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" enter, compatibility_rule %1%") % compatibility_rule;
+    BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(" enter, compatibility_rule %1%") % compatibility_rule;
     if (compatibility_rule == ForwardCompatibilitySubstitutionRule::EnableSystemSilent)
         // Loading system presets, don't log substitutions.
         compatibility_rule = ForwardCompatibilitySubstitutionRule::EnableSilent;
@@ -1578,24 +1578,31 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
 
     // Here the vendor specific read only Config Bundles are stored.
     boost::filesystem::path    dir = (boost::filesystem::path(resources_dir()) / "profiles").make_preferred();
+    BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: scanning directory " << dir.string();
+    
     PresetsConfigSubstitutions substitutions;
     std::string                errors_cummulative;
     bool                       first = true;
+    int                        vendor_count = 0;
     for (auto &dir_entry : boost::filesystem::directory_iterator(dir)) {
         std::string vendor_file = dir_entry.path().string();
         if (Slic3r::is_json_file(vendor_file)) {
             std::string vendor_name = dir_entry.path().filename().string();
             // Remove the .json suffix.
             vendor_name.erase(vendor_name.size() - 5);
+            vendor_count++;
+            BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: processing vendor " << vendor_count << ": " << vendor_name;
             try {
                 if (first) {
                     // Reset this PresetBundle and load the first vendor config.
+                    BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: loading first vendor: " << vendor_name;
                     append(substitutions, this->load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem | PresetBundle::LoadFilamentOnly, compatibility_rule).first);
                     first = false;
                 } else {
                     // Load the other vendor configs, merge them with this PresetBundle.
                     // Report duplicate profiles.
                     PresetBundle other;
+                    BOOST_LOG_TRIVIAL(warning) << "load_system_filaments_json: loading vendor: " << vendor_name;
                     append(substitutions, other.load_vendor_configs_from_json(dir.string(), vendor_name, PresetBundle::LoadSystem | PresetBundle::LoadFilamentOnly, compatibility_rule).first);
                     std::vector<std::string> duplicates = this->merge_presets(std::move(other));
                     if (!duplicates.empty()) {
@@ -1607,13 +1614,14 @@ std::pair<PresetsConfigSubstitutions, std::string> PresetBundle::load_system_fil
                     }
                 }
             } catch (const std::runtime_error &err) {
+                BOOST_LOG_TRIVIAL(error) << "load_system_filaments_json: ERROR loading vendor " << vendor_name << ": " << err.what();
                 errors_cummulative += err.what();
                 errors_cummulative += "\n";
             }
         }
     }
 
-    BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << boost::format(" finished, errors_cummulative %1%") % errors_cummulative;
+    BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(" finished, vendors processed: %1%, errors: %2%") % vendor_count % errors_cummulative;
     return std::make_pair(std::move(substitutions), errors_cummulative);
 }
 
@@ -3882,6 +3890,7 @@ std::pair<PresetsConfigSubstitutions, size_t> PresetBundle::load_vendor_configs_
         machine_model_subfiles.clear();
         machine_subfiles.clear();
         process_subfiles.clear();
+        BOOST_LOG_TRIVIAL(warning) << "load_vendor_configs_from_json: LoadFilamentOnly mode - filament_subfiles count: " << filament_subfiles.size();
     }
 
     //2) paste the machine model

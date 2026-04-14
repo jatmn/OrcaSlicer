@@ -387,15 +387,11 @@ std::string GCodeContainerWriter::build_gcode_content(const GCodeMetadata& meta,
                     }
                     final_lines = cleaned;
                     
-                    // Find where we inserted retraction and add absolute retraction after stop marker
-                    for (size_t j = 0; j < final_lines.size(); ++j) {
-                        if (final_lines[j].find("; stop printing object") != std::string::npos) {
-                            std::ostringstream retraction;
-                            retraction << "G1 F2700 E" << std::fixed << std::setprecision(5) << retraction_e << " ;" << "\n";
-                            final_lines.insert(final_lines.begin() + j + 1, retraction.str());
-                            break;
-                        }
-                    }
+                    // Insert absolute retraction after the same stop marker we found above (still at i-1)
+                    std::ostringstream retraction;
+                    retraction << "G1 F2700 E" << std::fixed << std::setprecision(5) << retraction_e << " ;" << "\n";
+                    final_lines.insert(final_lines.begin() + (i - 1) + 1, retraction.str());
+                    final_lines.insert(final_lines.begin() + (i - 1) + 2, "G92 E0\n");
                 }
             }
             break;
