@@ -1,12 +1,47 @@
 # OrcaSlicer Agent Guide (jatmn's Fork)
 
-> **Last Updated:** 2026-03-31
+> **Last Updated:** 2026-04-14
 >
 > **Change Tracking:** This file tracks implementation status specific to jatmn's fork. See the [Change Log](#change-log) section at the end for revision history.
+> When older sections conflict with the current-status audit below, the current-status audit wins.
 
 ## Project Context
 
 This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a 3D printer slicer based on BambuStudio.
+
+## Current Status Audit (2026-04-14)
+
+This section is the current high-level truth for the fork and should be used as the starting point when preparing PRs or resuming work.
+
+### Public Fork Status (`origin/main`)
+
+- Public fork head currently includes work through commit `5c60391056`.
+- UltiMaker Digital Factory upload, UltiMaker LAN printing, `.ufp` export, `.makerbot` export, MakerBot Sketch profiles, UltiMaker S/F printer families, core-specific process matrix groundwork, and baseline Cheetah flavor support are already on the public fork.
+- Public fork also includes recent Cheetah fixes for gcode flavor persistence, duplicate extruder tabs, Filament/Process tab consistency, UFP material GUID/name fixes, and UFP path / multi-material export fixes.
+
+### Local-Only Status (`HEAD` not yet on `origin/main`)
+
+- Local head currently includes six additional commits on top of the public fork:
+  - `e2288c93f0` Fix UFP container writer injecting retraction at wrong stop marker
+  - `9ab88a79d7` Improve Cheetah calibration flow and top bar hit testing
+  - `131c2d99e7` Trim verbose Cheetah and UltiMaker logging
+  - `a72aeae8ff` Tighten Cheetah motion and preview handling
+  - `8b124c6514` Clean up container writers and print core labels
+  - `de97547bc2` Improve Cheetah cornering tests and UltiMaker host UX
+- These local-only commits materially improve Cheetah calibration usability, preview accuracy, Physical Printer dialog behavior, container writer cleanup, and some Prepare-tab UI polish.
+
+### Active Workstreams
+
+- Cheetah support is now beyond proof-of-concept and into tuning / validation.
+- UltiMaker default machine, process, and material values are still being actively tuned.
+- Roaming-profile `- Copy` presets are currently the working area for tuned defaults before backporting them into source-controlled profiles.
+- Dual-extrusion validation on UltiMaker S/F series is still incomplete even though the profile and container groundwork exists.
+
+### Current PR Guidance
+
+- Treat the fork as two layers: public fork history in `origin/main`, plus local-only commits at `HEAD`.
+- Do not log upstream rebases or imported upstream SoftFever commits in this guide; only track work authored in jatmn's fork.
+- Before opening PRs, reconcile any active roaming `- Copy` presets back into source profiles intentionally rather than assuming the current user profile state is reflected in the repo.
 
 ## Reference Codebases
 
@@ -49,9 +84,10 @@ When working on Cura-related features (especially UltiMaker Digital Factory inte
 
 ### Windows 11 Development
 
-- **No Linux tools available** — this project is developed on Windows 11. Common Linux commands like `grep`, `find`, `ls`, `cat`, and similar CLI tools are **NOT available** in the terminal.
-- **Use agent tools instead** — use the provided `search_files`, `list_files`, `read_file`, and `list_code_definition_names` tools for all file operations. These work cross-platform and are the proper way to search/navigate the codebase.
-- **Avoid execute_command for file searches** — do not try to run `grep`, `find`, or similar commands via `execute_command`. Use the dedicated search tools.
+- **Primary shell is PowerShell on Windows 11** — always assume Windows paths with spaces and quote them explicitly.
+- **Native Windows tools are available** — PowerShell cmdlets, `git`, `cmake`, and fast text search tools such as `rg` are available and should be preferred when practical.
+- **Do not assume Bash/Linux semantics** — avoid Bash-specific piping, quoting, or path assumptions when documenting or scripting local development steps.
+- **Be careful with copied build resources** — some generated resource trees do not auto-refresh, so verify which directory is actually being used before assuming a rebuild picked up profile/config changes.
 
 ### Debugging & Logging
 
@@ -69,12 +105,13 @@ When working on Cura-related features (especially UltiMaker Digital Factory inte
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Container Format Export (.ufp) | ✅ Completed | Works for all UltiMaker printers |
-| Container Format Export (.makerbot) | ✅ Completed | Validated for Sketch series; Method configs reserved in code for future use |
+| Container Format Export (.ufp) | ✅ Completed | Works for UltiMaker printers; recent fixes cover GUID/name handling, multi-material export, spaced paths, and wrong stop-marker retraction |
+| Container Format Export (.makerbot) | ✅ Completed | Sketch series path works; Method configs remain reserved; single-thumbnail path and logging cleanup landed locally |
 | Digital Factory Upload | ✅ Completed | Two-step upload with container conversion |
-| LAN Printing | ✅ Completed | Does not support UltiMaker 2+ Connect (firmware limitation) |
-| Printer Profiles | ⚠️ In Progress | Created but have known issues |
-| Process Profiles | ⚠️ In Progress | Basic templates exist, need validation |
+| LAN Printing | ✅ Completed | Supports UltiMaker S series and Factor series; does not support UltiMaker 2+ Connect or MakerBot printers |
+| Cheetah G-code Flavor | ⚠️ Active Tuning | Baseline support is in; calibration, preview, UI, and motion handling are still being refined |
+| Printer Profiles | ⚠️ Active Tuning | Core/profile matrix exists; defaults are still being tuned and validated |
+| Process Profiles | ⚠️ Active Tuning | Dynamic/core-specific groundwork exists; tuned defaults still being validated |
 | Material GUID Matching | ✅ Completed | Two-pass search prioritizes GUIDs |
 | Material Association Matrix | ❌ Not Started | Need printer/core compatibility |
 
@@ -237,7 +274,7 @@ File upload to UltiMaker printers over LAN (no cloud, no mDNS) is working.
 
 - Successfully tested with UltiMaker S6 at IP 10.10.10.246
 - File upload works with `.ufp` container format
-- Authentication flow requires user approval on printer screen
+- Current implementation uses configured HTTP Digest credentials; no printer-screen approval flow is implemented in code
 - Print job control (pause/resume/abort) implemented
 
 ### Supported Printers
@@ -384,8 +421,59 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 
 **User Profiles** (user-created presets via UI):
 - Location: `C:\Users\<username>\AppData\Roaming\OrcaSlicer\user\<preset_folder>\`
-- Subfolders: `machine/`, `filament/`, `print/`
+- Subfolders: `machine/`, `filament/`, `process/`
 - Note: These are for user-created presets, NOT for development profile testing
+
+### Roaming `- Copy` Preset Workflow
+
+When tuning "default" UltiMaker or MakerBot values through the OrcaSlicer UI, the active working files are usually user presets under:
+
+- `C:\Users\<username>\AppData\Roaming\OrcaSlicer\user\default\machine\`
+- `C:\Users\<username>\AppData\Roaming\OrcaSlicer\user\default\process\`
+- `C:\Users\<username>\AppData\Roaming\OrcaSlicer\user\default\filament\`
+
+Important rules for these files:
+
+- `- Copy.json` presets are **delta presets**, not clean source presets.
+- They are valid for tuning and comparison, but they must **not** be copied directly into `resources/profiles/`.
+- Always compare a roaming `- Copy` preset against the correct source-controlled counterpart and backport only the meaningful tuning values.
+
+### Backport Mapping Rules
+
+- **Machine copy presets** should be compared against the specific nozzle preset first, then against the printer family common file if the change is family-wide.
+  - Example: `UltiMaker S6 0.4 nozzle - Copy.json` maps first to `resources/profiles/UltiMaker/machine/UltiMaker S6 0.4 nozzle.json`
+  - Family-wide machine defaults often belong in `resources/profiles/UltiMaker/machine/fdm_ultimaker_s68_common.json`
+- **Process copy presets** often inherit from a lightweight instanced process file whose real defaults live in a common file.
+  - Example: `0.20mm Standard @UltiMaker S6-S8 AA+ 0.4 - Copy.json` maps to:
+    - `resources/profiles/UltiMaker/process/0.20mm Standard @UltiMaker S6-S8 AA+ 0.4.json`
+    - `resources/profiles/UltiMaker/process/fdm_process_ultimaker_s68_aa+04_common.json`
+- **Filament copy presets** should be compared against both `@System` and `@base`.
+  - Broad material tuning usually belongs in `@base`
+  - Printer compatibility or light system-level scoping usually belongs in `@System`
+
+### Fields That Should Normally Stay Out of Source Profile Backports
+
+- `name`
+- `from`
+- `inherits`
+- `version`
+- `*_settings_id`
+- `host_type`
+- `print_host`
+- `print_host_webui`
+
+### Profile Backport Pitfalls
+
+- User presets may contain expanded arrays or UI-generated vector lengths that do not match the intended source profile structure.
+- Some useful values in a `- Copy` preset may actually belong in a shared common/base file, not in the instanced profile file with the matching name.
+- Connection-specific state from a tuned local preset should never be mistaken for repo default behavior.
+- Treat roaming presets as a tuning reference, not as authoritative source files.
+
+### Build Resource Sync Notes
+
+- `build/src/Release/resources` is normally a link/junction to source and tends to stay current automatically.
+- `build/OrcaSlicer/resources` can drift stale and may need manual copying when testing packaged-resource behavior.
+- When configs are removed or renamed in source, remove stale build-copy configs too so packaged tests do not accidentally pick up obsolete files.
 
 **Source Code Profiles** (for rebuilding app):
 - Machine profiles: `resources/profiles/UltiMaker/machine/`
@@ -457,6 +545,43 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - Removed unused `method_x.json` and `method_xl.json` MakerBot configs (reserved in code for future use)
   - Removed 960×1460 thumbnail from `ContainerFormatHelper` default fallback
   - Corrected `AGENTS_JATMN.md` LAN auth description to match actual implementation
+
+### 2026-04-14
+- **Cheetah Calibration / Motion / Preview Refresh**
+  - Centralized Cheetah `M400` + `M214 D0 K...` handling in the writer path
+  - Added Cheetah preview parsing for `M214` and `M215`
+  - Fixed Cheetah material PA disable-to-zero behavior
+  - Improved Cheetah cornering test generation so tower variants use coarse visible `M215` bands instead of an almost invisible micro-gradient
+  - Added Cheetah-aware calibration dialog guidance and safer test selection behavior
+- **UltiMaker Host UI Refresh**
+  - Fixed top-bar hit testing issue that affected menu access
+  - Improved Physical Printer dialog behavior for UltiMaker host types
+  - Device-tab web UI routing now points Digital Factory to `https://digitalfactory.ultimaker.com` and LAN printers to `http://<ip>/`
+  - Added UltiMaker LAN support note clarifying supported printer families
+- **Container Writer Cleanup**
+  - Fixed UFP writer retraction injection at the wrong stop marker
+  - Cleaned MakerBot/UFP writer logging and container helper plumbing
+  - Fixed MakerBot single-thumbnail routing and made UFP machine bounds config-driven
+  - Cleaned stale packaged resource configs after syncing copied format configs
+- **Profile / UI Cleanup**
+  - Print core labels in Prepare were restyled to match the rest of the UI
+  - Extruder/process UI consistency fixes for Cheetah and print-core selection are now reflected in the current local state
+
+### 2026-04-12 to 2026-04-13
+- **Cheetah Flavor Baseline**
+  - Added UltiMaker/Cheetah G-code flavor support
+  - Fixed Cheetah flavor persistence so it no longer saves back as RepRap
+  - Fixed duplicate extruder tabs and gcode-flavor dropdown behavior for Cheetah printers
+  - Added and then trimmed temporary debugging around Motion Ability tab issues
+  - Improved UI consistency when switching between Filament and Process tabs on Cheetah setups
+
+### 2026-04-02 to 2026-04-09
+- **UltiMaker Profile / UFP Improvements**
+  - Added proof-of-concept dynamic process matching by print core
+  - Generated a fuller core-specific process preset matrix
+  - Refreshed `ExtruderVariantWidget` behavior on nozzle/core switching
+  - Isolated process inheritance per core variant
+  - Fixed UFPWriter material GUID/name issues and later fixed multi-material / paths-with-spaces UFP export issues
 
 ### 2026-03-31
 - **MakerBot Thumbnail Generation Fix** (commit `762ff9d3ef`)
