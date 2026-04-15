@@ -802,7 +802,7 @@ endif ()
 if (UNIX AND NOT APPLE)
     find_package(PkgConfig REQUIRED)
     find_package(GTK${SLIC3R_GTK} REQUIRED)
-    pkg_check_modules(LIBSECRET REQUIRED libsecret-1)
+    pkg_check_modules(LIBSECRET QUIET libsecret-1)
     pkg_check_modules(webkit2gtk REQUIRED webkit2gtk-4.1)
     if (FLATPAK)
         # I don't know why this is needed, but for whatever reason slic3r isn't
@@ -810,8 +810,26 @@ if (UNIX AND NOT APPLE)
         find_package(X11 REQUIRED)
         target_link_libraries(libslic3r_gui ${X11_LIBRARIES} ${webkit2gtk_LIBRARIES})
     endif()
-    target_include_directories(libslic3r_gui SYSTEM PRIVATE ${GTK${SLIC3R_GTK}_INCLUDE_DIRS} ${LIBSECRET_INCLUDE_DIRS} ${webkit2gtk_INCLUDE_DIRS})
-    target_link_libraries(libslic3r_gui ${GTK${SLIC3R_GTK}_LIBRARIES} fontconfig ${LIBSECRET_LIBRARIES})
+
+    set(_linux_gui_private_includes
+        ${GTK${SLIC3R_GTK}_INCLUDE_DIRS}
+        ${webkit2gtk_INCLUDE_DIRS}
+    )
+    set(_linux_gui_private_libs
+        ${GTK${SLIC3R_GTK}_LIBRARIES}
+        fontconfig
+    )
+
+    if (LIBSECRET_FOUND)
+        list(APPEND _linux_gui_private_includes ${LIBSECRET_INCLUDE_DIRS})
+        list(APPEND _linux_gui_private_libs ${LIBSECRET_LIBRARIES})
+        target_compile_definitions(libslic3r_gui PRIVATE SLIC3R_HAS_LIBSECRET)
+    else ()
+        message(STATUS "libsecret-1 not found; SecureStorage will use a disabled fallback backend on this build.")
+    endif ()
+
+    target_include_directories(libslic3r_gui SYSTEM PRIVATE ${_linux_gui_private_includes})
+    target_link_libraries(libslic3r_gui ${_linux_gui_private_libs})
 
     # Propagate GDK backend detection results as compile definitions so that
     # LinuxDisplayBackend.cpp can include the right GDK headers.

@@ -12,7 +12,7 @@ namespace Slic3r {
 /// Platform implementations:
 /// - Windows: Windows Credential Manager (wincred.h)
 /// - macOS: Keychain Services (Security.framework)
-/// - Linux: libsecret / Secret Service API
+/// - Linux: libsecret / Secret Service API when available
 class SecureStorage
 {
 public:

@@ -7,10 +7,10 @@
 #ifdef _WIN32
     #include <windows.h>
     #include <wincred.h>
-#elif __APPLE__
+#elif defined(__APPLE__)
     #include <Security/Security.h>
     #include <CoreFoundation/CoreFoundation.h>
-#else // Linux
+#elif defined(SLIC3R_HAS_LIBSECRET)
     #include <libsecret/secret.h>
 #endif
 
@@ -127,7 +127,7 @@ bool SecureStorage::is_available()
 // ============================================================================
 // macOS Implementation - Keychain Services
 // ============================================================================
-#elif __APPLE__
+#elif defined(__APPLE__)
 
 bool SecureStorage::store(const std::string& account, const std::string& secret)
 {
@@ -321,7 +321,7 @@ bool SecureStorage::is_available()
 // ============================================================================
 // Linux Implementation - libsecret
 // ============================================================================
-#else
+#elif defined(SLIC3R_HAS_LIBSECRET)
 
 // Schema definition for libsecret
 static const SecretSchema* get_secret_schema()
@@ -454,6 +454,35 @@ bool SecureStorage::is_available()
     }
     
     return result;
+}
+
+#else
+
+bool SecureStorage::store(const std::string& account, const std::string& secret)
+{
+    (void)secret;
+    BOOST_LOG_TRIVIAL(warning)
+        << "SecureStorage: No supported secure backend compiled in, cannot store credential for " << account;
+    return false;
+}
+
+std::optional<std::string> SecureStorage::retrieve(const std::string& account)
+{
+    BOOST_LOG_TRIVIAL(warning)
+        << "SecureStorage: No supported secure backend compiled in, cannot retrieve credential for " << account;
+    return std::nullopt;
+}
+
+bool SecureStorage::remove(const std::string& account)
+{
+    BOOST_LOG_TRIVIAL(warning)
+        << "SecureStorage: No supported secure backend compiled in, cannot remove credential for " << account;
+    return false;
+}
+
+bool SecureStorage::is_available()
+{
+    return false;
 }
 
 #endif // Platform selection
