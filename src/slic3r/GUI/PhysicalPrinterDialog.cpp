@@ -46,6 +46,33 @@
 namespace Slic3r {
 namespace GUI {
 
+namespace {
+
+void set_text_field_value(ConfigOptionsGroup* optgroup, const std::string& key, const std::string& value)
+{
+    if (Field* field = optgroup->get_field(key); field) {
+        if (auto* text_field = dynamic_cast<TextCtrl*>(field); text_field != nullptr) {
+            if (wxTextCtrl* text_ctrl = text_field->text_ctrl(); text_ctrl != nullptr)
+                text_ctrl->SetValue(from_u8(value));
+        }
+    }
+}
+
+std::string normalized_webui_url(std::string host)
+{
+    boost::trim(host);
+    if (host.empty())
+        return {};
+
+    if (!boost::istarts_with(host, "http://") && !boost::istarts_with(host, "https://"))
+        host = "http://" + host;
+    if (!boost::algorithm::ends_with(host, "/"))
+        host += "/";
+    return host;
+}
+
+} // namespace
+
 #define BORDER_W FromDIP(10)
 
 //------------------------------------------
@@ -146,8 +173,10 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
         } else if (opt_key == "host_type" || opt_key == "printhost_authorization_type") {
             this->update();
         }
-        if (opt_key == "print_host")
+        if (opt_key == "print_host") {
             this->update_printhost_buttons();
+            this->update_webui();
+        }
         if (opt_key == "printhost_port")
             this->update_ports();
         if (opt_key == "bbl_use_print_host_webui")
@@ -337,6 +366,22 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
     host_line.append_widget(print_host_logout);
     m_optgroup->append_line(host_line);
 
+    Line ultimaker_lan_note{ "", "" };
+    ultimaker_lan_note.full_width = 1;
+    ultimaker_lan_note.widget = [this](wxWindow* parent) {
+        auto* txt = new wxStaticText(parent, wxID_ANY,
+                                     _L("UltiMaker LAN only supports UltiMaker S series and Factor series printers. MakerBot Method and Sketch series are not supported."));
+        txt->SetFont(::Label::Body_13);
+        txt->SetForegroundColour(StateColor::darkModeColorFor(wxColour("#6B7280")));
+        txt->Wrap(FromDIP(440));
+        m_ultimaker_lan_note_widget = txt;
+
+        auto* sizer = new wxBoxSizer(wxHORIZONTAL);
+        sizer->Add(txt, 1, wxEXPAND);
+        return sizer;
+    };
+    m_optgroup->append_line(ultimaker_lan_note);
+
     option = m_optgroup->get_option("print_host_webui");
     option.opt.width = Field::def_width_wider();
     m_optgroup->append_single_option_line(option);
@@ -512,47 +557,54 @@ void PhysicalPrinterDialog::update_ports() {
 void PhysicalPrinterDialog::update_webui()
 {
     const PrinterTechnology tech = Preset::printer_technology(*m_config);
-    if (tech == ptFFF) {
-        const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
-        if (opt->value == htSimplyPrint) {
-            bool bbl_use_print_host_webui = false;
-            if (Field* printhost_webui_field = m_optgroup->get_field("bbl_use_print_host_webui"); printhost_webui_field) {
-                if (CheckBox* temp = dynamic_cast<CheckBox*>(printhost_webui_field); temp) {
-                    bbl_use_print_host_webui = boost::any_cast<bool>(temp->get_value());
-                }
-            }
+    if (tech != ptFFF)
+        return;
 
-            const std::string v = bbl_use_print_host_webui ? "https://simplyprint.io/panel" : "";
-            if (Field* printhost_webui_field = m_optgroup->get_field("print_host_webui"); printhost_webui_field) {
-                if (wxTextCtrl* temp = dynamic_cast<TextCtrl*>(printhost_webui_field)->text_ctrl(); temp) {
-                    temp->SetValue(v);
-                }
-            }
-            m_config->opt_string("print_host_webui") = v;
+    const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
+    std::string v;
+
+    if (opt->value == htSimplyPrint) {
+        bool bbl_use_print_host_webui = false;
+        if (Field* printhost_webui_field = m_optgroup->get_field("bbl_use_print_host_webui"); printhost_webui_field) {
+            if (CheckBox* temp = dynamic_cast<CheckBox*>(printhost_webui_field); temp)
+                bbl_use_print_host_webui = boost::any_cast<bool>(temp->get_value());
         }
+        v = bbl_use_print_host_webui ? "https://simplyprint.io/panel" : "";
+    } else if (opt->value == htUltiMaker) {
+        v = "https://digitalfactory.ultimaker.com";
+    } else if (opt->value == htUltiMakerLAN) {
+        v = normalized_webui_url(current_print_host_value());
+    } else if (m_config->opt_string("print_host_webui") == "https://digitalfactory.ultimaker.com") {
+        v.clear();
+    } else {
+        return;
     }
+
+    set_text_field_value(m_optgroup, "print_host_webui", v);
+    m_config->opt_string("print_host_webui") = v;
 }
 
 void PhysicalPrinterDialog::update_printhost_buttons()
 {
     std::unique_ptr<PrintHost> host(PrintHost::get_print_host(m_config));
-    if (host) {
-        // For UltiMaker Digital Factory, the print_host field is hidden but we still need the test/login button enabled
-        const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
-        bool is_ultimaker_cloud = opt && opt->value == htUltiMaker;
-        bool is_ultimaker_lan = opt && opt->value == htUltiMakerLAN;
-        bool is_ultimaker = is_ultimaker_cloud || is_ultimaker_lan;
-        
-        // Enable test button if:
-        // - Not UltiMaker Cloud AND print_host is not empty AND can test, OR
-        // - UltiMaker Cloud (always enable since it uses OAuth and print_host is hidden), OR
-        // - UltiMaker LAN (requires print_host to be set)
-        m_printhost_test_btn->Enable((!is_ultimaker_cloud && !m_config->opt_string("print_host").empty()) || is_ultimaker_cloud);
-        
-        m_printhost_browse_btn->Show(host->has_auto_discovery());
-        m_printhost_logout_btn->Show(host->is_logged_in());
+    if (!host)
+        return;
+
+    const auto opt = m_config->option<ConfigOptionEnum<PrintHostType>>("host_type");
+    const bool is_ultimaker_cloud = opt && opt->value == htUltiMaker;
+    const bool has_host = !current_print_host_value().empty();
+
+    if (m_printhost_test_btn != nullptr) {
+        m_printhost_test_btn->Show();
+        m_printhost_test_btn->Enable(host->can_test() && (is_ultimaker_cloud || has_host));
         m_printhost_test_btn->SetLabel(host->is_cloud() ? _L("Login/Test") : _L("Test"));
     }
+
+    if (m_printhost_browse_btn != nullptr)
+        m_printhost_browse_btn->Show(!is_ultimaker_cloud && host->has_auto_discovery());
+
+    if (m_printhost_logout_btn != nullptr)
+        m_printhost_logout_btn->Show(host->is_logged_in());
 }
 
 void PhysicalPrinterDialog::update_preset_input() {
@@ -684,6 +736,10 @@ void PhysicalPrinterDialog::update(bool printer_change)
                 m_optgroup->sizer->Layout();
             }
         }
+        if (m_ultimaker_lan_note_widget) {
+            if (wxSizer* note_sizer = m_ultimaker_lan_note_widget->GetContainingSizer(); note_sizer != nullptr)
+                note_sizer->ShowItems(opt->value == htUltiMakerLAN);
+        }
 
         if (opt->value == htPrusaLink) { // PrusaConnect does NOT allow http digest
             m_optgroup->show_field("printhost_authorization_type");
@@ -795,10 +851,7 @@ void PhysicalPrinterDialog::update(bool printer_change)
                 m_optgroup->hide_field("printhost_user");     // Not needed for LAN
                 m_optgroup->hide_field("printhost_password"); // Not needed for LAN
 
-                // Show test button, hide browse/logout
-                if (m_printhost_browse_btn) {
-                    m_printhost_browse_btn->Hide();
-                }
+                // Show test button, keep discovery available, hide logout
                 if (m_printhost_test_btn) {
                     m_printhost_test_btn->Show();
                     m_printhost_test_btn->SetLabel(_L("Test"));
@@ -853,6 +906,7 @@ void PhysicalPrinterDialog::update(bool printer_change)
     update_preset_input();
 
     update_printhost_buttons();
+    update_webui();
 
     this->SetSize(this->GetBestSize());
     this->Layout();
@@ -911,6 +965,26 @@ void PhysicalPrinterDialog::update_printer_agent_type()
             return;
         }
     }
+}
+
+std::string PhysicalPrinterDialog::current_print_host_value() const
+{
+    if (m_optgroup != nullptr) {
+        if (Field* printhost_field = m_optgroup->get_field("print_host"); printhost_field != nullptr) {
+            if (auto* text_field = dynamic_cast<TextCtrl*>(printhost_field); text_field != nullptr) {
+                if (wxTextCtrl* text_ctrl = text_field->text_ctrl(); text_ctrl != nullptr) {
+                    std::string value = into_u8(text_ctrl->GetValue());
+                    boost::trim(value);
+                    if (!value.empty())
+                        return value;
+                }
+            }
+        }
+    }
+
+    std::string value = m_config->opt_string("print_host");
+    boost::trim(value);
+    return value;
 }
 
 void PhysicalPrinterDialog::update_printers()

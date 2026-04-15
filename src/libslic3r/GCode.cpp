@@ -4552,12 +4552,25 @@ LayerResult GCode::process_layer(
             break;
         }
         case CalibMode::Calib_Cornering: {
+            auto cornering_value = this->interpolate_value_across_layers(print.calib_params().start, print.calib_params().end);
+            if (m_writer.get_gcode_flavor() == gcfCheetah) {
+                // Cheetah cornering is easier to evaluate with coarse visible bands than with
+                // hundreds of tiny M215 changes across a spiral tower.
+                constexpr float cheetah_cornering_step = 2.0f; // mm/s in Orca UI units
+                if (cheetah_cornering_step > 0.0f) {
+                    const float min_value = std::min(print.calib_params().start, print.calib_params().end);
+                    const float max_value = std::max(print.calib_params().start, print.calib_params().end);
+                    cornering_value = print.calib_params().start +
+                        std::round((cornering_value - print.calib_params().start) / cheetah_cornering_step) * cheetah_cornering_step;
+                    cornering_value = std::max(min_value, std::min(max_value, cornering_value));
+                }
+            }
             if (m_writer.get_gcode_flavor() == gcfMarlinFirmware &&
                 !m_config.machine_max_junction_deviation.values.empty() &&
                 m_config.machine_max_junction_deviation.values.front() > 0) {
-                gcode += writer().set_junction_deviation(this->interpolate_value_across_layers(print.calib_params().start, print.calib_params().end));
+                gcode += writer().set_junction_deviation(cornering_value);
             } else {
-                gcode += writer().set_jerk_xy(this->interpolate_value_across_layers(print.calib_params().start, print.calib_params().end));
+                gcode += writer().set_jerk_xy(cornering_value);
             }
             break;
         }

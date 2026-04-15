@@ -41,9 +41,11 @@ class PhysicalPrinterDialog : public DPIDialog
     wxTextCtrl*         m_input_ctrl                        {nullptr};
     Button*             btnOK                               {nullptr};
     wxStaticText*      m_cafile_hint_widget                {nullptr};
+    wxStaticText*      m_ultimaker_lan_note_widget         {nullptr};
 
     void build_printhost_settings(ConfigOptionsGroup* optgroup);
     void OnOK(wxEvent& event);
+    std::string current_print_host_value() const;
 
 public:
     PhysicalPrinterDialog(wxWindow* parent);

@@ -4109,7 +4109,10 @@ void PrintConfigDef::init_fff_params()
     def->label = L("Emit limits to G-code");
     def->category = L("Machine limits");
     def->tooltip  = L("If enabled, the machine limits will be emitted to G-code file.\nThis option will be ignored if the G-code flavor is "
-                       "set to Klipper.");
+                       "set to Klipper.\n"
+                       "For Cheetah, Orca emits the supported startup limits only: M204 acceleration and M215 XY jerk.\n"
+                       "Maximum speed limits remain available for validation and clamping, but are not emitted because Cheetah does not use "
+                       "Marlin-style M201/M203 machine-limit commands.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
