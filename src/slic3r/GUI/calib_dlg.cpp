@@ -112,6 +112,7 @@ PA_Calibration_Dlg::PA_Calibration_Dlg(wxWindow* parent, wxWindowID id, Plater* 
     SetBackgroundColour(*wxWHITE); // make sure background color set for dialog
     SetForegroundColour(wxColour("#363636"));
     SetFont(Label::Body_14);
+    const bool pa_calibration_supported = !current_printer_is_cheetah();
 
     wxBoxSizer* v_sizer = new wxBoxSizer(wxVERTICAL);
     SetSizer(v_sizer);
@@ -214,6 +215,19 @@ PA_Calibration_Dlg::PA_Calibration_Dlg(wxWindow* parent, wxWindowID id, Plater* 
     v_sizer->Add(settings_sizer, 0, wxTOP | wxRIGHT | wxLEFT | wxEXPAND, FromDIP(10));
     v_sizer->AddSpacer(FromDIP(5));
 
+    if (!pa_calibration_supported) {
+        auto note_text = new wxStaticText(
+            this,
+            wxID_ANY,
+            _L("Cheetah detected: OrcaSlicer PA calibration tests are currently not reliable for this firmware.\nUse normal print comparisons and the Cornering test instead."),
+            wxDefaultPosition,
+            wxDefaultSize,
+            wxALIGN_LEFT);
+        note_text->SetForegroundColour(wxColour(128, 128, 128));
+        note_text->Wrap(FromDIP(320));
+        v_sizer->Add(note_text, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, FromDIP(12));
+    }
+
     auto dlg_btns = new DialogButtons(this, {"OK"});
 
     auto bottom_sizer = new wxBoxSizer(wxHORIZONTAL);
@@ -223,7 +237,12 @@ PA_Calibration_Dlg::PA_Calibration_Dlg(wxWindow* parent, wxWindowID id, Plater* 
     bottom_sizer->Add(dlg_btns, 0, wxEXPAND);
     v_sizer->Add(bottom_sizer, 0, wxEXPAND);
 
-    dlg_btns->GetOK()->Bind(wxEVT_BUTTON, &PA_Calibration_Dlg::on_start, this);
+    if (pa_calibration_supported) {
+        dlg_btns->GetOK()->Bind(wxEVT_BUTTON, &PA_Calibration_Dlg::on_start, this);
+    } else {
+        dlg_btns->GetOK()->SetLabel(_L("Close"));
+        dlg_btns->GetOK()->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { EndModal(wxID_CANCEL); });
+    }
 
     PA_Calibration_Dlg::reset_params();
 

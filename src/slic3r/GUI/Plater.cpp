@@ -12385,6 +12385,17 @@ void Plater::add_model(bool imperial_units, std::string fname)
 
 void Plater::calib_pa(const Calib_Params& params)
 {
+    const auto* gcode_flavor_option = wxGetApp().preset_bundle->printers.get_edited_preset().config.option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor");
+    if (gcode_flavor_option != nullptr && gcode_flavor_option->value == GCodeFlavor::gcfCheetah) {
+        MessageDialog(
+            this,
+            _L("PA calibration tests are currently not reliable for Cheetah firmware.\nUse normal print comparisons and the Cornering test instead."),
+            _L("PA Calibration Unsupported"),
+            wxICON_WARNING | wxOK)
+            .ShowModal();
+        return;
+    }
+
     const auto calib_pa_name = wxString::Format(L"Pressure Advance Test");
     new_project(false, false, calib_pa_name);
     wxGetApp().mainframe->select_tab(size_t(MainFrame::tp3DEditor));
@@ -13304,7 +13315,28 @@ void Plater::Calib_Cornering(const Calib_Params& params)
     print_config->set_key_value("spiral_mode", new ConfigOptionBool(!cheetah_firmware));
     print_config->set_key_value("spiral_mode_smooth", new ConfigOptionBool(false));
     print_config->set_key_value("bottom_surface_pattern", new ConfigOptionEnum<InfillPattern>(ipRectilinear));
-    if (!cheetah_firmware) {
+    if (cheetah_firmware) {
+        const auto apply_min_float = [print_config](const char* key, double min_value) {
+            const auto* option = print_config->option<ConfigOptionFloat>(key);
+            const double current_value = option ? option->value : 0.0;
+            if (current_value < min_value)
+                print_config->set_key_value(key, new ConfigOptionFloat(min_value));
+        };
+
+        // Keep the Cheetah test in the same ballpark as Cura's normal-print motion profile,
+        // but avoid slow inherited wall speeds that make the calibration drag on.
+        apply_min_float("initial_layer_speed", 30.0);
+        apply_min_float("outer_wall_speed", 70.0);
+        apply_min_float("inner_wall_speed", 70.0);
+        apply_min_float("top_surface_speed", 70.0);
+        apply_min_float("internal_solid_infill_speed", 70.0);
+        apply_min_float("sparse_infill_speed", 70.0);
+        apply_min_float("travel_speed", 150.0);
+        apply_min_float("default_acceleration", 2000.0);
+        apply_min_float("outer_wall_acceleration", 2000.0);
+        apply_min_float("inner_wall_acceleration", 2000.0);
+        apply_min_float("top_surface_acceleration", 2000.0);
+    } else {
         print_config->set_key_value("outer_wall_speed", new ConfigOptionFloat(200));
         print_config->set_key_value("default_acceleration", new ConfigOptionFloat(2000));
         print_config->set_key_value("outer_wall_acceleration", new ConfigOptionFloat(2000));
