@@ -13258,6 +13258,8 @@ void Plater::Calib_Cornering(const Calib_Params& params)
     auto print_config = &wxGetApp().preset_bundle->prints.get_edited_preset().config;
     auto filament_config = &wxGetApp().preset_bundle->filaments.get_edited_preset().config;
     auto printer_config  = &wxGetApp().preset_bundle->printers.get_edited_preset().config;
+    const auto gcode_flavor_option = printer_config->option<ConfigOptionEnum<GCodeFlavor>>("gcode_flavor");
+    const bool cheetah_firmware = gcode_flavor_option && gcode_flavor_option->value == GCodeFlavor::gcfCheetah;
 
     if (has_junction_deviation(printer_config)) {
         printer_config->set_key_value("machine_max_junction_deviation", new ConfigOptionFloats{params.end});
@@ -13265,7 +13267,19 @@ void Plater::Calib_Cornering(const Calib_Params& params)
     } else {
         printer_config->set_key_value("machine_max_jerk_x", new ConfigOptionFloats{params.end});
         printer_config->set_key_value("machine_max_jerk_y", new ConfigOptionFloats{params.end});
-        print_config->set_key_value("default_jerk", new ConfigOptionFloat(0));
+        if (cheetah_firmware) {
+            const double high_cornering_value = std::max(params.start, params.end);
+            // Keep travel/default cornering high for Cheetah and sweep only the outer wall value.
+            print_config->set_key_value("default_jerk", new ConfigOptionFloat(high_cornering_value));
+            print_config->set_key_value("travel_jerk", new ConfigOptionFloat(high_cornering_value));
+            print_config->set_key_value("inner_wall_jerk", new ConfigOptionFloat(high_cornering_value));
+            print_config->set_key_value("top_surface_jerk", new ConfigOptionFloat(high_cornering_value));
+            print_config->set_key_value("infill_jerk", new ConfigOptionFloat(high_cornering_value));
+            print_config->set_key_value("outer_wall_jerk", new ConfigOptionFloat(params.start));
+            print_config->set_key_value("initial_layer_jerk", new ConfigOptionFloat(0.0));
+        } else {
+            print_config->set_key_value("default_jerk", new ConfigOptionFloat(0));
+        }
     }
 
     if (!filament_config->option<ConfigOptionBools>("enable_pressure_advance")->get_at(0)) {
@@ -13286,12 +13300,15 @@ void Plater::Calib_Cornering(const Calib_Params& params)
     print_config->set_key_value("bottom_shell_layers", new ConfigOptionInt(1));
     print_config->set_key_value("sparse_infill_density", new ConfigOptionPercent(0));
     print_config->set_key_value("detect_thin_wall", new ConfigOptionBool(false));
-    print_config->set_key_value("spiral_mode", new ConfigOptionBool(true));
+    // Cheetah cornering needs discrete perimeter transitions, not spiral-vase smoothing.
+    print_config->set_key_value("spiral_mode", new ConfigOptionBool(!cheetah_firmware));
     print_config->set_key_value("spiral_mode_smooth", new ConfigOptionBool(false));
     print_config->set_key_value("bottom_surface_pattern", new ConfigOptionEnum<InfillPattern>(ipRectilinear));
-    print_config->set_key_value("outer_wall_speed", new ConfigOptionFloat(200));
-    print_config->set_key_value("default_acceleration", new ConfigOptionFloat(2000));
-    print_config->set_key_value("outer_wall_acceleration", new ConfigOptionFloat(2000));
+    if (!cheetah_firmware) {
+        print_config->set_key_value("outer_wall_speed", new ConfigOptionFloat(200));
+        print_config->set_key_value("default_acceleration", new ConfigOptionFloat(2000));
+        print_config->set_key_value("outer_wall_acceleration", new ConfigOptionFloat(2000));
+    }
     model().objects[0]->config.set_key_value("brim_type", new ConfigOptionEnum<BrimType>(btOuterOnly));
     model().objects[0]->config.set_key_value("brim_width", new ConfigOptionFloat(3.0));
     model().objects[0]->config.set_key_value("brim_object_gap", new ConfigOptionFloat(0.0));

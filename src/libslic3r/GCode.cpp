@@ -4552,19 +4552,48 @@ LayerResult GCode::process_layer(
             break;
         }
         case CalibMode::Calib_Cornering: {
-            auto cornering_value = this->interpolate_value_across_layers(print.calib_params().start, print.calib_params().end);
+            const auto interpolate_cornering_for_layer = [this, &print](int layer_index) {
+                if (layer_index <= 1 || m_layer_count <= 3)
+                    return static_cast<float>(print.calib_params().start);
+
+                float ratio = (layer_index - 2.0f) / (m_layer_count - 3.0f);
+                ratio = std::max(0.0f, std::min(1.0f, ratio));
+                return static_cast<float>(print.calib_params().start + ratio * (print.calib_params().end - print.calib_params().start));
+            };
+
+            auto cornering_value = interpolate_cornering_for_layer(m_layer_index);
             if (m_writer.get_gcode_flavor() == gcfCheetah) {
                 // Cheetah cornering is easier to evaluate with coarse visible bands than with
-                // hundreds of tiny M215 changes across a spiral tower.
+                // hundreds of tiny M215 changes across a spiral tower. For the actual toolpath,
+                // keep travel/default cornering high and sweep only the outer wall behavior.
                 constexpr float cheetah_cornering_step = 2.0f; // mm/s in Orca UI units
-                if (cheetah_cornering_step > 0.0f) {
-                    const float min_value = std::min(print.calib_params().start, print.calib_params().end);
-                    const float max_value = std::max(print.calib_params().start, print.calib_params().end);
-                    cornering_value = print.calib_params().start +
-                        std::round((cornering_value - print.calib_params().start) / cheetah_cornering_step) * cheetah_cornering_step;
-                    cornering_value = std::max(min_value, std::min(max_value, cornering_value));
-                }
+                const auto quantize_cheetah_cornering = [&print, cheetah_cornering_step](float value) {
+                    if (cheetah_cornering_step <= 0.0f)
+                        return value;
+
+                    const float start_value = static_cast<float>(print.calib_params().start);
+                    const float min_value = std::min(static_cast<float>(print.calib_params().start), static_cast<float>(print.calib_params().end));
+                    const float max_value = std::max(static_cast<float>(print.calib_params().start), static_cast<float>(print.calib_params().end));
+                    value = start_value + std::round((value - start_value) / cheetah_cornering_step) * cheetah_cornering_step;
+                    return std::max(min_value, std::min(max_value, value));
+                };
+
+                const float previous_cornering_value = quantize_cheetah_cornering(interpolate_cornering_for_layer(std::max(1, m_layer_index - 1)));
+                const float high_cornering_value = std::max(static_cast<float>(print.calib_params().start), static_cast<float>(print.calib_params().end));
+                cornering_value = quantize_cheetah_cornering(cornering_value);
+
+                if (m_layer_index > 1 && !is_approx(cornering_value, previous_cornering_value))
+                    gcode += "M400 ; flush motion buffer before Cheetah cornering band change\n";
+
+                m_calib_config.set_key_value("default_jerk", new ConfigOptionFloat(high_cornering_value));
+                m_calib_config.set_key_value("travel_jerk", new ConfigOptionFloat(high_cornering_value));
+                m_calib_config.set_key_value("inner_wall_jerk", new ConfigOptionFloat(high_cornering_value));
+                m_calib_config.set_key_value("top_surface_jerk", new ConfigOptionFloat(high_cornering_value));
+                m_calib_config.set_key_value("infill_jerk", new ConfigOptionFloat(high_cornering_value));
+                m_calib_config.set_key_value("outer_wall_jerk", new ConfigOptionFloat(cornering_value));
+                break;
             }
+
             if (m_writer.get_gcode_flavor() == gcfMarlinFirmware &&
                 !m_config.machine_max_junction_deviation.values.empty() &&
                 m_config.machine_max_junction_deviation.values.front() > 0) {

@@ -1367,7 +1367,7 @@ Cornering_Test_Dlg::Cornering_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* 
             units_str = "mm";
         } else if (cheetah_firmware) {
             // Cheetah cornering is tuned through M215 X/Y, which Orca maps from jerk values in mm/s.
-            start_value_str = wxString::Format("%.3f", 4.0);
+            start_value_str = wxString::Format("%.3f", 2.0);
             end_value_str   = wxString::Format("%.3f", 20.0);
             units_str = "mm/s";
         } else {
@@ -1405,7 +1405,7 @@ Cornering_Test_Dlg::Cornering_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* 
 
     // Add note about cornering based on GCode Flavor
     wxString note_msg = cheetah_firmware
-        ? _L("Cheetah uses M215 X/Y for cornering. Lower values slow more for corners; higher values carry more speed but can worsen ringing or overshoot.")
+        ? _L("Cheetah uses M215 X/Y for cornering. This test sweeps outer-wall cornering while keeping travel/default cornering high so band-to-band corner changes are easier to see.")
         : _L("Note: Lower values = sharper corners but slower speeds.");
     auto note_text = new wxStaticText(this, wxID_ANY, note_msg, wxDefaultPosition, wxDefaultSize, wxALIGN_LEFT);
     note_text->SetForegroundColour(wxColour(128, 128, 128));
@@ -1429,7 +1429,7 @@ Cornering_Test_Dlg::Cornering_Test_Dlg(wxWindow* parent, wxWindowID id, Plater* 
                 note_msg_2 += _L("RepRap detected: Jerk in mm/s.\nOrcaSlicer will convert the values to mm/min when necessary.");
                 break;
             case GCodeFlavor::gcfCheetah:
-                note_msg_2 += _L("Cheetah detected: OrcaSlicer sweeps XY jerk in mm/s and converts it to M215 X/Y.\nSCV-V2 is the recommended model for corner-quality comparisons.");
+                note_msg_2 += _L("Cheetah detected: OrcaSlicer sweeps outer-wall XY cornering in mm/s and converts it to M215 X/Y.\nTravel/default cornering stays high to better match real Cheetah motion.\nSCV-V2 is the recommended model for corner-quality comparisons.");
                 break;
             default:
                 break;
