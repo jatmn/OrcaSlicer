@@ -3,8 +3,6 @@
 
 #include "PrintHost.hpp"
 #include "slic3r/GUI/Jobs/OAuthJob.hpp"
-#include <chrono>
-#include <optional>
 
 namespace Slic3r {
 
@@ -14,29 +12,14 @@ class Http;
 class UltiMaker : public PrintHost
 {
     std::string m_host{"https://api.ultimaker.com"};
-    std::string m_client_id{"um----------------------------ultimaker_cura"};
     std::string m_oauth_cred_file;
     mutable std::map<std::string, std::string> m_cred;
-    
-    // Token expiration tracking
-    mutable std::chrono::system_clock::time_point m_token_expires_at{};
-    
-    // Time before expiry to trigger proactive refresh (1 minute, matching Cura)
-    static constexpr std::chrono::seconds TOKEN_REFRESH_SKEW{60};
-    
-    // Retry configuration for token refresh (matching Cura's behavior)
-    static constexpr int TOKEN_REFRESH_MAX_RETRIES = 15;
-    static constexpr std::chrono::seconds TOKEN_REFRESH_RETRY_DELAY{1};
-    
+
     // Keyring account name for secure storage of refresh token
     static constexpr const char* KEYRING_ACCOUNT = "UltiMaker_RefreshToken";
 
     void load_oauth_credential();
     bool refresh_token() const;
-    bool ensure_token_fresh(const std::string& reason) const;
-    
-    // JWT token validation - extracts expiry from access token
-    static std::optional<std::chrono::system_clock::time_point> parse_jwt_expiry(const std::string& token);
 
     bool do_api_call(std::function<Http(bool /*is_retry*/)>                                                           build_request,
                      std::function<bool(std::string /* body */, unsigned /* http_status */)>                          on_complete,

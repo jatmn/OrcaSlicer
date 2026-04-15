@@ -23,6 +23,12 @@
 
 namespace Slic3r {
 
+namespace {
+
+constexpr unsigned DISCOVERY_PASS_TIMEOUT_SECONDS = 2;
+constexpr unsigned DISCOVERY_PASS_RETRIES         = 1;
+
+}
 
 class BonjourReplyEvent : public wxEvent
 {
@@ -94,7 +100,11 @@ UltiMakerDialog::UltiMakerDialog(wxWindow *parent, Slic3r::PrinterTechnology tec
 	Bind(EVT_ULTIMAKER_REPLY, &UltiMakerDialog::on_reply, this);
 
 	Bind(EVT_ULTIMAKER_COMPLETE, [this](wxCommandEvent &) {
-		this->timer_state = 0;
+		if (this->discovery_active) {
+			this->start_lookup();
+		} else {
+			this->timer_state = 0;
+		}
 	});
 
 	Bind(wxEVT_TIMER, &UltiMakerDialog::on_timer, this);
@@ -112,6 +122,7 @@ bool UltiMakerDialog::show_and_lookup()
 
 	timer->Stop();
 	timer->SetOwner(this);
+	discovery_active = true;
 	timer_state = 1;
 	timer->Start(1000);
     on_timer_process();
@@ -120,39 +131,19 @@ bool UltiMakerDialog::show_and_lookup()
 	// and for that it needs a valid pointer to it (mandated by the wxWidgets API).
 	// Here we put the pointer under a shared_ptr and protect it by a mutex,
 	// so that both threads can access it safely.
-	auto dguard = std::make_shared<LifetimeGuard>(this);
-
-	// UltiMaker-specific TXT keys: type, model, version, firmware
-	Bonjour::TxtKeys txt_keys { "type", "model", "version", "firmware" };
-
-    bonjour = Bonjour("_ultimaker._tcp.local.")
-		.set_txt_keys(std::move(txt_keys))
-		.set_retries(3)
-		.set_timeout(4)
-		.on_reply([dguard](BonjourReply &&reply) {
-			std::lock_guard<std::mutex> lock_guard(dguard->mutex);
-			auto dialog = dguard->dialog;
-			if (dialog != nullptr) {
-				auto evt = new BonjourReplyEvent(EVT_ULTIMAKER_REPLY, dialog->GetId(), std::move(reply));
-				wxQueueEvent(dialog, evt);
-			}
-		})
-		.on_complete([dguard]() {
-			std::lock_guard<std::mutex> lock_guard(dguard->mutex);
-			auto dialog = dguard->dialog;
-			if (dialog != nullptr) {
-				auto evt = new wxCommandEvent(EVT_ULTIMAKER_COMPLETE, dialog->GetId());
-				wxQueueEvent(dialog, evt);
-			}
-		})
-		.lookup();
+	lifetime_guard = std::make_shared<LifetimeGuard>(this);
+	start_lookup();
 
 	bool res = ShowModal() == wxID_OK && list->GetFirstSelected() >= 0;
 	{
+		discovery_active = false;
+		bonjour.reset();
+		timer->Stop();
 		// Tell the background thread the dialog is going away...
-		std::lock_guard<std::mutex> lock_guard(dguard->mutex);
-		dguard->dialog = nullptr;
+		std::lock_guard<std::mutex> lock_guard(lifetime_guard->mutex);
+		lifetime_guard->dialog = nullptr;
 	}
+	lifetime_guard.reset();
 	return res;
 }
 
@@ -160,6 +151,40 @@ wxString UltiMakerDialog::get_selected() const
 {
 	auto sel = list->GetFirstSelected();
 	return sel >= 0 ? list->GetItemText(sel) : wxString();
+}
+
+void UltiMakerDialog::start_lookup()
+{
+	if (!discovery_active || !lifetime_guard) {
+		return;
+	}
+
+	// Cura keeps network discovery running in the background. Orca's Bonjour lookup
+	// is request/timeout based, so keep the dialog persistent by continuously running
+	// short discovery passes while the picker remains open.
+	Bonjour::TxtKeys txt_keys { "type", "model", "version", "firmware" };
+
+	bonjour = Bonjour("_ultimaker._tcp.local.")
+		.set_txt_keys(std::move(txt_keys))
+		.set_retries(DISCOVERY_PASS_RETRIES)
+		.set_timeout(DISCOVERY_PASS_TIMEOUT_SECONDS)
+		.on_reply([guard = lifetime_guard](BonjourReply &&reply) {
+			std::lock_guard<std::mutex> lock_guard(guard->mutex);
+			auto dialog = guard->dialog;
+			if (dialog != nullptr) {
+				auto evt = new BonjourReplyEvent(EVT_ULTIMAKER_REPLY, dialog->GetId(), std::move(reply));
+				wxQueueEvent(dialog, evt);
+			}
+		})
+		.on_complete([guard = lifetime_guard]() {
+			std::lock_guard<std::mutex> lock_guard(guard->mutex);
+			auto dialog = guard->dialog;
+			if (dialog != nullptr) {
+				auto evt = new wxCommandEvent(EVT_ULTIMAKER_COMPLETE, dialog->GetId());
+				wxQueueEvent(dialog, evt);
+			}
+		})
+		.lookup();
 }
 
 
@@ -198,7 +223,7 @@ void UltiMakerDialog::on_reply(BonjourReplyEvent &e)
 	// The whole list is recreated so that we benefit from it already being sorted in the set.
 	// (And also because wxListView's sorting API is bananas.)
 	for (const auto &reply : *replies) {
-		auto item = list->InsertItem(0, reply.full_address);
+		auto item = list->InsertItem(0, reply.ip.to_string());
 		list->SetItem(item, 1, reply.hostname);
 		list->SetItem(item, 2, reply.service_name);
 
@@ -248,7 +273,7 @@ void UltiMakerDialog::on_timer_process()
 {
     const auto search_str = _L("Searching for UltiMaker printers");
 
-    if (timer_state > 0) {
+    if (discovery_active && timer_state > 0) {
         const std::string dots(timer_state, '.');
         label->SetLabel(search_str + dots);
         timer_state = (timer_state) % 3 + 1;

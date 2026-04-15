@@ -40,7 +40,6 @@
 #include "OAuthDialog.hpp"
 #include "SimplyPrint.hpp"
 #include "UltiMaker.hpp"
-#include "UltiMakerLAN.hpp"
 #include "UltiMakerDialog.hpp"
 
 namespace Slic3r {
@@ -69,6 +68,45 @@ std::string normalized_webui_url(std::string host)
     if (!boost::algorithm::ends_with(host, "/"))
         host += "/";
     return host;
+}
+
+std::string sanitize_ultimaker_lan_host(std::string host)
+{
+    boost::trim(host);
+    if (host.empty())
+        return {};
+
+    const size_t scheme_pos      = host.find("://");
+    const size_t authority_start = scheme_pos == std::string::npos ? 0 : scheme_pos + 3;
+    const size_t suffix_pos      = host.find_first_of("/?#", authority_start);
+    if (suffix_pos != std::string::npos)
+        host.erase(suffix_pos);
+
+    while (!host.empty() && host.back() == '/')
+        host.pop_back();
+
+    return host;
+}
+
+bool is_ultimaker_cloud_url(const wxString& value)
+{
+    return value == L"https://digitalfactory.ultimaker.com" || value == L"https://digitalfactory.ultimaker.com/app";
+}
+
+template <typename TOAuthHost>
+bool run_cloud_oauth_dialog(wxWindow* parent, TOAuthHost* host, wxString& msg)
+{
+    OAuthDialog dlg(parent, host->get_oauth_params());
+    dlg.ShowModal();
+
+    const auto& result = dlg.get_result();
+    if (result.success) {
+        host->save_oauth_credential(result);
+        return true;
+    }
+
+    msg = from_u8(result.error_message);
+    return false;
 }
 
 } // namespace
@@ -283,27 +321,9 @@ void PhysicalPrinterDialog::build_printhost_settings(ConfigOptionsGroup* m_optgr
 
                 if (!result && host->is_cloud()) {
                     if (const auto h = dynamic_cast<SimplyPrint*>(host.get()); h) {
-                        OAuthDialog dlg(this, h->get_oauth_params());
-                        dlg.ShowModal();
-
-                        const auto& r = dlg.get_result();
-                        result = r.success;
-                        if (r.success) {
-                            h->save_oauth_credential(r);
-                        } else {
-                            msg = r.error_message;
-                        }
+                        result = run_cloud_oauth_dialog(this, h, msg);
                     } else if (const auto h = dynamic_cast<UltiMaker*>(host.get()); h) {
-                        OAuthDialog dlg(this, h->get_oauth_params());
-                        dlg.ShowModal();
-
-                        const auto& r = dlg.get_result();
-                        result = r.success;
-                        if (r.success) {
-                            h->save_oauth_credential(r);
-                        } else {
-                            msg = r.error_message;
-                        }
+                        result = run_cloud_oauth_dialog(this, h, msg);
                     } else {
                         PrinterCloudAuthDialog dlg(this->GetParent(), host.get());
                         dlg.ShowModal();
@@ -573,8 +593,8 @@ void PhysicalPrinterDialog::update_webui()
     } else if (opt->value == htUltiMaker) {
         v = "https://digitalfactory.ultimaker.com";
     } else if (opt->value == htUltiMakerLAN) {
-        v = normalized_webui_url(current_print_host_value());
-    } else if (m_config->opt_string("print_host_webui") == "https://digitalfactory.ultimaker.com") {
+        v = normalized_webui_url(sanitize_ultimaker_lan_host(current_print_host_value()));
+    } else if (is_ultimaker_cloud_url(from_u8(m_config->opt_string("print_host_webui")))) {
         v.clear();
     } else {
         return;
@@ -712,7 +732,7 @@ void PhysicalPrinterDialog::update(bool printer_change)
                 if (current_host == L"https://connect.prusa3d.com" ||
                     current_host == L"https://app.obico.io" ||
                     current_host == "https://simplyprint.io" || current_host == "https://simplyprint.io/panel" ||
-                    current_host == "https://digitalfactory.ultimaker.com" || current_host == "https://digitalfactory.ultimaker.com/app") {
+                    is_ultimaker_cloud_url(current_host)) {
                     temp->SetValue(wxString());
                     m_config->opt_string("print_host") = "";
                 }

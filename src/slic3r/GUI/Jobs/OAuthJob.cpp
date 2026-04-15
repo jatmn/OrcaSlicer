@@ -41,7 +41,9 @@ void OAuthJob::parse_token_response(const std::string& body, bool error, OAuthRe
             BOOST_LOG_TRIVIAL(error) << "UltiMaker OAuth: Token request returned error: " << error_str << " - " << result.error_message;
         } else if (j.contains("access_token")) {
             j.at("access_token").get_to(result.access_token);
-            j.at("refresh_token").get_to(result.refresh_token);
+            if (j.contains("refresh_token")) {
+                j.at("refresh_token").get_to(result.refresh_token);
+            }
             // Capture token expiration time if provided
             if (j.contains("expires_in")) {
                 j.at("expires_in").get_to(result.expires_in);

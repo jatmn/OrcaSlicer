@@ -22,6 +22,7 @@ namespace Slic3r {
 class Bonjour;
 class BonjourReplyEvent;
 class ReplySet;
+struct LifetimeGuard;
 
 
 class UltiMakerDialog: public wxDialog
@@ -41,10 +42,13 @@ private:
 	std::unique_ptr<ReplySet> replies;
 	wxStaticText *label;
 	std::shared_ptr<Bonjour> bonjour;
+	std::shared_ptr<LifetimeGuard> lifetime_guard;
 	std::unique_ptr<wxTimer> timer;
 	unsigned timer_state;
+	bool discovery_active { false };
 	Slic3r::PrinterTechnology tech;
 
+	void start_lookup();
 	virtual void on_reply(BonjourReplyEvent &);
 	void on_timer(wxTimerEvent &);
     void on_timer_process();
