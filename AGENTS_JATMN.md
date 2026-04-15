@@ -1,6 +1,6 @@
 # OrcaSlicer Agent Guide (jatmn's Fork)
 
-> **Last Updated:** 2026-04-14
+> **Last Updated:** 2026-04-15
 >
 > **Change Tracking:** This file tracks implementation status specific to jatmn's fork. See the [Change Log](#change-log) section at the end for revision history.
 > When older sections conflict with the current-status audit below, the current-status audit wins.
@@ -9,7 +9,7 @@
 
 This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a 3D printer slicer based on BambuStudio.
 
-## Current Status Audit (2026-04-14)
+## Current Status Audit (2026-04-15)
 
 This section is the current high-level truth for the fork and should be used as the starting point when preparing PRs or resuming work.
 
@@ -21,14 +21,18 @@ This section is the current high-level truth for the fork and should be used as 
 
 ### Local-Only Status (`HEAD` not yet on `origin/main`)
 
-- Local head currently includes six additional commits on top of the public fork:
+- Local head currently includes nine additional commits on top of the public fork:
   - `e2288c93f0` Fix UFP container writer injecting retraction at wrong stop marker
   - `9ab88a79d7` Improve Cheetah calibration flow and top bar hit testing
   - `131c2d99e7` Trim verbose Cheetah and UltiMaker logging
   - `a72aeae8ff` Tighten Cheetah motion and preview handling
   - `8b124c6514` Clean up container writers and print core labels
   - `de97547bc2` Improve Cheetah cornering tests and UltiMaker host UX
-- These local-only commits materially improve Cheetah calibration usability, preview accuracy, Physical Printer dialog behavior, container writer cleanup, and some Prepare-tab UI polish.
+  - `04d320a4cc` Refresh AGENTS guide for current UltiMaker work
+  - `021e791a97` Add Cheetah-specific cornering calibration behavior
+  - `87634f0ff6` Refine Cheetah calibration behavior
+- Working tree currently also contains an uncommitted UltiMaker root-manifest change that removes incomplete models from the setup/testing surface by editing `resources/profiles/UltiMaker.json`.
+- These local-only commits materially improve Cheetah calibration usability, preview accuracy, Physical Printer dialog behavior, container writer cleanup, Prepare-tab UI polish, and AGENTS coverage.
 
 ### Active Workstreams
 
@@ -36,6 +40,7 @@ This section is the current high-level truth for the fork and should be used as 
 - UltiMaker default machine, process, and material values are still being actively tuned.
 - Roaming-profile `- Copy` presets are currently the working area for tuned defaults before backporting them into source-controlled profiles.
 - Dual-extrusion validation on UltiMaker S/F series is still incomplete even though the profile and container groundwork exists.
+- UltiMaker setup-wizard / vendor-manifest behavior has a newly documented dependency rule: incomplete model removal must be done consistently across all root lists in the vendor manifest or the entire vendor bundle may stop loading correctly.
 
 ### Current PR Guidance
 
@@ -479,7 +484,41 @@ Important rules for these files:
 - Machine profiles: `resources/profiles/UltiMaker/machine/`
 - Filament profiles: `resources/profiles/OrcaFilamentLibrary/filament/MakerBot/`
 - Filament profiles: `resources/profiles/OrcaFilamentLibrary/filament/UltiMaker/`
-- After copying new profiles here, rebuild the app to test changes
+- After copying new profiles here, rebuild the app to test code changes.
+- For pure profile / manifest JSON testing, a rebuild is not always required; syncing the changed JSON into the packaged build copy and roaming `system` copy is usually enough, followed by a full OrcaSlicer restart.
+
+### Critical Vendor Manifest Rule
+
+When adding or removing printer models from a vendor root manifest such as `resources/profiles/UltiMaker.json`, treat the file as a **bundle definition**, not as a setup-wizard-only list.
+
+Important dependency rules:
+
+- `machine_model_list` defines the vendor's valid printer models / variants for preset loading.
+- `machine_list` contains concrete machine presets that must reference only models still present in `machine_model_list`.
+- `process_list` often contains concrete process presets tied to the removed models and should be cleaned up at the same time for consistency.
+- Removing an entry from `machine_model_list` **without** also removing the dependent `machine_list` entries can invalidate the vendor bundle and make even still-listed printers disappear.
+
+UltiMaker-specific lesson learned:
+
+- Removing only `UltiMaker S3`, `UltiMaker S5`, `UltiMaker S7`, and `UltiMaker 2+ Connect` from `machine_model_list` successfully hid them from the setup wizard **but also broke all UltiMaker printer availability**, including still-listed models like `S6`.
+- The fix was to remove those incomplete models comprehensively from:
+  - `machine_model_list`
+  - `machine_list`
+  - `process_list`
+- The underlying machine / process JSON files can remain on disk if the intent is only to disable them temporarily from the shipped vendor bundle.
+
+Safe procedure for temporary model removal:
+
+1. Back up the vendor root manifest first, for example `resources/profiles/UltiMaker.json.setup_wizard_backup`.
+2. Remove the target model from `machine_model_list`.
+3. Remove all concrete `machine_list` entries whose `printer_model` points at that removed model.
+4. Remove the matching concrete `process_list` entries tied only to that removed model family.
+5. Sync the updated root manifest to:
+   - `build/OrcaSlicer/resources/profiles/<Vendor>.json`
+   - `C:\Users\<username>\AppData\Roaming\OrcaSlicer\system\<Vendor>.json`
+6. Fully restart OrcaSlicer before testing.
+
+Do **not** assume that hiding a model from the root manifest affects only the setup wizard. It directly affects vendor preset loading.
 
 ### File Copying Guidelines for Testing
 
@@ -566,6 +605,13 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 - **Profile / UI Cleanup**
   - Print core labels in Prepare were restyled to match the rest of the UI
   - Extruder/process UI consistency fixes for Cheetah and print-core selection are now reflected in the current local state
+
+### 2026-04-15
+- **UltiMaker Root Manifest Dependency Rule**
+  - Confirmed that `resources/profiles/UltiMaker.json` is not a setup-wizard-only list; it is part of the real vendor bundle definition.
+  - Confirmed that removing entries only from `machine_model_list` can invalidate the whole UltiMaker vendor bundle because `machine_list` printer presets are validated against the remaining model list.
+  - Documented the safe temporary-removal procedure: when disabling incomplete UltiMaker models, remove them consistently from `machine_model_list`, `machine_list`, and related `process_list` entries, then sync the manifest copies and restart OrcaSlicer.
+  - Current working-tree manifest change removes incomplete `S3`, `S5`, `S7`, and `2+ Connect` models from the active UltiMaker bundle for testing while leaving the underlying JSON files on disk.
 
 ### 2026-04-12 to 2026-04-13
 - **Cheetah Flavor Baseline**
