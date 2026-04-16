@@ -66,6 +66,24 @@
 
 This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a 3D printer slicer based on BambuStudio.
 
+### Executive Summary
+
+- The fork's primary focus is adding and hardening **UltiMaker**, **MakerBot**, and **Cheetah firmware** support on top of upstream OrcaSlicer.
+- The largest completed areas are:
+  - container-format export for `.ufp` and `.makerbot`
+  - UltiMaker Digital Factory upload
+  - UltiMaker LAN printing
+  - baseline UltiMaker / MakerBot profile families
+  - baseline Cheetah gcode-flavor support
+- The largest active work areas are:
+  - tuning default UltiMaker and MakerBot machine / process / material presets
+  - validating Cheetah motion and calibration behavior on real hardware
+  - validating dual-extrusion behavior on UltiMaker S/F series
+  - tightening profile compatibility and material/core association rules
+- This guide is intended to serve two purposes:
+  - a current-status record of what jatmn's fork already does
+  - an execution guide for resuming work, preparing PRs, and avoiding repeated mistakes in profiles, manifests, auth, and container-format handling
+
 ## Current Status Audit (2026-04-15)
 
 This section is the current high-level truth for the fork and should be used as the starting point when preparing PRs or resuming work.
