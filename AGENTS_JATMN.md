@@ -5,6 +5,63 @@
 > **Change Tracking:** This file tracks implementation status specific to jatmn's fork. See the [Change Log](#change-log) section at the end for revision history.
 > When older sections conflict with the current-status audit below, the current-status audit wins.
 
+## Table of Contents
+
+- [Project Context](#project-context)
+- [Current Status Audit (2026-04-15)](#current-status-audit-2026-04-15)
+  - [Public Fork Status (`origin/main`)](#public-fork-status-originmain)
+  - [Local-Only Status (`HEAD` not yet on `origin/main`)](#local-only-status-head-not-yet-on-originmain)
+  - [Active Workstreams](#active-workstreams)
+  - [Current PR Guidance](#current-pr-guidance)
+- [UltiMaker Integration Status Overview](#ultimaker-integration-status-overview)
+- [Container Format Export (.ufp and .makerbot)](#container-format-export-ufp-and-makerbot)
+  - [Status: ✅ COMPLETED (with known issues)](#status--completed-with-known-issues)
+  - [FORMAT_CONFIG_ID System](#format_config_id-system)
+  - [How It Works](#how-it-works)
+  - [Implementation Details](#implementation-details)
+  - [Known Issues](#known-issues)
+- [UltiMaker Digital Factory Integration](#ultimaker-digital-factory-integration)
+  - [Status: ✅ COMPLETED](#status--completed)
+  - [Authentication / Token Handling Notes](#authentication--token-handling-notes)
+  - [Upload Integration](#upload-integration)
+  - [Supported Features](#supported-features)
+  - [Limitations](#limitations)
+  - [UI Integration](#ui-integration)
+- [UltiMaker LAN Printing](#ultimaker-lan-printing)
+  - [Status: ✅ COMPLETED (with limitations)](#status--completed-with-limitations)
+  - [Implementation Details](#implementation-details-1)
+  - [API Reference (implemented endpoints)](#api-reference-implemented-endpoints)
+  - [Key Implementation Files](#key-implementation-files)
+  - [Testing](#testing)
+  - [Supported Printers](#supported-printers)
+  - [Limitations](#limitations-1)
+- [UltiMaker & MakerBot Printer Profiles](#ultimaker--makerbot-printer-profiles)
+  - [Status: ⚠️ IN PROGRESS](#status--in-progress)
+  - [Current Bundle / Surface Status](#current-bundle--surface-status)
+  - [Implementation Summary](#implementation-summary)
+  - [Filament Compatibility System](#filament-compatibility-system)
+  - [UltiMaker Material GUID Status](#ultimaker-material-guid-status)
+  - [Known Issues](#known-issues-1)
+  - [Implementation Files](#implementation-files)
+  - [Testing Status](#testing-status)
+  - [Reference Files](#reference-files)
+- [Development Workflow & References](#development-workflow--references)
+  - [Reference Codebases](#reference-codebases)
+  - [Important Constraints](#important-constraints)
+  - [Windows 11 Development](#windows-11-development)
+  - [Debugging & Logging](#debugging--logging)
+  - [Efficient Codebase Navigation](#efficient-codebase-navigation)
+  - [Context Management Rules](#context-management-rules)
+  - [Profile Storage Locations](#profile-storage-locations)
+  - [Roaming `- Copy` Preset Workflow](#roaming---copy-preset-workflow)
+  - [Backport Mapping Rules](#backport-mapping-rules)
+  - [Fields That Should Normally Stay Out of Source Profile Backports](#fields-that-should-normally-stay-out-of-source-profile-backports)
+  - [Profile Backport Pitfalls](#profile-backport-pitfalls)
+  - [Build Resource Sync Notes](#build-resource-sync-notes)
+  - [Critical Vendor Manifest Rule](#critical-vendor-manifest-rule)
+  - [File Copying Guidelines for Testing](#file-copying-guidelines-for-testing)
+- [Change Log](#change-log)
+
 ## Project Context
 
 This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a 3D printer slicer based on BambuStudio.
@@ -37,75 +94,17 @@ This section is the current high-level truth for the fork and should be used as 
 
 ### Current PR Guidance
 
-- Treat the fork as two layers: public fork history in `origin/main`, plus local-only commits at `HEAD`.
+- Treat the fork conceptually as two layers: public fork history in `origin/main`, plus any future local-only commits at `HEAD` when they exist.
 - Do not log upstream rebases or imported upstream SoftFever commits in this guide; only track work authored in jatmn's fork.
 - Before opening PRs, reconcile any active roaming `- Copy` presets back into source profiles intentionally rather than assuming the current user profile state is reflected in the repo.
-
-## Reference Codebases
-
-When working on Cura-related features (especially UltiMaker Digital Factory integration):
-
-- **Parent directory / Cura-main** — contains UltiMaker Cura source code. Use for reference when impersonating Cura's API behavior.
-- **Parent directory / Cura files/** — Reference `.ufp` and `.makerbot` files produced by Cura. These are **CRITICAL** for understanding the required file structure, `.json` metadata, thumbnails, and `.gcode` headers/footers inside these container formats.
-- **Parent directory / postprocessors/** — Python scripts that produce working `.ufp` and `.makerbot` files. These are **reference only** and should never be edited. They demonstrate the expected output but the implementation must be built into OrcaSlicer directly with **zero dependency on Python or these scripts**.
-- **Parent directory / Info** — Documentation on firmware, `.ufp` and `.makerbot` requirements including:
-  - UFP Functional Specification
-  - MakerBot Functional Specification
-  - Griffin Gcode file format (headers, toolpath instructions, metadata)
-  - UMF (UltiMaker Manufacturing Format) specification
-  - Cheetah migration/integration assessment
-  - OrcaSlicer profile validator documentation
-- **Parent directory / Valid postprocessed ufp makerbot files** — Valid `.ufp` and `.makerbot` files produced with Python postprocessors. These represent the **MINIMUM requirement for valid files**. Deviations from this file structure, `.json` contents, or `.gcode` header/footer regions are **not considered valid**. Includes:
-  - `UltiMaker_S6_-_Cube.ufp`
-  - `MakerBot_Sketch_Small_-_Cube.makerbot`
-  - `MakerBot_Sketch_Sprint_-_Cube.makerbot`
-- **Uranium** — https://github.com/Ultimaker/Uranium — Cura's underlying framework, useful for understanding plugin architecture and messaging.
-- **UltiMaker Digital Factory API** — https://docs.api.ultimaker.com/index.html — Always reference this for API endpoints, authentication, and expected behavior.
-
-### Important Constraints
-
-- **ALL UltiMaker Digital Factory API calls must impersonate Cura entirely** — UltiMaker Digital Factory only accepts Cura. Every header, agent-type, meta, version number, software identification, and request format must exactly match what Cura sends. Nothing else will work.
-- **Never edit Python postprocessor scripts** — they are reference only
-- **Zero external dependencies** — postprocessing must work without Python or any external scripts
-- **Do not modify Cura source code** — it is reference only
-- **Use the API docs first** — before asking questions, check the UltiMaker API documentation
-- **Local commits are fine** — see global rules for Git etiquette
-
-### Context Management Rules
-
-- **Compress frequently when searching files** — with a 20GB+ codebase and small context window, compress **every 1-2 tool calls** when doing file searches or reads. After searching 3-5 files, compress before continuing to the next batch.
-- **Todo items are the primary work unit** — if a `todowrite` list exists, each item is an independent, compressible unit. When one item is complete and verified, compress it before moving to the next.
-- **Compress closed ranges only** — only compress ranges that are fully resolved and no longer needed. Do not compress active work still in progress.
-- **Include subagent results** — compress after a `Task` (explore/general) subagent completes its findings; the subagent already has fresh context, so the raw output in the main thread is noise.
-- **Quality over brevity in summaries** — use `compress` with exhaustive summaries that preserve file paths, function names, decisions, and key findings. Raw context can be discarded once it is faithfully summarized.
-- **Batch independent compressions** — if multiple independent ranges are stale at the same time, run multiple `compress` calls in parallel rather than one large compression.
-
-### Windows 11 Development
-
-- **Primary shell is PowerShell on Windows 11** — always assume Windows paths with spaces and quote them explicitly.
-- **Native Windows tools are available** — PowerShell cmdlets, `git`, `cmake`, and fast text search tools such as `rg` are available and should be preferred when practical.
-- **Do not assume Bash/Linux semantics** — avoid Bash-specific piping, quoting, or path assumptions when documenting or scripting local development steps.
-- **Be careful with copied build resources** — some generated resource trees do not auto-refresh, so verify which directory is actually being used before assuming a rebuild picked up profile/config changes.
-
-### Debugging & Logging
-
-- **Info level logs do not appear** — only WARNING and ERROR level messages show up in the logs. Do not rely on info/log statements for debugging; use WARNING or ERROR to ensure messages are visible.
-
-### Efficient Codebase Navigation
-
-- **Narrow search scope** — limit searches to specific directories (e.g., `path: src/slic3r/GUI`) rather than broad recursive searches across the entire codebase.
-- **Use list_files first** — explore directory structure with `list_files` before doing deep searches.
-- **Batch operations efficiently** — plan searches to minimize the number of tool calls before each compression point.
-
----
 
 ## UltiMaker Integration Status Overview
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Container Format Export (.ufp) | ✅ Completed | Works for UltiMaker printers; recent fixes cover GUID/name handling, multi-material export, spaced paths, and wrong stop-marker retraction |
-| Container Format Export (.makerbot) | ✅ Completed | Sketch series path works; Method configs remain reserved; single-thumbnail path and logging cleanup landed locally |
-| Digital Factory Upload | ✅ Completed | Two-step upload with container conversion |
+| Container Format Export (.makerbot) | ✅ Completed | Sketch series path works; Method configs remain reserved; single-thumbnail path and logging cleanup are on the public fork |
+| Digital Factory Upload | ✅ Completed | Two-step upload with container conversion for both `.ufp` and `.makerbot` formats |
 | LAN Printing | ✅ Completed | Supports UltiMaker S series and Factor series; browse/discovery now uses Cura-style persistent scanning while the picker is open |
 | Cheetah G-code Flavor | ⚠️ Active Tuning | Baseline support is in; calibration, preview, UI, and motion handling are still being refined |
 | Printer Profiles | ⚠️ Active Tuning | Core/profile matrix exists; defaults are still being tuned and validated |
@@ -196,10 +195,10 @@ Upload to UltiMaker Digital Factory with container conversion is fully implement
 
 ### Upload Integration
 
-- **Two-step upload flow**: `UltiMaker::upload()` creates `.ufp` container before uploading to Digital Factory
+- **Two-step upload flow**: `UltiMaker::upload()` creates the appropriate container format before uploading to Digital Factory
 - **Process**: 
   1. Export G-code to temp file
-  2. Convert to `.ufp` container using `FormatConfig::export_to_container()`
+  2. Convert to the printer's required container format using `FormatConfig::export_to_container()`
   3. Upload container to Digital Factory via existing HTTP POST
   4. Cleanup temp files after upload
 - **Key commit**: `b69768c0dc` — UltiMaker upload: Add two-step upload flow with container format support
@@ -209,7 +208,7 @@ Upload to UltiMaker Digital Factory with container conversion is fully implement
 
 - ✅ Project folder listing and selection
 - ✅ New Project folder creation and selection
-- ✅ Upload of `.ufp` files (container format)
+- ✅ Upload of `.ufp` and `.makerbot` files through container-format conversion
 - ✅ Authentication and API integration
 
 ### Limitations
@@ -355,25 +354,27 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 
 | Material Name | GUID Status | GUID Value | Notes |
 |---------------|-------------|------------|-------|
-| UltiMaker Tough PLA | ✅ Has GUID | `2c31d5ae-a75c-4be6-83bf-377341fc6d24` | Valid GUID from Cura AnyColor profiles |
-| UltiMaker PLA | ✅ Has GUID | `5b890432-a9f1-45e4-aad7-a73995600276` | Valid GUID from Cura AnyColor profiles |
-| UltiMaker PETG | ✅ Has GUID | `91bd2402-1766-4cb0-9b21-6435e5095395` | Valid GUID from Cura AnyColor profiles |
-| UltiMaker ABS | ✅ Has GUID | `94209c78-8d4d-4866-8a60-5e1f7adb0c36` | Valid GUID from Cura AnyColor profiles |
-| UltiMaker PPS-CF | ⚠️ Missing GUID | `unknown (not available in Cura AnyColor profiles)` | GUID not available in reference profiles |
-| UltiMaker PET-CF | ⚠️ Missing GUID | `unknown (not available in Cura AnyColor profiles)` | GUID not available in reference profiles |
-| MakerBot Sketch PLA | ✅ Has GUID | `abb9c58e-1f56-48d1-bd8f-055fde3a5b56` | Valid GUID with MATERIAL_CODE:pla |
-| MakerBot Sketch Tough PLA | ✅ Has GUID | `de031137-a8ca-4a72-bd1b-17bb964033ad` | Valid GUID with MATERIAL_CODE:im-pla |
-| MakerBot Sketch Metallic PLA | ✅ Has GUID | `3fac1543-dd0c-462d-9cbc-d94137d43999` | Valid GUID with MATERIAL_CODE:metallic-pla |
+| UltiMaker Tough PLA | ✅ Has GUID | `2c31d5ae-a75c-4be6-83bf-377341fc6d24` | Present in `UltiMaker Tough PLA @base.json`; valid GUID from Cura AnyColor profiles |
+| UltiMaker PLA | ✅ Has GUID | `5b890432-a9f1-45e4-aad7-a73995600276` | Present in `UltiMaker PLA @base.json`; valid GUID from Cura AnyColor profiles |
+| UltiMaker PETG | ✅ Has GUID | `91bd2402-1766-4cb0-9b21-6435e5095395` | Present in `UltiMaker PETG @base.json`; valid GUID from Cura AnyColor profiles |
+| UltiMaker ABS | ✅ Has GUID | `94209c78-8d4d-4866-8a60-5e1f7adb0c36` | Present in `UltiMaker ABS @base.json`; valid GUID from Cura AnyColor profiles |
+| UltiMaker PPS-CF | ✅ Has GUID | `d86bf59a-9d10-4a25-99b6-2844e0bc1bfb` | Present in `UltiMaker PPS-CF @base.json` |
+| UltiMaker PET-CF | ✅ Has GUID | `f0245d40-3657-4615-b9ab-19fc043944ca` | Present in `UltiMaker PET-CF @base.json` |
+| MakerBot Sketch PLA | ✅ Has GUID | `abb9c58e-1f56-48d1-bd8f-055fde3a5b56` | Present in `MakerBot Sketch PLA @base.json`; valid GUID with `MATERIAL_CODE:pla` |
+| MakerBot Sketch Tough PLA | ✅ Has GUID | `de031137-a8ca-4a72-bd1b-17bb964033ad` | Present in `MakerBot Sketch Tough PLA @base.json`; valid GUID with `MATERIAL_CODE:im-pla` |
+| MakerBot Sketch Metallic PLA | ✅ Has GUID | `3fac1543-dd0c-462d-9cbc-d94137d43999` | Present in `MakerBot Sketch Metallic PLA @base.json`; valid GUID with `MATERIAL_CODE:metallic-pla` |
 
 **Note:** The two-pass filament search in `BackgroundSlicingProcess.cpp` will prioritize presets with MATERIAL_GUID, falling back to `filament_type` matching for materials without GUIDs.
 
 ### Known Issues
 
-**1. Printer Extruder Variant (deferred to future major project):**
-- All nozzle-specific machine profiles currently have `printer_extruder_variant: ["AA+ 0.4", "AA+ 0.4"]` regardless of actual nozzle size
-- This needs deeper analysis of UltiMaker core naming conventions and will be addressed in a dedicated profile cleanup project
+**1. Printer Extruder Variant / Core Naming Cleanup:**
+- The old nozzle-variant mismatch is fixed for the active UltiMaker S/F nozzle profiles; their `printer_extruder_variant` values now generally match the intended nozzle/core combinations.
+- Remaining cleanup is narrower now:
+  - legacy / inactive models such as `UltiMaker 2+ Connect 0.40.json` still use less specific variant naming
+  - broader UltiMaker core naming conventions still deserve a dedicated cleanup pass for consistency and long-term maintainability
 
-**2. Print Process Profiles:
+**2. Print Process Profiles:**
 - Currently exist for 0.2mm Standard but are not yet validated or updated
 - Exist only as basic templates that need selection and validation
 - **Known bug**: Changing print core size does not change possible print process selections
@@ -415,20 +416,80 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 
 ### Testing Status
 
-- ✅ **Setup Wizard**: Can add UltiMaker S6 printer successfully
-- ✅ **Process Selection**: Nozzle-specific process profiles appear correctly
-- ✅ **Filament Selection**: GUID-based filament matching works
-- ✅ **Export**: .ufp container export works with FORMAT_CONFIG_ID
-- ✅ **Upload**: Digital Factory upload with container conversion works
-- ✅ **LAN Printing**: UltiMaker LAN upload and print works
-- ⚠️ **Core Variant**: `printer_extruder_variant` values need review (deferred to future project)
-- ⚠️ **UltiMaker Digital Factory Auth**: refreshed implementation is compiled and pushed, but still needs broader live validation after the storage/refresh cleanup
-- ⚠️ **UltiMaker LAN Browse**: persistent picker behavior and IP-only selection are compiled and pushed, but still need broader validation on real LAN environments
+| Area | Status | Notes |
+|------|--------|-------|
+| Setup Wizard | ✅ Passed | Can add UltiMaker S6 printer successfully |
+| Process Selection | ✅ Passed | Nozzle-specific process profiles appear correctly |
+| Filament Selection | ✅ Passed | GUID-based filament matching works |
+| Export | ✅ Passed | `.ufp` container export works with `FORMAT_CONFIG_ID` |
+| Upload | ✅ Passed | Digital Factory upload with container conversion works for both `.ufp` and `.makerbot` |
+| LAN Printing | ✅ Passed | UltiMaker LAN upload and print works |
+| Core Variant | ⚠️ Needs Review | `printer_extruder_variant` values still need review (deferred to future project) |
+| UltiMaker Digital Factory Auth | ⚠️ Needs Validation | Refreshed implementation is compiled and pushed, but still needs broader live validation after the storage/refresh cleanup |
+| UltiMaker LAN Browse | ⚠️ Needs Validation | Persistent picker behavior and IP-only selection are compiled and pushed, but still need broader validation on real LAN environments |
 
 ### Reference Files
 
 - `resources/profiles/Flashforge/machine/` - Nozzle variant pattern
 - `resources/profiles/UltiMaker.json` - Existing UltiMaker structure
+
+## Development Workflow & References
+
+### Reference Codebases
+
+When working on Cura-related features (especially UltiMaker Digital Factory integration):
+
+- **Parent directory / Cura-main** — contains UltiMaker Cura source code. Use for reference when impersonating Cura's API behavior.
+- **Parent directory / Cura files/** — Reference `.ufp` and `.makerbot` files produced by Cura. These are **CRITICAL** for understanding the required file structure, `.json` metadata, thumbnails, and `.gcode` headers/footers inside these container formats.
+- **Parent directory / postprocessors/** — Python scripts that produce working `.ufp` and `.makerbot` files. These are **reference only** and should never be edited. They demonstrate the expected output but the implementation must be built into OrcaSlicer directly with **zero dependency on Python or these scripts**.
+- **Parent directory / Info** — Documentation on firmware, `.ufp` and `.makerbot` requirements including:
+  - UFP Functional Specification
+  - MakerBot Functional Specification
+  - Griffin Gcode file format (headers, toolpath instructions, metadata)
+  - UMF (UltiMaker Manufacturing Format) specification
+  - Cheetah migration/integration assessment
+  - OrcaSlicer profile validator documentation
+- **Parent directory / Valid postprocessed ufp makerbot files** — Valid `.ufp` and `.makerbot` files produced with Python postprocessors. These represent the **MINIMUM requirement for valid files**. Deviations from this file structure, `.json` contents, or `.gcode` header/footer regions are **not considered valid**. Includes:
+  - `UltiMaker_S6_-_Cube.ufp`
+  - `MakerBot_Sketch_Small_-_Cube.makerbot`
+  - `MakerBot_Sketch_Sprint_-_Cube.makerbot`
+- **Uranium** — https://github.com/Ultimaker/Uranium — Cura's underlying framework, useful for understanding plugin architecture and messaging.
+- **UltiMaker Digital Factory API** — https://docs.api.ultimaker.com/index.html — Always reference this for API endpoints, authentication, and expected behavior.
+
+### Important Constraints
+
+- **ALL UltiMaker Digital Factory API calls must impersonate Cura entirely** — UltiMaker Digital Factory only accepts Cura. Every header, agent-type, meta, version number, software identification, and request format must exactly match what Cura sends. Nothing else will work.
+- **Never edit Python postprocessor scripts** — they are reference only
+- **Zero external dependencies** — postprocessing must work without Python or any external scripts
+- **Do not modify Cura source code** — it is reference only
+- **Use the API docs first** — before asking questions, check the UltiMaker API documentation
+- **Local commits are fine** — see global rules for Git etiquette
+
+### Windows 11 Development
+
+- **Primary shell is PowerShell on Windows 11** — always assume Windows paths with spaces and quote them explicitly.
+- **Native Windows tools are available** — PowerShell cmdlets, `git`, `cmake`, and fast text search tools such as `rg` are available and should be preferred when practical.
+- **Do not assume Bash/Linux semantics** — avoid Bash-specific piping, quoting, or path assumptions when documenting or scripting local development steps.
+- **Be careful with copied build resources** — some generated resource trees do not auto-refresh, so verify which directory is actually being used before assuming a rebuild picked up profile/config changes.
+
+### Debugging & Logging
+
+- **Info level logs do not appear** — only WARNING and ERROR level messages show up in the logs. Do not rely on info/log statements for debugging; use WARNING or ERROR to ensure messages are visible.
+
+### Efficient Codebase Navigation
+
+- **Narrow search scope** — limit searches to specific directories (e.g., `path: src/slic3r/GUI`) rather than broad recursive searches across the entire codebase.
+- **Use list_files first** — explore directory structure with `list_files` before doing deep searches.
+- **Batch operations efficiently** — plan searches to minimize the number of tool calls before each compression point.
+
+### Context Management Rules
+
+- **Compress frequently when searching files** — with a 20GB+ codebase and small context window, compress **every 1-2 tool calls** when doing file searches or reads. After searching 3-5 files, compress before continuing to the next batch.
+- **Todo items are the primary work unit** — if a `todowrite` list exists, each item is an independent, compressible unit. When one item is complete and verified, compress it before moving to the next.
+- **Compress closed ranges only** — only compress ranges that are fully resolved and no longer needed. Do not compress active work still in progress.
+- **Include subagent results** — compress after a `Task` (explore/general) subagent completes its findings; the subagent already has fresh context, so the raw output in the main thread is noise.
+- **Quality over brevity in summaries** — use `compress` with exhaustive summaries that preserve file paths, function names, decisions, and key findings. Raw context can be discarded once it is faithfully summarized.
+- **Batch independent compressions** — if multiple independent ranges are stale at the same time, run multiple `compress` calls in parallel rather than one large compression.
 
 ### Profile Storage Locations
 
@@ -591,36 +652,6 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 
 ## Change Log
 
-### 2026-04-01
-- **Format Config Cleanup**
-  - Renamed `ultimaker_2pc.json` → `ultimaker2_plus_connect.json` and updated internal `printer_name`/`target_machine` to "Ultimaker 2+ Connect"
-  - Deleted orphan `ultimaker_f4.json`
-  - Added `sketch_large` to `makerbot/manifest.json`
-  - Removed unused `method_x.json` and `method_xl.json` MakerBot configs (reserved in code for future use)
-  - Removed 960×1460 thumbnail from `ContainerFormatHelper` default fallback
-  - Corrected `AGENTS_JATMN.md` LAN auth description to match actual implementation
-
-### 2026-04-14
-- **Cheetah Calibration / Motion / Preview Refresh**
-  - Centralized Cheetah `M400` + `M214 D0 K...` handling in the writer path
-  - Added Cheetah preview parsing for `M214` and `M215`
-  - Fixed Cheetah material PA disable-to-zero behavior
-  - Improved Cheetah cornering test generation so tower variants use coarse visible `M215` bands instead of an almost invisible micro-gradient
-  - Added Cheetah-aware calibration dialog guidance and safer test selection behavior
-- **UltiMaker Host UI Refresh**
-  - Fixed top-bar hit testing issue that affected menu access
-  - Improved Physical Printer dialog behavior for UltiMaker host types
-  - Device-tab web UI routing now points Digital Factory to `https://digitalfactory.ultimaker.com` and LAN printers to `http://<ip>/`
-  - Added UltiMaker LAN support note clarifying supported printer families
-- **Container Writer Cleanup**
-  - Fixed UFP writer retraction injection at the wrong stop marker
-  - Cleaned MakerBot/UFP writer logging and container helper plumbing
-  - Fixed MakerBot single-thumbnail routing and made UFP machine bounds config-driven
-  - Cleaned stale packaged resource configs after syncing copied format configs
-- **Profile / UI Cleanup**
-  - Print core labels in Prepare were restyled to match the rest of the UI
-  - Extruder/process UI consistency fixes for Cheetah and print-core selection are now reflected in the current local state
-
 ### 2026-04-15
 - **UltiMaker Root Manifest Dependency Rule**
   - Confirmed that `resources/profiles/UltiMaker.json` is not a setup-wizard-only list; it is part of the real vendor bundle definition.
@@ -641,6 +672,27 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - UltiMaker LAN browse now behaves persistently while the dialog is open by continuously re-running short discovery passes, closer to Cura's ongoing Zeroconf discovery behavior.
   - LAN host / Device-tab URL building now sanitizes stale legacy host values containing paths, query strings, or extra slashes.
 
+### 2026-04-14
+- **Cheetah Calibration / Motion / Preview Refresh**
+  - Centralized Cheetah `M400` + `M214 D0 K...` handling in the writer path
+  - Added Cheetah preview parsing for `M214` and `M215`
+  - Fixed Cheetah material PA disable-to-zero behavior
+  - Improved Cheetah cornering test generation so tower variants use coarse visible `M215` bands instead of an almost invisible micro-gradient
+  - Added Cheetah-aware calibration dialog guidance and safer test selection behavior
+- **UltiMaker Host UI Refresh**
+  - Fixed top-bar hit testing issue that affected menu access
+  - Improved Physical Printer dialog behavior for UltiMaker host types
+  - Device-tab web UI routing now points Digital Factory to `https://digitalfactory.ultimaker.com` and LAN printers to `http://<ip>/`
+  - Added UltiMaker LAN support note clarifying supported printer families
+- **Container Writer Cleanup**
+  - Fixed UFP writer retraction injection at the wrong stop marker
+  - Cleaned MakerBot/UFP writer logging and container helper plumbing
+  - Fixed MakerBot single-thumbnail routing and made UFP machine bounds config-driven
+  - Cleaned stale packaged resource configs after syncing copied format configs
+- **Profile / UI Cleanup**
+  - Print core labels in Prepare were restyled to match the rest of the UI
+  - Extruder/process UI consistency fixes for Cheetah and print-core selection are now part of the public fork state
+
 ### 2026-04-12 to 2026-04-13
 - **Cheetah Flavor Baseline**
   - Added UltiMaker/Cheetah G-code flavor support
@@ -656,6 +708,15 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - Refreshed `ExtruderVariantWidget` behavior on nozzle/core switching
   - Isolated process inheritance per core variant
   - Fixed UFPWriter material GUID/name issues and later fixed multi-material / paths-with-spaces UFP export issues
+
+### 2026-04-01
+- **Format Config Cleanup**
+  - Renamed `ultimaker_2pc.json` → `ultimaker2_plus_connect.json` and updated internal `printer_name`/`target_machine` to "Ultimaker 2+ Connect"
+  - Deleted orphan `ultimaker_f4.json`
+  - Added `sketch_large` to `makerbot/manifest.json`
+  - Removed unused `method_x.json` and `method_xl.json` MakerBot configs (reserved in code for future use)
+  - Removed 960×1460 thumbnail from `ContainerFormatHelper` default fallback
+  - Corrected `AGENTS_JATMN.md` LAN auth description to match actual implementation
 
 ### 2026-03-31
 - **MakerBot Thumbnail Generation Fix** (commit `762ff9d3ef`)
