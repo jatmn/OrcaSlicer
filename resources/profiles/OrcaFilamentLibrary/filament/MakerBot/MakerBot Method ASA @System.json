@@ -8,5 +8,6 @@
     "filament_max_volumetric_speed": [
         "12"
     ],
-    "compatible_printers": []
+    "compatible_printers": [],
+    "compatible_printers_condition": "(printer_extruder_variant_0==\"1XA\" || printer_extruder_variant_0==\"1C\" || printer_extruder_variant_0==\"LABS\") && (printer_notes=~/.*METHOD_PRINTER_FAMILY:method_x$/ || printer_notes=~/.*METHOD_PRINTER_FAMILY:method_xl$/)"
 }

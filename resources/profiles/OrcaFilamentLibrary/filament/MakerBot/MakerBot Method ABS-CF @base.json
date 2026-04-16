@@ -23,6 +23,9 @@
     "filament_diameter": [
         "1.75"
     ],
+    "filament_type": [
+        "ABS-CF"
+    ],
     "filament_scarf_seam_type": [
         "none"
     ],

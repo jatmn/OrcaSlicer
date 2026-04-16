@@ -123,7 +123,7 @@ This section is the current high-level truth for the fork and should be used as 
 - `HEAD` now contains a local-only MakerBot Method-family export groundwork pass that is not yet on `origin/main`.
 - The local-only work adds initial native `.makerbot` export support for plain Method, Method X, and Method XL by restoring format configs and teaching `MakerBotWriter` to emit Method-style `print.jsontoolpath`, `meta.json`, and `slicemetadata.json` payloads.
 - The local-only Method pass now also adds a first vendor-bundle profile slice under `resources/profiles/UltiMaker/` so plain Method, Method X, and Method XL have concrete shipped machine/process presets that can reach the native Method export path through `FORMAT_CONFIG_ID:method`, `method_x`, and `method_xl`.
-- The current local profile slice is intentionally conservative: all three Method-family machines are fixed to 0.4 mm presets with mirrored default variants on both extruders (`1A` for Method, `1XA` for Method X/XL) until proper Method variant-selection UI and compatibility enforcement land.
+- The current local profile slice is intentionally conservative: all three Method-family machines are fixed to 0.4 mm presets with mirrored default variants on both extruders (`1A` for Method, `1XA` for Method X/XL) until proper Method variant-selection UI and full compatibility enforcement land.
 - This local-only pass has compile verification for `libslic3r` and `libslic3r_gui`, but full app/runtime validation and real printer acceptance testing are still pending.
 - Treat the current AGENTS file as the authoritative status record for both the public fork state and the currently known local-only Method work.
 
@@ -160,7 +160,7 @@ This section is the current high-level truth for the fork and should be used as 
 | Printer Profiles | ⚠️ Active Tuning | Core/profile matrix exists, but several printers are still only placeholders or partially tuned |
 | Process Profiles | ⚠️ Active Tuning | Dynamic/core-specific groundwork exists; tuned defaults are still being validated, selectively backported, or still missing for placeholder printers |
 | Material GUID Matching | ✅ Completed | Two-pass search prioritizes GUIDs |
-| Material Association Matrix | ❌ Not Started | Need printer/core compatibility |
+| Material Association Matrix | ⚠️ In Progress | Local `HEAD` now has a first-pass Method-family material/variant matrix for shipped Method system filaments; broader UltiMaker and missing Method materials remain pending |
 
 ---
 
@@ -224,7 +224,7 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 - the generic MakerBot fallback still avoids oversized thumbnails, but local Method configs explicitly request the real Method `thumbnail_960x1460.png` member
 - a first local Method-family vendor-bundle slice now exists with concrete `MakerBot Method 0.40`, `MakerBot Method X 0.40`, and `MakerBot Method XL 0.40` presets plus minimal `0.20mm Standard` process presets
 - Method-family variant selection is still effectively fixed-default today because `ExtruderVariantWidget` remains hardcoded to specific UltiMaker families and does not yet surface Method variants in Prepare
-- material/core compatibility enforcement is still not implemented for Method-family machines, so the current local presets should be treated as a reachability baseline rather than finished guardrailed defaults
+- first-pass Method-family filament compatibility enforcement now exists locally for the shipped `MakerBot Method Tough PLA`, `ABS-R`, `ABS-CF`, `ASA`, `Nylon CF`, `Nylon 12 CF`, `RapidRinse`, and `SR-30` system presets, but broader Method material coverage and finished UI-driven variant selection are still pending
 - full Method-family printer acceptance testing has not been completed yet, and finished UI/matrix/preset tuning work is still pending
 
 **Dual Extrusion on S/F Series (UltiMaker S3/S5/S6/S7/S8, Factor 4):**
@@ -419,6 +419,24 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 - Eliminates "fallback to generic filament" warnings in logs
 - Ensures UltiMaker materials are correctly identified by GUID first
 
+**MakerBot Method Family Compatibility (local-only):**
+- Local `HEAD` now adds first-pass `compatible_printers_condition` gating to the shipped Method-family `@System` filament presets using two existing Orca hooks:
+  - `METHOD_PRINTER_FAMILY:<id>` markers in `printer_notes`
+  - `printer_extruder_variant_0`, which Orca injects from the active printer preset during compatibility evaluation
+- The current shipped Method-family matrix encoded in Orca is:
+  - `MakerBot Method Tough PLA @System`: plain Method, Method X, and Method XL on `1A`, `1C`, or `LABS`
+  - `MakerBot Method ABS-R @System`: Method X and Method XL on `1XA`, `1C`, or `LABS`
+  - `MakerBot Method ABS-CF @System`: Method X and Method XL on `1C` or `LABS`
+  - `MakerBot Method ASA @System`: Method X and Method XL on `1XA`, `1C`, or `LABS`
+- `MakerBot Method Nylon CF @System`: plain Method, Method X, and Method XL on `1C` or `LABS`
+- `MakerBot Method Nylon 12 CF @System`: plain Method, Method X, and Method XL on `1C` or `LABS`
+- `MakerBot Method RapidRinse @System`: Method X and Method XL on `2XA`
+- `MakerBot Method SR-30 @System`: Method X and Method XL on `2XA`
+- This matrix is still narrower than Cura's full Method-family support, but it now covers the currently shipped Method presets in Orca.
+- The current local limitation is no longer just missing material presets; it is also missing shipped machine/process coverage for `1C`, `LABS`, and `2XA`, so some of these staged materials are not yet fully reachable from the default shipped UX.
+- Cura evidence still shows broader Method-family support outside Orca's current shipped inventory, including `PLA`, `PETG`, `Nylon`, `PVA`, `ABS`, `PC-ABS`, `PC-ABS FR`, and selected LABS-only materials.
+- Because `ExtruderVariantWidget` still does not surface Method-family variants in Prepare, this compatibility work is currently more important as a guardrail for defaults, manual preset edits, and future UI work than as a complete end-user variant workflow today.
+
 ### UltiMaker Material GUID Status
 
 | Material Name | GUID Status | GUID Value | Notes |
@@ -429,6 +447,14 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 | UltiMaker ABS | ✅ Has GUID | `94209c78-8d4d-4866-8a60-5e1f7adb0c36` | Present in `UltiMaker ABS @base.json`; valid GUID from Cura AnyColor profiles |
 | UltiMaker PPS-CF | ✅ Has GUID | `d86bf59a-9d10-4a25-99b6-2844e0bc1bfb` | Present in `UltiMaker PPS-CF @base.json` |
 | UltiMaker PET-CF | ✅ Has GUID | `f0245d40-3657-4615-b9ab-19fc043944ca` | Present in `UltiMaker PET-CF @base.json` |
+| UltiMaker Method Tough PLA | ✅ Has GUID | `de031137-a8ca-4a72-bd1b-17bb964033ad` | Present in `MakerBot Method Tough PLA @base.json`; valid Method-family GUID with `MATERIAL_CODE:im-pla` |
+| UltiMaker Method ABS-R | ✅ Has GUID | `88c8919c-6a09-471a-b7b6-e801263d862d` | Present in `MakerBot Method ABS-R @base.json`; valid Method-family GUID with `MATERIAL_CODE:abs-wss1` |
+| UltiMaker Method ABS-CF | ✅ Has GUID | `495a0ce5-9daf-4a16-b7b2-06856d82394d` | Present in `MakerBot Method ABS-CF @base.json`; valid Method-family GUID with `MATERIAL_CODE:abs-cf10` |
+| UltiMaker Method ASA | ✅ Has GUID | `f79bc612-21eb-482e-ad6c-87d75bdde066` | Present in `MakerBot Method ASA @base.json`; valid Method-family GUID with `MATERIAL_CODE:asa` |
+| UltiMaker Method Nylon CF | ✅ Has GUID | `17abb865-ca73-4ccd-aeda-38e294c9c60b` | Present in `MakerBot Method Nylon CF @base.json`; valid Method-family GUID with `MATERIAL_CODE:nylon-cf` |
+| UltiMaker Method Nylon 12 CF | ✅ Has GUID | `3c6f2877-71cc-4760-84e6-4b89ab243e3b` | Present in `MakerBot Method Nylon 12 CF @base.json`; valid Method-family GUID with `MATERIAL_CODE:nylon12-cf` |
+| UltiMaker Method RapidRinse | ✅ Has GUID | `a140ef8f-4f26-4e73-abe0-cfc29d6d1024` | Present in `MakerBot Method RapidRinse @base.json`; valid Method-family GUID with `MATERIAL_CODE:wss1` |
+| UltiMaker Method SR-30 | ✅ Has GUID | `77873465-83a9-4283-bc44-4e542b8eb3eb` | Present in `MakerBot Method SR-30 @base.json`; valid Method-family GUID with `MATERIAL_CODE:sr30` |
 | MakerBot Sketch PLA | ✅ Has GUID | `abb9c58e-1f56-48d1-bd8f-055fde3a5b56` | Present in `MakerBot Sketch PLA @base.json`; valid GUID with `MATERIAL_CODE:pla` |
 | MakerBot Sketch Tough PLA | ✅ Has GUID | `de031137-a8ca-4a72-bd1b-17bb964033ad` | Present in `MakerBot Sketch Tough PLA @base.json`; valid GUID with `MATERIAL_CODE:im-pla` |
 | MakerBot Sketch Metallic PLA | ✅ Has GUID | `3fac1543-dd0c-462d-9cbc-d94137d43999` | Present in `MakerBot Sketch Metallic PLA @base.json`; valid GUID with `MATERIAL_CODE:metallic-pla` |
@@ -454,7 +480,8 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
   - Method: `1A`
   - Method X / XL: `1XA`
 - This is temporary and exists because `ExtruderVariantWidget` still hides Method-family variants entirely
-- Method-family material-to-extruder compatibility is still not enforced in Orca; the current preset/default-material pairing is only a safe first approximation
+- Method-family material-to-extruder compatibility is now partially enforced for the shipped Tough PLA / ABS-R / ABS-CF / ASA / Nylon CF / Nylon 12 CF / RapidRinse / SR-30 system presets, but the full Cura matrix is still not represented and the shipped machine/process matrix still does not cover `1C`, `LABS`, `2A`, or `2XA`
+- Variant-driven process remapping and finished Method-family UI support are still missing, so the current defaults remain a conservative first slice rather than finished shipping behavior
 
 **4. UltiMaker Brand Materials:**
 - Still need proper association matrix against printer models and print core options
@@ -746,6 +773,22 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 ## Change Log
 
 ### 2026-04-16
+- **MakerBot Method Family Filament Library Expansion (local-only)**
+  - Added local Method-family filament preset pairs for `Nylon CF`, `Nylon 12 CF`, `RapidRinse`, and `SR-30` under `resources/profiles/OrcaFilamentLibrary/filament/MakerBot/`.
+  - Extended the Method / Method X / Method XL machine-model `default_materials` lists so these new presets are part of the staged Method-family material inventory locally.
+  - Kept the compatibility rules aligned with the Cura matrix:
+    - `Nylon CF` / `Nylon 12 CF` on `1C` and `LABS`
+    - `RapidRinse` / `SR-30` on `2XA`
+  - Confirmed that these presets are still partly future-facing because the shipped Method-family machine/process presets remain fixed to `1A` and `1XA` today, with no concrete shipped `1C`, `LABS`, `2A`, or `2XA` machine/process coverage yet.
+- **MakerBot Method Family Filament Compatibility (local-only)**
+  - Added first-pass `compatible_printers_condition` rules to the shipped `MakerBot Method Tough PLA`, `ABS-R`, `ABS-CF`, and `ASA` `@System` presets.
+  - The new conditions match Method-family printers by `METHOD_PRINTER_FAMILY:<id>` notes plus `printer_extruder_variant_0`, mirroring how the new Method process presets already gate by family/variant.
+  - Encoded the currently shippable subset of the Cura matrix:
+    - Tough PLA on Method / Method X / Method XL for `1A`, `1C`, and `LABS`
+    - ABS-R on Method X / XL for `1XA`, `1C`, and `LABS`
+    - ABS-CF on Method X / XL for `1C` and `LABS`
+    - ASA on Method X / XL for `1XA`, `1C`, and `LABS`
+  - Documented the remaining shipped-material gaps (`RapidRinse`, `SR-30`, `Nylon CF`, `Nylon 12 CF`) and the fact that Method variant UI/process remapping are still unfinished.
 - **MakerBot Method Family Vendor-Bundle Wiring (local-only)**
   - Added local-only `MakerBot Method`, `MakerBot Method X`, and `MakerBot Method XL` machine-model entries plus concrete `0.40` machine presets under `resources/profiles/UltiMaker/machine/`.
   - Added a shared `fdm_makerbot_method_common.json` baseline and first minimal `0.20mm Standard` Method-family process presets under `resources/profiles/UltiMaker/process/`.

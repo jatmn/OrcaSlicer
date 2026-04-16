@@ -1,0 +1,18 @@
+{
+    "type": "filament",
+    "name": "MakerBot Method Nylon 12 CF @base",
+    "inherits": "fdm_filament_pa",
+    "from": "system",
+    "filament_id": "MKNY12CF00",
+    "instantiation": "false",
+    "filament_vendor": [
+        "MakerBot"
+    ],
+    "filament_diameter": [
+        "1.75"
+    ],
+    "filament_type": [
+        "Nylon 12 CF"
+    ],
+    "filament_notes": "MATERIAL_GUID:3c6f2877-71cc-4760-84e6-4b89ab243e3b\nMATERIAL_CODE:nylon12-cf"
+}

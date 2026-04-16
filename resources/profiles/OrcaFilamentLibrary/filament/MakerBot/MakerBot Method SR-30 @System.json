@@ -1,0 +1,13 @@
+{
+    "type": "filament",
+    "name": "MakerBot Method SR-30 @System",
+    "inherits": "MakerBot Method SR-30 @base",
+    "from": "system",
+    "setting_id": "MKSR3001",
+    "instantiation": "true",
+    "filament_max_volumetric_speed": [
+        "12"
+    ],
+    "compatible_printers": [],
+    "compatible_printers_condition": "printer_extruder_variant_0==\"2XA\" && (printer_notes=~/.*METHOD_PRINTER_FAMILY:method_x$/ || printer_notes=~/.*METHOD_PRINTER_FAMILY:method_xl$/)"
+}

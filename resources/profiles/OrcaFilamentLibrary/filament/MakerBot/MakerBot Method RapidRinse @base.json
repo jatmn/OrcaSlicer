@@ -1,0 +1,18 @@
+{
+    "type": "filament",
+    "name": "MakerBot Method RapidRinse @base",
+    "inherits": "fdm_filament_pva",
+    "from": "system",
+    "filament_id": "MKRINSE00",
+    "instantiation": "false",
+    "filament_vendor": [
+        "MakerBot"
+    ],
+    "filament_diameter": [
+        "1.75"
+    ],
+    "filament_type": [
+        "RapidRinse"
+    ],
+    "filament_notes": "MATERIAL_GUID:a140ef8f-4f26-4e73-abe0-cfc29d6d1024\nMATERIAL_CODE:wss1"
+}

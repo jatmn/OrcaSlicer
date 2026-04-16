@@ -1,0 +1,18 @@
+{
+    "type": "filament",
+    "name": "MakerBot Method SR-30 @base",
+    "inherits": "fdm_filament_pva",
+    "from": "system",
+    "filament_id": "MKSR3000",
+    "instantiation": "false",
+    "filament_vendor": [
+        "MakerBot"
+    ],
+    "filament_diameter": [
+        "1.75"
+    ],
+    "filament_type": [
+        "SR-30"
+    ],
+    "filament_notes": "MATERIAL_GUID:77873465-83a9-4283-bc44-4e542b8eb3eb\nMATERIAL_CODE:sr30"
+}
