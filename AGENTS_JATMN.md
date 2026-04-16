@@ -83,6 +83,27 @@ This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a
 - This guide is intended to serve two purposes:
   - a current-status record of what jatmn's fork already does
   - an execution guide for resuming work, preparing PRs, and avoiding repeated mistakes in profiles, manifests, auth, and container-format handling
+- A significant portion of the fork's implementation and investigation work has been performed with the help of AI coding assistants / agent-style tools, including:
+  - OpenCode
+  - Cline
+  - Klio Code
+  - Kimi Code
+  - Codex
+- AI models used during implementation, debugging, review, and iteration have included, in no specific order:
+  - DeepSeek v3.2
+  - GLM-5
+  - MiniMax 2.5
+  - MiniMax 2.7
+  - Kimi K2.5
+  - Kimi K2.5-Turbo
+  - Kimi K2.6
+  - Claude Sonnet
+  - Claude Haiku
+  - GPT-5.4
+- Earlier proof-of-concept work, especially around Python postprocessors, also involved:
+  - Gemini 2.5
+  - Gemini 2.5 Flash
+  - Gemini 3.0
 
 ## Current Status Audit (2026-04-15)
 
@@ -109,6 +130,10 @@ This section is the current high-level truth for the fork and should be used as 
 - UltiMaker setup-wizard / vendor-manifest behavior has a newly documented dependency rule: incomplete model removal must be done consistently across all root lists in the vendor manifest or the entire vendor bundle may stop loading correctly.
 - UltiMaker Digital Factory auth now more closely mirrors Cura's behavior, but it still needs live user validation after the token-storage and refresh-path cleanup.
 - UltiMaker LAN browse now behaves more like Cura with persistent discovery while the picker is open, but broader long-session validation is still needed.
+- Printer-profile completeness is intentionally uneven right now:
+  - some models are real tuned/tunable work in progress
+  - some models are only placeholder templates kept in the tree for future work
+  - some future MakerBot Method family entries exist only as reserved placeholders
 
 ### Current PR Guidance
 
@@ -125,8 +150,8 @@ This section is the current high-level truth for the fork and should be used as 
 | Digital Factory Upload | ✅ Completed | Two-step upload with container conversion for both `.ufp` and `.makerbot` formats |
 | LAN Printing | ✅ Completed | Supports UltiMaker S series and Factor series; browse/discovery now uses Cura-style persistent scanning while the picker is open |
 | Cheetah G-code Flavor | ⚠️ Active Tuning | Baseline support is in; calibration, preview, UI, and motion handling are still being refined |
-| Printer Profiles | ⚠️ Active Tuning | Core/profile matrix exists; defaults are still being tuned and validated |
-| Process Profiles | ⚠️ Active Tuning | Dynamic/core-specific groundwork exists; tuned defaults still being validated and selectively backported |
+| Printer Profiles | ⚠️ Active Tuning | Core/profile matrix exists, but several printers are still only placeholders or partially tuned |
+| Process Profiles | ⚠️ Active Tuning | Dynamic/core-specific groundwork exists; tuned defaults are still being validated, selectively backported, or still missing for placeholder printers |
 | Material GUID Matching | ✅ Completed | Two-pass search prioritizes GUIDs |
 | Material Association Matrix | ❌ Not Started | Need printer/core compatibility |
 
@@ -336,6 +361,7 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 - The backup snapshot for the pre-pruning manifest is committed as `resources/profiles/UltiMaker.json.setup_wizard_backup`.
 - This pruning was done deliberately at the root-manifest level, not by deleting the underlying machine/process JSON files.
 - MakerBot Sketch default machine/process tuning has now had its first selective backport into source-controlled defaults.
+- Several printer families in-tree should still be understood as placeholders or partial implementations, not finished shipping-quality defaults.
 
 ### Implementation Summary
 
@@ -445,6 +471,21 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 | Core Variant | ⚠️ Needs Review | `printer_extruder_variant` values still need review (deferred to future project) |
 | UltiMaker Digital Factory Auth | ⚠️ Needs Validation | Refreshed implementation is compiled and pushed, but still needs broader live validation after the storage/refresh cleanup |
 | UltiMaker LAN Browse | ⚠️ Needs Validation | Persistent picker behavior and IP-only selection are compiled and pushed, but still need broader validation on real LAN environments |
+
+### Profile Backlog / Incomplete Status
+
+| Printer / Family | Current State | Remaining Work |
+|------------------|---------------|----------------|
+| MakerBot Sketch Small | Exists and is active | Profile tuning and validation still needed |
+| MakerBot Sketch Large | Placeholder template only | Needs real profile creation, tuning, and validation |
+| UltiMaker S3 | Placeholder template only | Needs real profile creation, tuning, and validation; also uses Griffin/UFP path that still needs writer support updates |
+| UltiMaker S5 | Placeholder template only | Needs real profile creation, tuning, and validation; also uses Griffin/UFP path that still needs writer support updates |
+| UltiMaker S6 | Active primary tuning target | Profile tuning and validation still needed |
+| UltiMaker S7 | Placeholder template only | Needs real profile creation, tuning, and validation; also uses Griffin/UFP path that still needs writer support updates |
+| UltiMaker S8 | Dependency follow-on to S6 | Will be done after S6 due to the current dependency chain |
+| UltiMaker 2+ Connect | Placeholder template only and currently not in active bundle | Needs real profile creation, tuning, and validation; likely uses Griffin/UFP path that still needs writer support updates; also does not use print cores and needs proper non-core configuration handling |
+| MakerBot Method / Method X | Placeholder only | Reserved for future support; no real implementation work performed yet; Cura's Method postprocessor behavior still needs to be ported into `MakerBotWriter` to support these properly |
+| MakerBot Method XL | Placeholder only | Reserved for future support; no real implementation work performed yet; Cura's Method/Method XL postprocessor behavior still needs to be ported into `MakerBotWriter` to support this properly |
 
 ### Reference Files
 
@@ -676,6 +717,8 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - Confirmed that removing entries only from `machine_model_list` can invalidate the whole UltiMaker vendor bundle because `machine_list` printer presets are validated against the remaining model list.
   - Documented the safe temporary-removal procedure: when disabling incomplete UltiMaker models, remove them consistently from `machine_model_list`, `machine_list`, and related `process_list` entries, then sync the manifest copies and restart OrcaSlicer.
   - The active/public fork state now removes incomplete `S3`, `S5`, `S7`, and `2+ Connect` models from the active UltiMaker bundle while leaving the underlying JSON files on disk.
+- **Profile Backlog Documentation**
+  - Added an explicit profile backlog / incomplete-status table for Sketch, S-series, 2+ Connect, and Method-family printers so the AGENTS guide makes clear which profiles are tuned work in progress versus placeholder templates.
 - **MakerBot Sketch Default Profile Backport**
   - First selective default-profile backport landed for standard MakerBot Sketch.
   - `MakerBot Sketch 0.40.json` was kept single-extruder and had the incorrect copied `T1` heater start-gcode line removed.
