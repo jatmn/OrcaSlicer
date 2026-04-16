@@ -1,0 +1,12 @@
+{
+    "type": "machine_model",
+    "name": "MakerBot Method",
+    "model_id": "MakerBot_Method",
+    "nozzle_diameter": "0.4",
+    "machine_tech": "FFF",
+    "family": "MakerBot",
+    "bed_model": "",
+    "bed_texture": "",
+    "hotend_model": "",
+    "default_materials": "MakerBot Method Tough PLA @System"
+}

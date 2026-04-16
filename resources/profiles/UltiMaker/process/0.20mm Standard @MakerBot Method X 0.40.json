@@ -1,0 +1,11 @@
+{
+    "type": "process",
+    "name": "0.20mm Standard @MakerBot Method X 0.40",
+    "inherits": "fdm_process_common_method",
+    "from": "system",
+    "instantiation": "true",
+    "print_settings_id": "0.20mm Standard @MakerBot Method X 0.40",
+    "compatible_printers_condition": "printer_variant==\"0.4\" && printer_extruder_variant_0==\"1XA\" && (printer_notes=~/.*METHOD_PRINTER_FAMILY:method_x.*/)",
+    "layer_height": "0.20",
+    "initial_layer_speed": "35"
+}

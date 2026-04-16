@@ -32,6 +32,18 @@
         {
             "name": "MakerBot Sketch Sprint",
             "sub_path": "machine/MakerBot Sketch Sprint.json"
+        },
+        {
+            "name": "MakerBot Method",
+            "sub_path": "machine/MakerBot Method.json"
+        },
+        {
+            "name": "MakerBot Method X",
+            "sub_path": "machine/MakerBot Method X.json"
+        },
+        {
+            "name": "MakerBot Method XL",
+            "sub_path": "machine/MakerBot Method XL.json"
         }
     ],
     "process_list": [
@@ -62,6 +74,10 @@
         {
             "name": "fdm_process_common_sketch_sprint",
             "sub_path": "process/fdm_process_common_sketch_sprint.json"
+        },
+        {
+            "name": "fdm_process_common_method",
+            "sub_path": "process/fdm_process_common_method.json"
         },
         {
             "name": "fdm_process_ultimaker_factor4_aa025_common",
@@ -200,6 +216,18 @@
             "sub_path": "process/0.20mm Standard @MakerBot Sketch Sprint 0.40.json"
         },
         {
+            "name": "0.20mm Standard @MakerBot Method 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Method X 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method X 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Method XL 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method XL 0.40.json"
+        },
+        {
             "name": "0.20mm Standard @UltiMaker Factor 4 AA 0.4",
             "sub_path": "process/0.20mm Standard @UltiMaker Factor 4 AA 0.4.json"
         },
@@ -303,6 +331,10 @@
             "sub_path": "machine/fdm_makerbot_common.json"
         },
         {
+            "name": "fdm_makerbot_method_common",
+            "sub_path": "machine/fdm_makerbot_method_common.json"
+        },
+        {
             "name": "fdm_ultimaker_2plus_common",
             "sub_path": "machine/fdm_ultimaker_2plus_common.json"
         },
@@ -369,6 +401,18 @@
         {
             "name": "MakerBot Sketch Sprint 0.40",
             "sub_path": "machine/MakerBot Sketch Sprint 0.40.json"
+        },
+        {
+            "name": "MakerBot Method 0.40",
+            "sub_path": "machine/MakerBot Method 0.40.json"
+        },
+        {
+            "name": "MakerBot Method X 0.40",
+            "sub_path": "machine/MakerBot Method X 0.40.json"
+        },
+        {
+            "name": "MakerBot Method XL 0.40",
+            "sub_path": "machine/MakerBot Method XL 0.40.json"
         }
     ]
 }

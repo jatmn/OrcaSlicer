@@ -1,0 +1,32 @@
+{
+    "type": "machine",
+    "setting_id": "GM010",
+    "name": "MakerBot Method 0.40",
+    "from": "system",
+    "instantiation": "true",
+    "printer_model": "MakerBot Method",
+    "printer_variant": "0.4",
+    "default_print_profile": "0.20mm Standard @MakerBot Method 0.40",
+    "printable_area": [
+        "-141.65x-118.24",
+        "141.65x-118.24",
+        "141.65x118.24",
+        "-141.65x118.24"
+    ],
+    "printable_height": "196.749",
+    "printer_extruder_variant": [
+        "1A",
+        "1A"
+    ],
+    "extruder_variant_list": [
+        "1A",
+        "1A"
+    ],
+    "default_filament_profile": [
+        "MakerBot Method Tough PLA @System",
+        "MakerBot Method Tough PLA @System"
+    ],
+    "printer_notes": "MakerBot Method with dual 0.40mm extruders\nFORMAT_CONFIG_ID:method\nMETHOD_PRINTER_FAMILY:method",
+    "inherits": "fdm_makerbot_method_common",
+    "default_materials": "MakerBot Method Tough PLA @System"
+}

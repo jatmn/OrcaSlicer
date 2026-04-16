@@ -1,0 +1,159 @@
+{
+    "type": "machine",
+    "name": "fdm_makerbot_method_common",
+    "inherits": "fdm_makerbot_common",
+    "from": "system",
+    "instantiation": "false",
+    "printer_technology": "FFF",
+    "printer_notes": "",
+    "extruder_count": "2",
+    "extruder_colour": [
+        "#FCE94F",
+        "#8AE234"
+    ],
+    "extruder_offset": [
+        "0x0",
+        "0x0"
+    ],
+    "gcode_flavor": "marlin2",
+    "machine_max_acceleration_e": [
+        "10000",
+        "10000"
+    ],
+    "machine_max_acceleration_extruding": [
+        "3000",
+        "3000"
+    ],
+    "machine_max_acceleration_retracting": [
+        "3000",
+        "3000"
+    ],
+    "machine_max_acceleration_x": [
+        "9000",
+        "9000"
+    ],
+    "machine_max_acceleration_y": [
+        "9000",
+        "9000"
+    ],
+    "machine_max_acceleration_z": [
+        "100",
+        "100"
+    ],
+    "machine_max_speed_e": [
+        "45",
+        "45"
+    ],
+    "machine_max_speed_x": [
+        "400",
+        "400"
+    ],
+    "machine_max_speed_y": [
+        "400",
+        "400"
+    ],
+    "machine_max_speed_z": [
+        "12",
+        "12"
+    ],
+    "machine_max_jerk_e": [
+        "5",
+        "5"
+    ],
+    "machine_max_jerk_x": [
+        "20",
+        "20"
+    ],
+    "machine_max_jerk_y": [
+        "20",
+        "20"
+    ],
+    "machine_max_jerk_z": [
+        "0.4",
+        "0.4"
+    ],
+    "min_layer_height": [
+        "0.08",
+        "0.08"
+    ],
+    "max_layer_height": [
+        "0.32",
+        "0.32"
+    ],
+    "extruder_type": [
+        "Direct Drive",
+        "Direct Drive"
+    ],
+    "single_extruder_multi_material": "0",
+    "printer_extruder_id": [
+        "1",
+        "2"
+    ],
+    "printer_extruder_variant": [
+        "1A",
+        "1A"
+    ],
+    "extruder_variant_list": [
+        "1A",
+        "1A"
+    ],
+    "nozzle_diameter": [
+        "0.4",
+        "0.4"
+    ],
+    "nozzle_type": [
+        "brass",
+        "brass"
+    ],
+    "before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\nG92 E0\n",
+    "machine_start_gcode": "G90\nM82\nG92 E0\nG0 Z20",
+    "machine_end_gcode": "",
+    "machine_heated_bed": "0",
+    "retract_before_wipe": [
+        "100%",
+        "100%"
+    ],
+    "retraction_length": [
+        "0.75",
+        "0.75"
+    ],
+    "retract_length_toolchange": [
+        "0.5",
+        "0.5"
+    ],
+    "retraction_speed": [
+        "5",
+        "5"
+    ],
+    "deretraction_speed": [
+        "5",
+        "5"
+    ],
+    "retraction_minimum_travel": [
+        "0.6",
+        "0.6"
+    ],
+    "retract_when_changing_layer": [
+        "1",
+        "1"
+    ],
+    "wipe": [
+        "1",
+        "1"
+    ],
+    "wipe_distance": [
+        "20",
+        "20"
+    ],
+    "z_hop": [
+        "0.4",
+        "0.4"
+    ],
+    "z_hop_types": [
+        "Slope Lift",
+        "Slope Lift"
+    ],
+    "use_relative_e_distances": "0",
+    "default_print_profile": "",
+    "thumbnails": "120x120/PNG,320x320/PNG,640x640/PNG,90x90/PNG,140x106/PNG,212x300/PNG,960x1460/PNG"
+}
