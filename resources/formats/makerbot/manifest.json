@@ -17,6 +17,21 @@
       "id": "sketch_large",
       "name": "MakerBot Sketch Large",
       "config_file": "sketch_large.json"
+    },
+    {
+      "id": "method",
+      "name": "MakerBot Method",
+      "config_file": "method.json"
+    },
+    {
+      "id": "method_x",
+      "name": "MakerBot Method X",
+      "config_file": "method_x.json"
+    },
+    {
+      "id": "method_xl",
+      "name": "MakerBot Method XL",
+      "config_file": "method_xl.json"
     }
   ]
 }

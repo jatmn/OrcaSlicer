@@ -495,7 +495,7 @@ std::string get_mime_type_for_upload(const std::string& format_config_id, const 
         return "application/x-makerbot-sketch";
     }
     // MakerBot Method formats - use application/x-makerbot
-    if (format_config_id == "method_x" || format_config_id == "method_xl") {
+    if (format_config_id == "method" || format_config_id == "method_x" || format_config_id == "method_xl") {
         return "application/x-makerbot";
     }
     // Fallback based on extension

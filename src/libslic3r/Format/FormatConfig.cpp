@@ -242,7 +242,8 @@ std::string FormatConfig::get_format_type_for_printer(const std::string& printer
     
     // MakerBot formats (.makerbot)
     if (config_id == "sketch_small" || config_id == "sketch_sprint" ||
-        config_id == "sketch_large" || config_id == "method_x" || config_id == "method_xl") {
+        config_id == "sketch_large" || config_id == "method" ||
+        config_id == "method_x" || config_id == "method_xl") {
         return "makerbot";
     }
     
@@ -319,7 +320,7 @@ bool FormatConfig::export_to_container(const std::string& format_type,
         error_message = "No FORMAT_CONFIG_ID found in printer notes. "
                        "To export in container format, add FORMAT_CONFIG_ID:<id> to your printer notes. "
                        "Valid IDs for .ufp: ultimaker_s3, ultimaker_s5, ultimaker_s6, ultimaker_s7, ultimaker_s8, ultimaker_factor4, ultimaker2_plus_connect. "
-                       "Valid IDs for .makerbot: sketch_small, sketch_sprint, sketch_large, method_x, method_xl.";
+                       "Valid IDs for .makerbot: sketch_small, sketch_sprint, sketch_large, method, method_x, method_xl.";
         BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
         return false;
     }
@@ -381,10 +382,11 @@ bool FormatConfig::export_to_container(const std::string& format_type,
             BOOST_LOG_TRIVIAL(info) << "FormatConfig: Setting thumbnail data for MakerBot export, size=" << thumbnail_data.size();
         }
         // Pass extruder data (GUIDs, temps, volumes)
-        for (size_t i = 0; i < extruder_data.size() && i < 1; ++i) {
+        for (size_t i = 0; i < extruder_data.size() && i < 2; ++i) {
             ExtruderData mb_data;
             mb_data.material_guid = extruder_data[i].material_guid;
             mb_data.material_name = extruder_data[i].material_name;
+            mb_data.brand = extruder_data[i].brand;
             mb_data.extruder_temp = extruder_data[i].extruder_temp;
             mb_data.filament_mm = extruder_data[i].filament_mm;
             mb_data.filament_g = extruder_data[i].filament_g;
@@ -439,7 +441,7 @@ bool FormatConfig::export_to_container(const std::string& format_type,
         error_message = "No FORMAT_CONFIG_ID found in printer notes. "
                        "To export in container format, add FORMAT_CONFIG_ID:<id> to your printer notes. "
                        "Valid IDs for .ufp: ultimaker_s3, ultimaker_s5, ultimaker_s6, ultimaker_s7, ultimaker_s8, ultimaker_factor4, ultimaker2_plus_connect. "
-                       "Valid IDs for .makerbot: sketch_small, sketch_sprint, sketch_large, method_x, method_xl.";
+                       "Valid IDs for .makerbot: sketch_small, sketch_sprint, sketch_large, method, method_x, method_xl.";
         BOOST_LOG_TRIVIAL(error) << "FormatConfig: " << error_message;
         return false;
     }

@@ -120,9 +120,10 @@ This section is the current high-level truth for the fork and should be used as 
 
 ### Local-Only Status (`HEAD` not yet on `origin/main`)
 
-- `HEAD` is currently aligned with `origin/main`.
-- There are no fork-specific local-only commits to track at the moment.
-- Treat the current AGENTS file as the authoritative status record for what has already landed publicly in jatmn's fork.
+- `HEAD` now contains a local-only MakerBot Method-family export groundwork pass that is not yet on `origin/main`.
+- The local-only work adds initial native `.makerbot` export support for plain Method, Method X, and Method XL by restoring format configs and teaching `MakerBotWriter` to emit Method-style `print.jsontoolpath`, `meta.json`, and `slicemetadata.json` payloads.
+- This local-only pass has compile verification for `libslic3r` and `libslic3r_gui`, but full app/runtime validation and real printer acceptance testing are still pending.
+- Treat the current AGENTS file as the authoritative status record for both the public fork state and the currently known local-only Method work.
 
 ### Active Workstreams
 
@@ -133,10 +134,11 @@ This section is the current high-level truth for the fork and should be used as 
 - UltiMaker setup-wizard / vendor-manifest behavior has a newly documented dependency rule: incomplete model removal must be done consistently across all root lists in the vendor manifest or the entire vendor bundle may stop loading correctly.
 - UltiMaker Digital Factory auth now more closely mirrors Cura's behavior, but it still needs live user validation after the token-storage and refresh-path cleanup.
 - UltiMaker LAN browse now behaves more like Cura with persistent discovery while the picker is open, but broader long-session validation is still needed.
+- MakerBot Method-family export now has a first native C++ groundwork pass locally, but machine presets, process defaults, material/core compatibility rules, UI wiring, and printer validation still need follow-through.
 - Printer-profile completeness is intentionally uneven right now:
   - some models are real tuned/tunable work in progress
   - some models are only placeholder templates kept in the tree for future work
-  - some future MakerBot Method family entries exist only as reserved placeholders
+  - some MakerBot Method family entries now have export groundwork locally, but still do not have finished shipping-quality preset/UI support
 
 ### Current PR Guidance
 
@@ -149,7 +151,7 @@ This section is the current high-level truth for the fork and should be used as 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Container Format Export (.ufp) | ✅ Completed | Works for UltiMaker printers; recent fixes cover GUID/name handling, multi-material export, spaced paths, and wrong stop-marker retraction |
-| Container Format Export (.makerbot) | ✅ Completed | Sketch series path works; Method configs remain reserved; single-thumbnail path and logging cleanup are on the public fork |
+| Container Format Export (.makerbot) | ✅ Completed | Sketch series path is public; local `HEAD` now also contains an initial Method / Method X / Method XL export path, but Method validation is still incomplete |
 | Digital Factory Upload | ✅ Completed | Two-step upload with container conversion for both `.ufp` and `.makerbot` formats |
 | LAN Printing | ✅ Completed | Supports UltiMaker S series and Factor series; browse/discovery now uses Cura-style persistent scanning while the picker is open |
 | Cheetah G-code Flavor | ⚠️ Active Tuning | Baseline support is in; calibration, preview, UI, and motion handling are still being refined |
@@ -184,8 +186,9 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 | `sketch_small` | MakerBot | `.makerbot` | `resources/formats/makerbot/sketch_small.json` |
 | `sketch_sprint` | MakerBot | `.makerbot` | `resources/formats/makerbot/sketch_sprint.json` |
 | `sketch_large` | MakerBot | `.makerbot` | `resources/formats/makerbot/sketch_large.json` |
-| `method_x` | MakerBot | `.makerbot` | Reserved in code (config removed) |
-| `method_xl` | MakerBot | `.makerbot` | Reserved in code (config removed) |
+| `method` | MakerBot | `.makerbot` | `resources/formats/makerbot/method.json` |
+| `method_x` | MakerBot | `.makerbot` | `resources/formats/makerbot/method_x.json` |
+| `method_xl` | MakerBot | `.makerbot` | `resources/formats/makerbot/method_xl.json` |
 
 **Orphan Files:** None currently known.
 
@@ -208,12 +211,16 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 ### Known Issues
 
 **MakerBot Format:**
-- `.makerbot` writer is implemented for Sketch series; full validation still pending
+- `.makerbot` writer is implemented publicly for Sketch series; local `HEAD` also adds an initial Method-family branch
 - `sketch_large` added to `makerbot/manifest.json`
-- `method_x.json` and `method_xl.json` config files removed (reserved in `FormatConfig` code for future use)
+- local Method-family support now restores `method.json`, `method_x.json`, and `method_xl.json`
+- local Method-family support writes `print.jsontoolpath` instead of `print.gcode` and converts Orca-emitted G-code into Method-style move / tool-change / temperature / fan / layer-comment commands inside `MakerBotWriter`
+- local Method-family support now accepts plain `method` in `FORMAT_CONFIG_ID` routing and `application/x-makerbot` MIME selection
+- local Method-family support also passes up to two extruders of injected export metadata through the MakerBot export path and patches Method filament presets with native material GUID / material-code notes
 - ContainerFormatHelper class manages thumbnail generation
 - Thumbnail format in printer profiles must use `120x120/PNG` format (with PNG specifier)
-- Oversized 960×1460 thumbnail removed from MakerBot configs and from `ContainerFormatHelper` default fallback
+- the generic MakerBot fallback still avoids oversized thumbnails, but local Method configs explicitly request the real Method `thumbnail_960x1460.png` member
+- full Method-family printer acceptance testing has not been completed yet, and full machine/process/UI preset wiring is still pending
 
 **Dual Extrusion on S/F Series (UltiMaker S3/S5/S6/S7/S8, Factor 4):**
 - ⚠️ **Needs more work** - Dual extrusion functionality is not fully implemented
@@ -487,8 +494,8 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 | UltiMaker S7 | Placeholder template only | Needs real profile creation, tuning, and validation; also uses Griffin/UFP path that still needs writer support updates |
 | UltiMaker S8 | Dependency follow-on to S6 | Will be done after S6 due to the current dependency chain |
 | UltiMaker 2+ Connect | Placeholder template only and currently not in active bundle | Needs real profile creation, tuning, and validation; likely uses Griffin/UFP path that still needs writer support updates; also does not use print cores and needs proper non-core configuration handling |
-| MakerBot Method / Method X | Placeholder only | Reserved for future support; no real implementation work performed yet; Cura's Method postprocessor behavior still needs to be ported into `MakerBotWriter` to support these properly |
-| MakerBot Method XL | Placeholder only | Reserved for future support; no real implementation work performed yet; Cura's Method/Method XL postprocessor behavior still needs to be ported into `MakerBotWriter` to support this properly |
+| MakerBot Method / Method X | Export groundwork now exists locally | `MakerBotWriter` now has an initial Method converter and format configs, but machine/process presets, compatibility conditions, and real printer validation are still pending |
+| MakerBot Method XL | Export groundwork now exists locally | Shares the new local Method export path, but XL-specific preset tuning, compatibility wiring, and printer validation are still pending |
 
 ### Reference Files
 
@@ -715,6 +722,12 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 ## Change Log
 
 ### 2026-04-16
+- **MakerBot Method Family Export Groundwork (local-only)**
+  - Added a first native C++ Method-family `.makerbot` export pass in `MakerBotWriter` that now branches between Sketch `print.gcode` archives and Method `print.jsontoolpath` archives.
+  - Restored local Method format configs for plain Method, Method X, and Method XL under `resources/formats/makerbot/`.
+  - Updated `FormatConfig` and the UltiMaker upload MIME routing so `FORMAT_CONFIG_ID:method`, `method_x`, and `method_xl` resolve through the MakerBot container path locally.
+  - Extended the MakerBot export path to carry up to two injected extruders of material/temperature usage metadata and patched the shipped MakerBot Method filament presets with native Method GUID/material-code notes.
+  - Verified successful local `Release` builds for `libslic3r` and `libslic3r_gui`; full app/runtime and printer acceptance validation remain pending.
 - **AGENTS Status Refresh**
   - Updated the current-status audit date and public-fork head reference to match `origin/main` at `cd0a2d7428`.
   - Removed the stale AGENTS claim that `OAuthJob` currently preserves the previous refresh token when `refresh_token` is omitted from the token response.
