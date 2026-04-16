@@ -15,24 +15,15 @@ This section is the current high-level truth for the fork and should be used as 
 
 ### Public Fork Status (`origin/main`)
 
-- Public fork head currently includes work through commit `5c60391056`.
+- Public fork head currently includes work through commit `59e2bbfe71`.
 - UltiMaker Digital Factory upload, UltiMaker LAN printing, `.ufp` export, `.makerbot` export, MakerBot Sketch profiles, UltiMaker S/F printer families, core-specific process matrix groundwork, and baseline Cheetah flavor support are already on the public fork.
-- Public fork also includes recent Cheetah fixes for gcode flavor persistence, duplicate extruder tabs, Filament/Process tab consistency, UFP material GUID/name fixes, and UFP path / multi-material export fixes.
+- Public fork also includes recent Cheetah fixes for gcode flavor persistence, duplicate extruder tabs, Filament/Process tab consistency, UFP material GUID/name fixes, UFP path / multi-material export fixes, the temporary UltiMaker root-manifest pruning for incomplete models, MakerBot Sketch default-profile backports, optional Linux secure storage fallback, and the latest UltiMaker auth / LAN discovery refresh.
 
 ### Local-Only Status (`HEAD` not yet on `origin/main`)
 
-- Local head currently includes nine additional commits on top of the public fork:
-  - `e2288c93f0` Fix UFP container writer injecting retraction at wrong stop marker
-  - `9ab88a79d7` Improve Cheetah calibration flow and top bar hit testing
-  - `131c2d99e7` Trim verbose Cheetah and UltiMaker logging
-  - `a72aeae8ff` Tighten Cheetah motion and preview handling
-  - `8b124c6514` Clean up container writers and print core labels
-  - `de97547bc2` Improve Cheetah cornering tests and UltiMaker host UX
-  - `04d320a4cc` Refresh AGENTS guide for current UltiMaker work
-  - `021e791a97` Add Cheetah-specific cornering calibration behavior
-  - `87634f0ff6` Refine Cheetah calibration behavior
-- Working tree currently also contains an uncommitted UltiMaker root-manifest change that removes incomplete models from the setup/testing surface by editing `resources/profiles/UltiMaker.json`.
-- These local-only commits materially improve Cheetah calibration usability, preview accuracy, Physical Printer dialog behavior, container writer cleanup, Prepare-tab UI polish, and AGENTS coverage.
+- `HEAD` is currently aligned with `origin/main`.
+- There are no fork-specific local-only commits to track at the moment.
+- Treat the current AGENTS file as the authoritative status record for what has already landed publicly in jatmn's fork.
 
 ### Active Workstreams
 
@@ -41,6 +32,8 @@ This section is the current high-level truth for the fork and should be used as 
 - Roaming-profile `- Copy` presets are currently the working area for tuned defaults before backporting them into source-controlled profiles.
 - Dual-extrusion validation on UltiMaker S/F series is still incomplete even though the profile and container groundwork exists.
 - UltiMaker setup-wizard / vendor-manifest behavior has a newly documented dependency rule: incomplete model removal must be done consistently across all root lists in the vendor manifest or the entire vendor bundle may stop loading correctly.
+- UltiMaker Digital Factory auth now more closely mirrors Cura's behavior, but it still needs live user validation after the token-storage and refresh-path cleanup.
+- UltiMaker LAN browse now behaves more like Cura with persistent discovery while the picker is open, but broader long-session validation is still needed.
 
 ### Current PR Guidance
 
@@ -113,10 +106,10 @@ When working on Cura-related features (especially UltiMaker Digital Factory inte
 | Container Format Export (.ufp) | ✅ Completed | Works for UltiMaker printers; recent fixes cover GUID/name handling, multi-material export, spaced paths, and wrong stop-marker retraction |
 | Container Format Export (.makerbot) | ✅ Completed | Sketch series path works; Method configs remain reserved; single-thumbnail path and logging cleanup landed locally |
 | Digital Factory Upload | ✅ Completed | Two-step upload with container conversion |
-| LAN Printing | ✅ Completed | Supports UltiMaker S series and Factor series; does not support UltiMaker 2+ Connect or MakerBot printers |
+| LAN Printing | ✅ Completed | Supports UltiMaker S series and Factor series; browse/discovery now uses Cura-style persistent scanning while the picker is open |
 | Cheetah G-code Flavor | ⚠️ Active Tuning | Baseline support is in; calibration, preview, UI, and motion handling are still being refined |
 | Printer Profiles | ⚠️ Active Tuning | Core/profile matrix exists; defaults are still being tuned and validated |
-| Process Profiles | ⚠️ Active Tuning | Dynamic/core-specific groundwork exists; tuned defaults still being validated |
+| Process Profiles | ⚠️ Active Tuning | Dynamic/core-specific groundwork exists; tuned defaults still being validated and selectively backported |
 | Material GUID Matching | ✅ Completed | Two-pass search prioritizes GUIDs |
 | Material Association Matrix | ❌ Not Started | Need printer/core compatibility |
 
@@ -191,6 +184,16 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 
 Upload to UltiMaker Digital Factory with container conversion is fully implemented.
 
+### Authentication / Token Handling Notes
+
+- OAuth refresh-token persistence now follows a safer Cura-like policy:
+  - refresh tokens are stored in OS secure storage when available
+  - refresh tokens are **not** persisted in plain JSON metadata anymore
+  - legacy JSON refresh tokens are scrubbed after migration / load
+- If secure storage is unavailable, the refresh token remains available only for the current session and re-authentication may be required after restart or token expiry.
+- The synchronous refresh path was also reduced so UI-triggered Digital Factory actions no longer proactively refresh before every call and now attempt only a single on-demand refresh when the API reports an expired token.
+- `OAuthJob` was hardened to tolerate token responses that omit `refresh_token`, preserving the previously stored refresh token when appropriate.
+
 ### Upload Integration
 
 - **Two-step upload flow**: `UltiMaker::upload()` creates `.ufp` container before uploading to Digital Factory
@@ -228,7 +231,7 @@ Upload to UltiMaker Digital Factory with container conversion is fully implement
 
 ### Status: ✅ COMPLETED (with limitations)
 
-File upload to UltiMaker printers over LAN (no cloud, no mDNS) is working.
+File upload to UltiMaker printers over LAN is working. Cloud is not required; optional local printer discovery is available through the UltiMaker LAN browse dialog.
 
 ### Implementation Details
 
@@ -252,6 +255,9 @@ File upload to UltiMaker printers over LAN (no cloud, no mDNS) is working.
 - "UltiMaker (LAN)" option in host printer type dropdown
 - Fields: IP/hostname, username, port (default 80)
 - Upload progress and print status display
+- Browse dialog now returns/stores the discovered printer IP address instead of Bonjour `full_address`, matching Cura's address model more closely.
+- Browse dialog discovery is now persistent while the dialog remains open by continuously running short discovery passes, rather than ending after a single one-shot burst.
+- Legacy `print_host` values containing paths/query strings/trailing slashes are sanitized before LAN API and Device-tab web UI URLs are built.
 
 ### API Reference (implemented endpoints)
 
@@ -293,7 +299,7 @@ File upload to UltiMaker printers over LAN (no cloud, no mDNS) is working.
 
 - ✅ File upload to printer
 - ✅ Basic print job control (pause/resume/abort)
-- ⚠️ Browse for local printers feature (exists but not validated)
+- ⚠️ Browse for local printers feature is implemented and now persistent, but still needs broader validation on real networks
 - ❌ Direct printer control beyond basic commands
 - ❌ Print management (job queue, history)
 - ❌ Monitoring printer status in real-time
@@ -306,6 +312,13 @@ File upload to UltiMaker printers over LAN (no cloud, no mDNS) is working.
 ### Status: ⚠️ IN PROGRESS
 
 All UltiMaker and MakerBot printer profiles have been created but have known issues that need resolution.
+
+### Current Bundle / Surface Status
+
+- `resources/profiles/UltiMaker.json` is currently pruned so incomplete `UltiMaker S3`, `UltiMaker S5`, `UltiMaker S7`, and `UltiMaker 2+ Connect` models are removed from the active shipped/testing bundle.
+- The backup snapshot for the pre-pruning manifest is committed as `resources/profiles/UltiMaker.json.setup_wizard_backup`.
+- This pruning was done deliberately at the root-manifest level, not by deleting the underlying machine/process JSON files.
+- MakerBot Sketch default machine/process tuning has now had its first selective backport into source-controlled defaults.
 
 ### Implementation Summary
 
@@ -409,6 +422,8 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 - ✅ **Upload**: Digital Factory upload with container conversion works
 - ✅ **LAN Printing**: UltiMaker LAN upload and print works
 - ⚠️ **Core Variant**: `printer_extruder_variant` values need review (deferred to future project)
+- ⚠️ **UltiMaker Digital Factory Auth**: refreshed implementation is compiled and pushed, but still needs broader live validation after the storage/refresh cleanup
+- ⚠️ **UltiMaker LAN Browse**: persistent picker behavior and IP-only selection are compiled and pushed, but still need broader validation on real LAN environments
 
 ### Reference Files
 
@@ -611,7 +626,20 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - Confirmed that `resources/profiles/UltiMaker.json` is not a setup-wizard-only list; it is part of the real vendor bundle definition.
   - Confirmed that removing entries only from `machine_model_list` can invalidate the whole UltiMaker vendor bundle because `machine_list` printer presets are validated against the remaining model list.
   - Documented the safe temporary-removal procedure: when disabling incomplete UltiMaker models, remove them consistently from `machine_model_list`, `machine_list`, and related `process_list` entries, then sync the manifest copies and restart OrcaSlicer.
-  - Current working-tree manifest change removes incomplete `S3`, `S5`, `S7`, and `2+ Connect` models from the active UltiMaker bundle for testing while leaving the underlying JSON files on disk.
+  - The active/public fork state now removes incomplete `S3`, `S5`, `S7`, and `2+ Connect` models from the active UltiMaker bundle while leaving the underlying JSON files on disk.
+- **MakerBot Sketch Default Profile Backport**
+  - First selective default-profile backport landed for standard MakerBot Sketch.
+  - `MakerBot Sketch 0.40.json` was kept single-extruder and had the incorrect copied `T1` heater start-gcode line removed.
+  - `fdm_process_common_sketch.json` received the corresponding standard Sketch process tuning cleanup.
+- **Cross-Platform / Secure Storage**
+  - Linux secure storage support was made optional so the project should still configure/build without `libsecret`.
+  - UltiMaker Digital Factory refresh tokens now follow a safer storage policy: secure storage when available, no plaintext JSON refresh-token persistence.
+- **UltiMaker Host / Discovery Refresh**
+  - UltiMaker Digital Factory refresh behavior was reduced to an on-demand single sync refresh attempt to avoid long UI freezes from repeated retries.
+  - `OAuthJob` now tolerates refresh responses that omit `refresh_token`.
+  - UltiMaker LAN browse now stores the discovered printer IP address instead of Bonjour `full_address`.
+  - UltiMaker LAN browse now behaves persistently while the dialog is open by continuously re-running short discovery passes, closer to Cura's ongoing Zeroconf discovery behavior.
+  - LAN host / Device-tab URL building now sanitizes stale legacy host values containing paths, query strings, or extra slashes.
 
 ### 2026-04-12 to 2026-04-13
 - **Cheetah Flavor Baseline**
