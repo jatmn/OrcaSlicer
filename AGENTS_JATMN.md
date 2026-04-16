@@ -1,6 +1,6 @@
 # OrcaSlicer Agent Guide (jatmn's Fork)
 
-> **Last Updated:** 2026-04-15
+> **Last Updated:** 2026-04-16
 >
 > **Change Tracking:** This file tracks implementation status specific to jatmn's fork. See the [Change Log](#change-log) section at the end for revision history.
 > When older sections conflict with the current-status audit below, the current-status audit wins.
@@ -8,7 +8,7 @@
 ## Table of Contents
 
 - [Project Context](#project-context)
-- [Current Status Audit (2026-04-15)](#current-status-audit-2026-04-15)
+- [Current Status Audit (2026-04-16)](#current-status-audit-2026-04-16)
   - [Public Fork Status (`origin/main`)](#public-fork-status-originmain)
   - [Local-Only Status (`HEAD` not yet on `origin/main`)](#local-only-status-head-not-yet-on-originmain)
   - [Active Workstreams](#active-workstreams)
@@ -75,6 +75,7 @@ This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a
   - UltiMaker LAN printing
   - baseline UltiMaker / MakerBot profile families
   - baseline Cheetah gcode-flavor support
+  - a currently working macOS / Apple Silicon (`arm64`) build path on a local M1 after recent compatibility fixes
 - The largest active work areas are:
   - tuning default UltiMaker and MakerBot machine / process / material presets
   - validating Cheetah motion and calibration behavior on real hardware
@@ -105,15 +106,17 @@ This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a
   - Gemini 2.5 Flash
   - Gemini 3.0
 
-## Current Status Audit (2026-04-15)
+## Current Status Audit (2026-04-16)
 
 This section is the current high-level truth for the fork and should be used as the starting point when preparing PRs or resuming work.
 
 ### Public Fork Status (`origin/main`)
 
-- Public fork head currently includes work through commit `59e2bbfe71`.
+- Public fork head currently includes work through commit `cd0a2d7428`.
 - UltiMaker Digital Factory upload, UltiMaker LAN printing, `.ufp` export, `.makerbot` export, MakerBot Sketch profiles, UltiMaker S/F printer families, core-specific process matrix groundwork, and baseline Cheetah flavor support are already on the public fork.
 - Public fork also includes recent Cheetah fixes for gcode flavor persistence, duplicate extruder tabs, Filament/Process tab consistency, UFP material GUID/name fixes, UFP path / multi-material export fixes, the temporary UltiMaker root-manifest pruning for incomplete models, MakerBot Sketch default-profile backports, optional Linux secure storage fallback, and the latest UltiMaker auth / LAN discovery refresh.
+- Public fork now also includes the `95bc9c4257` macOS / `arm64` compatibility pass: the bundled `miniz` snapshot was reconciled with its header signature, `Http::allow_tls_flexible()` was made linkable cross-platform, `UltiMakerLAN` now guards Windows-only SSL revoke behavior correctly, and the `ExtruderVariantWidget` / `PrintHostDialogs` compile blockers were cleaned up for current Apple toolchains.
+- The follow-up `cd0a2d7428` cleanup commit removed the temporary macOS build-plan scratch file after the build fixes landed.
 
 ### Local-Only Status (`HEAD` not yet on `origin/main`)
 
@@ -234,7 +237,7 @@ Upload to UltiMaker Digital Factory with container conversion is fully implement
   - legacy JSON refresh tokens are scrubbed after migration / load
 - If secure storage is unavailable, the refresh token remains available only for the current session and re-authentication may be required after restart or token expiry.
 - The synchronous refresh path was also reduced so UI-triggered Digital Factory actions no longer proactively refresh before every call and now attempt only a single on-demand refresh when the API reports an expired token.
-- `OAuthJob` was hardened to tolerate token responses that omit `refresh_token`, preserving the previously stored refresh token when appropriate.
+- Recent follow-up work also added verbose OAuth callback/token debugging and ensured `Http::allow_tls_flexible()` links on non-Windows platforms so the auth path builds on macOS / `arm64`; broader live-token validation is still needed.
 
 ### Upload Integration
 
@@ -710,6 +713,22 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 ---
 
 ## Change Log
+
+### 2026-04-16
+- **AGENTS Status Refresh**
+  - Updated the current-status audit date and public-fork head reference to match `origin/main` at `cd0a2d7428`.
+  - Removed the stale AGENTS claim that `OAuthJob` currently preserves the previous refresh token when `refresh_token` is omitted from the token response.
+  - Refreshed the summary/audit sections to note that the current public fork has a locally verified macOS / Apple Silicon build path again.
+- **macOS / Apple Silicon Build Compatibility**
+  - `95bc9c4257` fixed the current local/public macOS build blockers:
+    - reconciled the bundled `miniz` implementation with its header signature
+    - cleaned up `ExtruderVariantWidget` const handling for `full_config()` and preset option access
+    - removed the stale `PrintHostType` forward declaration mismatch in `PrintHostDialogs.hpp`
+    - made `Http::allow_tls_flexible()` linkable cross-platform instead of Windows-only in practice
+    - gated `UltiMakerLAN`'s `ssl_revoke_best_effort()` calls behind `WIN32`
+  - Verified a successful local `arm64` app build on an M1 Mac.
+- **Cleanup**
+  - `cd0a2d7428` removed the temporary `plans/build_orcaslicer_macos.md` scratch note after the build-fix commit landed.
 
 ### 2026-04-15
 - **UltiMaker Root Manifest Dependency Rule**
