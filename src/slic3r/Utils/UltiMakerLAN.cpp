@@ -17,33 +17,8 @@ namespace fs = boost::filesystem;
 
 namespace Slic3r {
 
-namespace {
-
-std::string sanitize_host_input(std::string host)
-{
-    boost::trim(host);
-    if (host.empty()) {
-        return host;
-    }
-
-    const size_t scheme_pos      = host.find("://");
-    const size_t authority_start = scheme_pos == std::string::npos ? 0 : scheme_pos + 3;
-    const size_t suffix_pos      = host.find_first_of("/?#", authority_start);
-    if (suffix_pos != std::string::npos) {
-        host.erase(suffix_pos);
-    }
-
-    while (!host.empty() && host.back() == '/') {
-        host.pop_back();
-    }
-
-    return host;
-}
-
-} // namespace
-
 UltiMakerLAN::UltiMakerLAN(DynamicPrintConfig* config)
-    : m_host(sanitize_host_input(config->opt_string("print_host")))
+    : m_host(config->opt_string("print_host"))
     , m_username(config->opt_string("printhost_user"))
     , m_password(config->opt_string("printhost_password"))
     , m_cafile(config->opt_string("printhost_cafile"))
@@ -67,19 +42,16 @@ void UltiMakerLAN::set_auth(Http& http) const
 
 std::string UltiMakerLAN::make_url(const std::string& path) const
 {
-    std::string base = m_host;
-    if (!boost::algorithm::starts_with(base, "http://") && !boost::algorithm::starts_with(base, "https://")) {
-        // Add http:// scheme if not present (UltiMaker local API uses HTTP)
-        base = "http://" + base;
+    if (m_host.find("http://") == 0 || m_host.find("https://") == 0) {
+        // Host already includes scheme
+        if (m_host.back() == '/') {
+            return m_host + path;
+        } else {
+            return m_host + path;
+        }
     }
-
-    if (!base.empty() && base.back() == '/' && !path.empty() && path.front() == '/') {
-        base.pop_back();
-    } else if (!base.empty() && base.back() != '/' && !path.empty() && path.front() != '/') {
-        base += '/';
-    }
-
-    return base + path;
+    // Add http:// scheme if not present (UltiMaker local API uses HTTP)
+    return std::string("http://") + m_host + path;
 }
 
 wxString UltiMakerLAN::get_test_ok_msg() const
@@ -123,16 +95,20 @@ bool UltiMakerLAN::test(wxString& curl_msg) const
         .on_complete([&](std::string body2, unsigned status2) {
             BOOST_LOG_TRIVIAL(info) << boost::format("UltiMaker LAN: Fallback test response: HTTP %1%, body: %2%") % status2 % body2;
             res = (status2 >= 200 && status2 < 300);
-        })
-        .ssl_revoke_best_effort(m_ssl_revoke_best_effort)
-        .perform_sync();
+        });
+#ifdef WIN32
+        http2.ssl_revoke_best_effort(m_ssl_revoke_best_effort);
+#endif
+        http2.perform_sync();
     })
     .on_complete([&](std::string body, unsigned status) {
         BOOST_LOG_TRIVIAL(info) << boost::format("UltiMaker LAN: Test response: HTTP %1%, body: %2%") % status % body;
         res = (status >= 200 && status < 300);
-    })
-    .ssl_revoke_best_effort(m_ssl_revoke_best_effort)
-    .perform_sync();
+    });
+#ifdef WIN32
+    http.ssl_revoke_best_effort(m_ssl_revoke_best_effort);
+#endif
+    http.perform_sync();
     
     return res;
 }
@@ -238,9 +214,11 @@ bool UltiMakerLAN::upload(PrintHostUpload upload_data, ProgressFn progress_fn, E
             BOOST_LOG_TRIVIAL(error) << boost::format("UltiMaker LAN: Error uploading file: %1%, HTTP %2%, body: `%3%`") % error % status % body;
             error_fn(format_error(body, error, status));
             res = false;
-        })
-        .ssl_revoke_best_effort(m_ssl_revoke_best_effort)
-        .perform_sync();
+        });
+#ifdef WIN32
+    http.ssl_revoke_best_effort(m_ssl_revoke_best_effort);
+#endif
+    http.perform_sync();
     
     return res;
 }

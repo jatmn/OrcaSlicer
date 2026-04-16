@@ -15,10 +15,6 @@
 #include "../Utils/PrintHost.hpp"
 #include "libslic3r/PrintConfig.hpp"
 
-// Forward declaration for PrintHostType to avoid circular dependency
-namespace Slic3r {
-enum PrintHostType : int;
-}
 class wxButton;
 class wxTextCtrl;
 class wxChoice;
