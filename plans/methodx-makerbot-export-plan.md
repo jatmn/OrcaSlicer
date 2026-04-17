@@ -15,6 +15,11 @@ The key correction from the earlier draft is that Method-family export is not ju
 > historical investigation details are intentionally retained below, but they predate the current local implementation work.
 > When an older bullet conflicts with the newer "Current local implementation status" section, the current local status wins.
 
+> Status refresh (2026-04-17):
+> `HEAD` now has a local follow-up commit beyond `origin/main`.
+> That local follow-up is a profile/resource/documentation pass that adds explicit dual `0.4` `nozzle_diameter` arrays to the shipped Method machine presets, restores missing Method setup-wizard cover art, and keeps Method's required `thumbnail_960x1460.png` only in the MakerBot format configs.
+> Troubleshooting on 2026-04-17 confirmed that putting `960x1460` into the printer preset `thumbnails` field breaks Orca's preset thumbnail validation because dimensions `>= 1000` are rejected during config load, which can take down the whole UltiMaker vendor bundle.
+
 The scope should now explicitly cover:
 
 - Method shared conversion behavior
@@ -529,6 +534,9 @@ That means the real deliverable is:
   - remaps print processes using combined Method keys such as `1XA+2XA` and `1C+2XA`
   - mixed `+2XA` process presets now key compatibility on both slot 0 and slot 1 so stale support processes drop out when slot 1 is no longer `2XA`
 - Local `HEAD` now also threads Method-family slot-aware compatibility through `PresetBundle` filament replacement, filament combo-box visibility, calibration loading, and the WebGuide fallback default-filament selection path so per-slot build/support roles affect visible and auto-selected filament choices more consistently.
+- The current local follow-up now also adds explicit two-entry `nozzle_diameter` arrays to the shipped Method machine presets so the local dual-extruder instances advertise both `0.4` nozzles consistently.
+- Method's oversized `thumbnail_960x1460.png` requirement is now kept only in the Method MakerBot format configs; the shared Method printer preset `thumbnails` field stays below the Orca config-loader limit so the UltiMaker vendor bundle does not fail to load.
+- Local resources now also ship first-pass setup-wizard cover art for Method / Method X / Method XL, sourced from the local Cura reference assets.
 - The local Method filament library now includes shipped preset pairs for:
   - Tough PLA
   - ABS-R
@@ -546,7 +554,6 @@ That means the real deliverable is:
   - ASA: `method_x` / `method_xl` on `1XA`, `1C`, `LABS`
   - Nylon CF / Nylon 12 CF: `method` / `method_x` / `method_xl` on `1C`, `LABS`
   - RapidRinse / SR-30: `method_x` / `method_xl` on `2XA`
-- The current working tree now also carries a small review-driven follow-up in `PresetComboBoxes` that still requires membership in `PresetBundle::calibrate_filaments` before slot-aware Method calibration filtering is applied, keeping the calibration UI aligned with the bundle allowlist instead of inventing a second compatibility source.
 
 ### Still outstanding
 
@@ -561,7 +568,7 @@ That means the real deliverable is:
   - the remaining gaps are plain Method `2A`, broader workflow validation, and deciding whether additional support-tool combinations should remain baked-only or become fully user-selectable
 - Method-family variant selection is now partially surfaced in Orca's Prepare UI, but it still needs compile/runtime validation and end-to-end workflow testing
 - Variant-driven process remapping now exists for the current baked Method-family combinations, but it still needs runtime validation against real preset switching behavior
-- The current working tree now also has a Windows `FindwxWidgets` fallback fix in `src/CMakeLists.txt` that avoids forcing release-only `mswu`, but a fresh local configure/build retry still has not been run here, so the actual build-unblock status remains unverified
+- No fresh local configure/build retry has been run in this workspace after the current profile-only follow-ups, so runtime validation for the latest Method preset changes is still pending
 - Broader Cura-supported Method material coverage is still missing from Orca, including:
   - PLA
   - PETG
@@ -684,9 +691,10 @@ flowchart TD
 
 ## Immediate next step
 
-The immediate next implementation slice should focus on finishing the remaining support-tool and material matrix gaps:
+The immediate next implementation slice should focus on the remaining support-tool, tuning, and runtime-validation gaps:
 
 1. validate the new baked Method X / XL mixed `2XA` presets and the new Method-family Prepare-side extruder UI against real preset switching behavior
 2. stage plain Method `2A` only after adding a real Method-family `PVA` material path instead of forcing a placeholder material
 3. backport the most important Cura quality / intent differences into a first real Method-family process matrix
-4. retry the local configure/build now that the Windows wxWidgets fallback no longer forces release-only libs, then broaden runtime / printer acceptance validation once that path is confirmed
+4. keep the oversized Method `thumbnail_960x1460.png` request in the MakerBot format configs only, and avoid reintroducing it through printer preset `thumbnails`
+5. retry a local configure/build and then broaden runtime / printer acceptance validation once that path is confirmed

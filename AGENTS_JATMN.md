@@ -10,7 +10,7 @@
 - [Project Context](#project-context)
 - [Current Status Audit (2026-04-17)](#current-status-audit-2026-04-17)
   - [Public Fork Status (`origin/main`)](#public-fork-status-originmain)
-  - [Local-Only Status (`HEAD` not yet on `origin/main`)](#local-only-status-head-not-yet-on-originmain)
+  - [Local-Only Status (`HEAD` now has one local follow-up commit)](#local-only-status-head-now-has-one-local-follow-up-commit)
   - [Working Tree Follow-Ups (`git status` only)](#working-tree-follow-ups-git-status-only)
   - [Active Workstreams](#active-workstreams)
   - [Current PR Guidance](#current-pr-guidance)
@@ -113,32 +113,34 @@ This section is the current high-level truth for the fork and should be used as 
 
 ### Public Fork Status (`origin/main`)
 
-- Public fork head currently includes work through commit `cd0a2d7428`.
+- Public fork head currently includes work through commit `10e6fe2dc7`.
 - UltiMaker Digital Factory upload, UltiMaker LAN printing, `.ufp` export, `.makerbot` export, MakerBot Sketch profiles, UltiMaker S/F printer families, core-specific process matrix groundwork, and baseline Cheetah flavor support are already on the public fork.
 - Public fork also includes recent Cheetah fixes for gcode flavor persistence, duplicate extruder tabs, Filament/Process tab consistency, UFP material GUID/name fixes, UFP path / multi-material export fixes, the temporary UltiMaker root-manifest pruning for incomplete models, MakerBot Sketch default-profile backports, optional Linux secure storage fallback, and the latest UltiMaker auth / LAN discovery refresh.
 - Public fork now also includes the `95bc9c4257` macOS / `arm64` compatibility pass: the bundled `miniz` snapshot was reconciled with its header signature, `Http::allow_tls_flexible()` was made linkable cross-platform, `UltiMakerLAN` now guards Windows-only SSL revoke behavior correctly, and the `ExtruderVariantWidget` / `PrintHostDialogs` compile blockers were cleaned up for current Apple toolchains.
 - The follow-up `cd0a2d7428` cleanup commit removed the temporary macOS build-plan scratch file after the build fixes landed.
 
-### Local-Only Status (`HEAD` not yet on `origin/main`)
+### Local-Only Status (`HEAD` now has one local follow-up commit)
 
-- `HEAD` now contains a local-only MakerBot Method-family export groundwork pass that is not yet on `origin/main`.
-- The local-only work adds initial native `.makerbot` export support for plain Method, Method X, and Method XL by restoring format configs and teaching `MakerBotWriter` to emit Method-style `print.jsontoolpath`, `meta.json`, and `slicemetadata.json` payloads.
-- The local-only Method pass now also adds a first vendor-bundle profile slice under `resources/profiles/UltiMaker/` so plain Method, Method X, and Method XL have concrete shipped machine/process presets that can reach the native Method export path through `FORMAT_CONFIG_ID:method`, `method_x`, and `method_xl`.
-- The current local profile slice is still intentionally conservative, but it is no longer limited to the original `1A` / `1XA` placeholders: local `HEAD` now also ships thin `1C` and `LABS` concrete machine/process leaves for Method / Method X / Method XL so the first expanded Method material matrix is actually reachable through the vendor bundle.
-- Support-tool exposure is still only partially staged in the shipped local slice:
-  - local `HEAD` now includes baked mixed Method X / XL `1XA+2XA`, `1C+2XA`, and `LABS+2XA` machine/process leaves with slot 0 as the build tool and slot 1 as the `2XA` support tool
+- `HEAD` now carries one local-only Method follow-up commit that is not yet on `origin/main`.
+- The public fork already contains the main Method-family export groundwork, vendor-bundle profile slice, Method-family compatibility flow, and first Prepare-side Method variant-selection path.
+- The current local-only commit is a profile/resource/documentation follow-up rather than a new exporter/codepath series.
+- The local-only commit:
+  - adds explicit two-entry `nozzle_diameter` arrays across the shipped Method machine presets so the dual-extruder instances advertise both `0.4` nozzles consistently
+  - keeps the real Method `thumbnail_960x1460.png` requirement in `resources/formats/makerbot/method*.json` instead of the shared printer preset `thumbnails` field, avoiding Orca's `>= 1000` preset-thumbnail validation failure
+  - adds missing setup-wizard cover art for Method / Method X / Method XL under `resources/profiles/UltiMaker/`
+  - refreshes the status/plan documents so they reflect the current public-vs-local split
+- The current shipped Method slice remains intentionally conservative:
+  - Method ships `1A`, `1C`, and `LABS`
+  - Method X / XL ship `1XA`, `1C`, and `LABS`
+  - Method X / XL also ship baked mixed `1XA+2XA`, `1C+2XA`, and `LABS+2XA` leaves with slot 0 as the build tool and slot 1 as the `2XA` support tool
   - plain Method `2A` plus any broader support-tool exposure are still deferred because the shipped preset/UI workflow is still incomplete
-- Local `HEAD` now has a Method-family slot-aware compatibility path in `src/libslic3r/Preset.cpp` that evaluates filament conditions per slot and remaps `printer_extruder_variant_0` to the active slot during those checks, so the remaining gap is no longer the earlier placeholder-expression limitation by itself.
-- Local `HEAD` now also threads that Method-family slot-aware compatibility through `PresetBundle`, filament combo boxes, calibration list loading, and the WebGuide fallback filament-selection path so per-slot build/support roles affect visible and auto-selected filament choices more consistently than the earlier printer-wide checks.
-- Local `HEAD` now also has a first Method-family Prepare-side variant-selection path in `ExtruderVariantWidget`, scoped to UltiMaker / MakerBot printers through `printer_model` / `printer_notes`, but the current widget follow-up still needs compile/runtime validation in this workspace.
-- The earlier local Method export/profile pass had compile verification for `libslic3r` and `libslic3r_gui`, but the current widget/compatibility follow-up has not been recompiled here yet. The current working tree now also carries a small Windows CMake fallback fix that stops module-mode wxWidgets discovery from forcing release-only `mswu`, but a real configure/build retry is still pending; full app/runtime validation and real printer acceptance testing remain pending.
-- Treat the current AGENTS file as the authoritative status record for both the public fork state and the currently known local-only Method work.
+- Full app/runtime validation and real printer acceptance testing for the Method-family workflow remain pending.
+- Treat the current AGENTS file as the authoritative status record for the public fork state plus any explicitly documented local follow-ups.
 
 ### Working Tree Follow-Ups (`git status` only)
 
-- The current working tree has a small Method-family calibration follow-up in `src/slic3r/GUI/PresetComboBoxes.cpp` that preserves `PresetBundle::calibrate_filaments` as the authoritative calibration allowlist before applying slot-aware Method filtering, preventing calibration-only preset visibility drift.
-- The current working tree also has a Windows build follow-up in `src/CMakeLists.txt` that lets module-mode `FindwxWidgets` keep release+debug discovery on multi-config generators and use `mswud` for single-config Debug instead of forcing release-only `mswu`.
-- These working-tree follow-ups are relevant to the current Method-family goals, but neither has been validated by a fresh local configure/build in this workspace yet.
+- After the current local-only Method follow-up commit, no additional repo-side Method working-tree changes are expected in this workspace.
+- If local-only tool files remain outside this commit, treat them as non-repo workspace state unless they are explicitly needed for Method-family work.
 
 ### Active Workstreams
 
@@ -791,10 +793,15 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 ## Change Log
 
 ### 2026-04-17
+- **Method Wizard / Vendor-Bundle Follow-Up (local-only)**
+  - Added explicit dual-`0.4` `nozzle_diameter` arrays across the shipped Method machine presets so the dual-extruder instances expose both nozzle entries consistently.
+  - Fixed the UltiMaker vendor-bundle regression by removing the oversized `960x1460` entry from the shared Method printer preset `thumbnails` field; the real Method `thumbnail_960x1460.png` requirement remains only in the Method MakerBot format configs.
+  - Added missing setup-wizard cover art for `MakerBot Method`, `MakerBot Method X`, and `MakerBot Method XL` under `resources/profiles/UltiMaker/`, sourced from the local Cura reference assets.
+  - Refreshed `AGENTS_JATMN.md` and `plans/methodx-makerbot-export-plan.md` so the documented current state matches the local follow-up commit instead of the earlier pre-commit workspace snapshot.
 - **Method Family Review Follow-Up (working tree)**
   - Preserved `PresetBundle::calibrate_filaments` as the calibration allowlist source of truth in `PresetComboBoxes` before applying slot-aware Method filtering, so calibration visibility stays aligned with bundle-owned compatibility decisions.
   - Adjusted the Windows wxWidgets module-mode fallback in `src/CMakeLists.txt` so multi-config generators can keep release+debug discovery and single-config Debug uses `mswud` instead of forcing release-only `mswu`.
-  - These changes are currently in the working tree and still need a fresh local configure/build retry for validation.
+  - That earlier same-day follow-up still needs a fresh local configure/build retry for validation where relevant, but it is not the current repo working-tree state described above.
 
 ### 2026-04-16
 - **MakerBot Method Family Compatibility Edge Cases (local-only)**

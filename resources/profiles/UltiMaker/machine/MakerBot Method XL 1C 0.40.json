@@ -14,6 +14,10 @@
         "-205x160"
     ],
     "printable_height": "319.9",
+    "nozzle_diameter": [
+        "0.4",
+        "0.4"
+    ],
     "printer_extruder_variant": [
         "1C",
         "1C"

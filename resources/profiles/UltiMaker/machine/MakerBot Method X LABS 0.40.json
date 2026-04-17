@@ -14,6 +14,10 @@
         "-141.65x118.24"
     ],
     "printable_height": "196.749",
+    "nozzle_diameter": [
+        "0.4",
+        "0.4"
+    ],
     "printer_extruder_variant": [
         "LABS",
         "LABS"
