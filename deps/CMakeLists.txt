@@ -166,14 +166,21 @@ function(orcaslicer_add_cmake_project projectname)
         endif ()
     endif ()
 
-    set(_gen "")
-    set(_build_j "-j${NPROC}")
     if (MSVC)
         set(_gen CMAKE_GENERATOR "${DEP_MSVC_GEN}" CMAKE_GENERATOR_PLATFORM "${DEP_PLATFORM}")
         if (CMAKE_GENERATOR_INSTANCE)
             list(APPEND _gen CMAKE_GENERATOR_INSTANCE "${CMAKE_GENERATOR_INSTANCE}")
         endif ()
+    else ()
+        set(_gen "")
+    endif ()
+
+    if ($ENV{CMAKE_BUILD_PARALLEL_LEVEL})
+        set(_build_j "")  # assume environment will control --build parallel setting
+    elseif (MSVC)
         set(_build_j "/m")
+    else ()
+        set(_build_j "-j${NPROC}")
     endif ()
 
 if (NOT IS_CROSS_COMPILE OR NOT APPLE)

@@ -1496,8 +1496,8 @@ void Cornering_Test_Dlg::on_start(wxCommandEvent& event) {
     double warning_threshold = 20.0;
     if (current_printer_uses_junction_deviation()) {
             // Using Junction Deviation (mm)
-            max_end_value = 1.0;
-            warning_threshold = 0.3;
+            max_end_value = 0.3;
+            warning_threshold = 0.25;
     }
 
     if (!read_double || m_params.start < 0 || m_params.end > max_end_value || m_params.start >= m_params.end) {
