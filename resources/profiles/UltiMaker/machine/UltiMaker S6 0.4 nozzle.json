@@ -32,13 +32,61 @@
         "UltiMaker Tough PLA @System"
     ],
     "before_layer_change_gcode": ";BEFORE_LAYER_CHANGE\n;[layer_z]\n;G92 E0\n",
+    "enable_filament_ramming": "0",
+    "enable_power_loss_recovery": "disable",
     "deretraction_speed": [
-        "35",
-        "35"
+        "30",
+        "30"
     ],
+    "extruder_clearance_height_to_lid": "55",
+    "extruder_clearance_height_to_rod": "55",
     "extruder_colour": [
         "#FCE94F",
         "#FCE94F"
+    ],
+    "fan_speedup_overhangs": "0",
+    "machine_max_acceleration_e": [
+        "15000",
+        "10000"
+    ],
+    "machine_max_acceleration_extruding": [
+        "15000",
+        "5000"
+    ],
+    "machine_max_acceleration_retracting": [
+        "6000",
+        "5000"
+    ],
+    "machine_max_acceleration_travel": [
+        "20000",
+        "15000"
+    ],
+    "machine_max_acceleration_x": [
+        "15000",
+        "10000"
+    ],
+    "machine_max_acceleration_y": [
+        "15000",
+        "10000"
+    ],
+    "machine_max_jerk_e": [
+        "2",
+        "5"
+    ],
+    "machine_max_junction_deviation": [
+        "0"
+    ],
+    "machine_max_speed_e": [
+        "60",
+        "120"
+    ],
+    "machine_max_speed_z": [
+        "10",
+        "12"
+    ],
+    "max_layer_height": [
+        "0.38",
+        "0.38"
     ],
     "retract_before_wipe": [
         "70%",
@@ -57,8 +105,8 @@
         "0"
     ],
     "retract_lift_enforce": [
-        "All Surfaces",
-        "All Surfaces"
+        "Top Only",
+        "Top Only"
     ],
     "retract_restart_extra": [
         "0",
@@ -69,43 +117,44 @@
         "0"
     ],
     "retract_when_changing_layer": [
-        "1",
-        "1"
+        "0",
+        "0"
     ],
     "retraction_distances_when_cut": [
         "18",
         "18"
     ],
     "retraction_length": [
-        "3.4",
-        "3.4"
+        "3.5",
+        "3.5"
     ],
     "retraction_minimum_travel": [
         "1",
         "1"
     ],
     "retraction_speed": [
-        "45",
-        "45"
+        "60",
+        "60"
     ],
+    "support_air_filtration": "0",
     "wipe": [
         "0",
         "0"
     ],
     "wipe_distance": [
-        "1",
-        "1"
+        "3",
+        "3"
     ],
     "z_hop": [
-        "0.4",
-        "0.4"
+        "0.2",
+        "0.2"
     ],
     "z_hop_types": [
-        "Slope Lift",
-        "Slope Lift"
+        "Auto Lift",
+        "Auto Lift"
     ],
     "z_offset": "0.2",
     "printer_notes": "FORMAT_CONFIG_ID:ultimaker_s6\nPROCESS_MATRIX_TYPE:ultimaker\nPROCESS_MATRIX_CONTROL_SLOT:1",
-    "machine_start_gcode": "G21 ; metric\nG90 ; absolute positioning\nM82 ; absolute extrusion\nM107 ; fan off\n;--- Initialization ---\nG28 ; home all axes\nG29 ; auto bed leveling\n\n;--- Purge Sequence ---\nG92 E0\nG1 Z2.0 F3000\nG1 X10.1 Y20 Z0.38 F5000.0\nG1 X10.1 Y200.0 Z0.38 F1500.0 E15\nG1 X10.4 Y200.0 Z0.38 F5000.0\nG1 X10.4 Y20 Z0.38 F1500.0 E30\nG92 E0\nG1 Z2.0 F3000",
-    "machine_end_gcode": "M140 S0\nM204 S3000\nM215 X1000000000 Y1000000000\nM107\nM82 ;absolute extrusion mode\nM104 S0\nM104 T1 S0\n;End of Gcode"
+    "machine_start_gcode": "M190 S{first_layer_bed_temperature[0]} ; set bed temperature and wait\nT0\nM213 U0.01 ;undercut 0.10mm\n\nM82 ;absolute extrusion mode\nM104 S{first_layer_temperature[0]} ; set nozzle temperature\nM109 S{first_layer_temperature[0]} ; wait for nozzle temperature\nG280 S1\nG0 Z20\nG1 E-6.5 F2700 ; retract like Cura to prevent ooze\n;--- Light Purge / Wipe ---\nG1 Z{(first_layer_height + 0.15)} F3000\nG1 X10.1 Y20 Z{(first_layer_height + 0.15)} F5000.0\nG1 F1800 E0 ; prime back the 6.5 mm retraction (restores pressure)\nG1 X10.1 Y200.0 Z{(first_layer_height + 0.15)} F1500.0 E5 ; light extra purge\nG1 X10.4 Y200.0 Z{(first_layer_height + 0.15)} F5000.0\nG1 X10.4 Y20 Z{(first_layer_height + 0.15)} F1500.0 E5.5 ; light extra purge back\nG92 E0\nG0 X15 Y20 Z2.0 F9000 ; break away immediately to prevent blobbing",
+    "machine_end_gcode": "G1 E-6.5 F2700 ; quick retraction to prevent ooze\n\nG91\nG0 Z10 F3000\nG90\nM140 S0\nM204 S3000\nM215 X1000000000 Y1000000000\nM107\nM82 ;absolute extrusion mode\nM104 S0\nM104 T1 S0\n;End of Gcode"
 }
