@@ -472,6 +472,7 @@ Important interpretation rule:
   - material identity
 - support-material routing matters too:
   - `2A` and `2XA` should not be treated as generic second nozzles
+  - Orca's current filament compatibility path only injects `printer_extruder_variant_0` during condition evaluation in `src/libslic3r/Preset.cpp`, which means mixed support-tool presets are not yet safely expressible through today's JSON-only matrix
 
 ## Updated design assumption
 
@@ -538,7 +539,8 @@ That means the real deliverable is:
 - The shipped machine/process coverage is still much narrower than the shipped filament matrix:
   - current concrete machine presets now cover `1A`, `1C`, and `LABS` for Method plus `1XA`, `1C`, and `LABS` for Method X / XL
   - no shipped Method-family machine/process presets yet exist for `2A` or `2XA`
-  - support-tool reachability is still pending because the current simplified compatibility layer is printer-level rather than fully slot-aware
+- support-tool reachability is still pending because the current simplified compatibility layer is printer-level rather than fully slot-aware
+  - the current code-side blocker is explicit now: `is_compatible_with_printer()` only injects `printer_extruder_variant_0` for expression evaluation, so `2A` / `2XA` support exposure needs code work rather than just more preset leaves
 - Method-family variant selection is still not surfaced in Orca's Prepare UI
 - Variant-driven process remapping is still missing for Method-family presets
 - Broader Cura-supported Method material coverage is still missing from Orca, including:

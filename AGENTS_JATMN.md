@@ -125,6 +125,7 @@ This section is the current high-level truth for the fork and should be used as 
 - The local-only Method pass now also adds a first vendor-bundle profile slice under `resources/profiles/UltiMaker/` so plain Method, Method X, and Method XL have concrete shipped machine/process presets that can reach the native Method export path through `FORMAT_CONFIG_ID:method`, `method_x`, and `method_xl`.
 - The current local profile slice is still intentionally conservative, but it is no longer limited to the original `1A` / `1XA` placeholders: local `HEAD` now also ships thin `1C` and `LABS` concrete machine/process leaves for Method / Method X / Method XL so the first expanded Method material matrix is actually reachable through the vendor bundle.
 - Support-tool exposure is still intentionally deferred in the shipped local slice: `2A` / `2XA` machine-process coverage and mixed build/support combinations still need a more slot-aware material/core compatibility model before they should be exposed confidently.
+- The current blocker is now concrete in code: `src/libslic3r/Preset.cpp` only injects `printer_extruder_variant_0` when evaluating `compatible_printers_condition`, so JSON-only mixed support-tool preset expansion is not sufficient yet.
 - This local-only pass has compile verification for `libslic3r` and `libslic3r_gui`, but full app/runtime validation and real printer acceptance testing are still pending.
 - Treat the current AGENTS file as the authoritative status record for both the public fork state and the currently known local-only Method work.
 
@@ -436,6 +437,7 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 - This matrix is still narrower than Cura's full Method-family support, but it now covers the currently shipped Method presets in Orca.
 - The current local limitation is no longer missing `1C` / `LABS` reachability; local `HEAD` now ships concrete `1C` and `LABS` machine/process leaves plus the shared filament-manifest registrations needed for those materials to load.
 - The remaining reachability gap is primarily support-tool oriented: `2A` / `2XA` exposure still needs more slot-aware compatibility handling before it should be treated as a finished shipped workflow.
+- That support-tool gap is not just theoretical: `is_compatible_with_printer()` in `src/libslic3r/Preset.cpp` currently injects only `printer_extruder_variant_0` into the placeholder-expression context, which explains why mixed-slot Method support presets should not be shipped as a JSON-only change yet.
 - Cura evidence still shows broader Method-family support outside Orca's current shipped inventory, including `PLA`, `PETG`, `Nylon`, `PVA`, `ABS`, `PC-ABS`, `PC-ABS FR`, and selected LABS-only materials.
 - Because `ExtruderVariantWidget` still does not surface Method-family variants in Prepare, this compatibility work is currently more important as a guardrail for defaults, manual preset edits, and future UI work than as a complete end-user variant workflow today.
 
@@ -481,6 +483,7 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 - The current Method-family presets now ship thin `1A` / `1C` / `LABS` leaves for Method and `1XA` / `1C` / `LABS` leaves for Method X / XL, but these are still conservative bundle presets rather than finished tuned defaults.
 - This is still temporary because `ExtruderVariantWidget` continues to hide Method-family variants entirely in Prepare.
 - Method-family material-to-extruder compatibility is now partially enforced for the shipped Tough PLA / ABS-R / ABS-CF / ASA / Nylon CF / Nylon 12 CF / RapidRinse / SR-30 system presets, but the full Cura matrix is still not represented and the shipped machine/process matrix still does not cover `2A` or `2XA`
+- The current support-tool blocker is also code-side, not just profile-side: `Preset.cpp` only injects `printer_extruder_variant_0` into `compatible_printers_condition` evaluation, so mixed-slot Method support presets need a compatibility-path update before they can be shipped safely.
 - Variant-driven process remapping and finished Method-family UI support are still missing, so the current defaults remain a conservative first slice rather than finished shipping behavior
 
 **4. UltiMaker Brand Materials:**
