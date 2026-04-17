@@ -59,6 +59,62 @@ using Slic3r::GUI::format_wxstr;
 namespace Slic3r {
 namespace GUI {
 
+namespace {
+
+bool is_method_family_printer(const PresetWithVendorProfile &active_printer)
+{
+    return active_printer.preset.config.has("printer_notes") &&
+           active_printer.preset.config.opt_string("printer_notes").find("METHOD_PRINTER_FAMILY:") != std::string::npos;
+}
+
+DynamicPrintConfig build_filament_compat_config(const PresetWithVendorProfile &active_printer)
+{
+    DynamicPrintConfig config;
+    config.set_key_value("printer_preset", new ConfigOptionString(active_printer.preset.name));
+    if (const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter"))
+        config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats *>(opt)->values.size()));
+    return config;
+}
+
+bool is_filament_compatible_for_slot(const PresetCollection &collection, const PresetBundle &preset_bundle, const Preset &preset, const int filament_idx)
+{
+    if (filament_idx < 0)
+        return preset.is_compatible;
+
+    const PresetWithVendorProfile active_printer = preset_bundle.printers.get_edited_preset_with_vendor_profile();
+    if (!is_method_family_printer(active_printer))
+        return preset.is_compatible;
+
+    const PresetWithVendorProfile active_print = preset_bundle.prints.get_edited_preset_with_vendor_profile();
+    const PresetWithVendorProfile filament_with_vendor_profile = collection.get_preset_with_vendor_profile(preset);
+    DynamicPrintConfig            config = build_filament_compat_config(active_printer);
+
+    bool compatible = is_compatible_with_printer_for_filament_slot(filament_with_vendor_profile, active_printer, static_cast<size_t>(filament_idx), &config);
+    if (compatible)
+        compatible &= is_compatible_with_print(filament_with_vendor_profile, active_print, active_printer);
+    return compatible;
+}
+
+bool is_calibration_filament_compatible(const PresetCollection &collection, const PresetBundle &preset_bundle, const Preset &preset, const int filament_idx)
+{
+    const bool is_compatible =
+        preset_bundle.calibrate_filaments.find(&preset) != preset_bundle.calibrate_filaments.end();
+    if (filament_idx < 0 || preset_bundle.calibrate_printer == nullptr)
+        return is_compatible;
+
+    const PresetWithVendorProfile active_printer =
+        preset_bundle.printers.get_preset_with_vendor_profile(*preset_bundle.calibrate_printer);
+    if (!is_method_family_printer(active_printer))
+        return is_compatible;
+
+    const PresetWithVendorProfile filament_with_vendor_profile = collection.get_preset_with_vendor_profile(preset);
+    DynamicPrintConfig            config = build_filament_compat_config(active_printer);
+    return is_compatible_with_printer_for_filament_slot(
+        filament_with_vendor_profile, active_printer, static_cast<size_t>(filament_idx), &config);
+}
+
+} // namespace
+
 #define BORDER_W 10
 
 // ---------------------------------
@@ -394,7 +450,10 @@ void PresetComboBox::update(std::string select_preset_name)
     for (size_t i = presets.front().is_visible ? 0 : m_collection->num_default_presets(); i < presets.size(); ++i)
     {
         const Preset& preset = presets[i];
-        if (!m_show_all && (!preset.is_visible || !preset.is_compatible))
+        const bool preset_compatible = m_type == Preset::TYPE_FILAMENT ?
+            is_filament_compatible_for_slot(*m_collection, *m_preset_bundle, preset, m_filament_idx) :
+            preset.is_compatible;
+        if (!m_show_all && (!preset.is_visible || !preset_compatible))
             continue;
 
         // marker used for disable incompatible printer models for the selected physical printer
@@ -1129,7 +1188,9 @@ void PlaterPresetComboBox::update()
     const Preset* selected_preset = m_type == Preset::TYPE_FILAMENT ? selected_filament_preset : has_selection ? &m_collection->get_selected_preset() : nullptr;
     // Show wide icons if the currently selected preset is not compatible with the current printer,
     // and draw a red flag in front of the selected preset.
-    bool wide_icons = selected_preset && !selected_preset->is_compatible;
+    const bool selected_preset_compatible = selected_preset != nullptr &&
+        (m_type == Preset::TYPE_FILAMENT ? is_filament_compatible_for_slot(*m_collection, *m_preset_bundle, *selected_preset, m_filament_idx) : selected_preset->is_compatible);
+    bool wide_icons = selected_preset && !selected_preset_compatible;
 
     std::map<wxString, wxBitmap*> nonsys_presets;
     //BBS: add project embedded presets logic
@@ -1159,6 +1220,9 @@ void PlaterPresetComboBox::update()
                             // The case, when some physical printer is selected
                             m_type == Preset::TYPE_PRINTER && m_preset_bundle->physical_printers.has_selection() ? false :
                             i == m_collection->get_selected_idx();
+        const bool preset_compatible = m_type == Preset::TYPE_FILAMENT ?
+            is_filament_compatible_for_slot(*m_collection, *m_preset_bundle, preset, m_filament_idx) :
+            preset.is_compatible;
 
         if (!is_selected && !preset.is_visible)
         {
@@ -1185,9 +1249,9 @@ void PlaterPresetComboBox::update()
 #endif
             // ORCA allow caching vendor and type values for all presets instead just system ones
             // if (preset.is_system) { 
-                if (!preset.is_compatible && preset_filament_vendors.count(name) > 0)
+                if (!preset_compatible && preset_filament_vendors.count(name) > 0)
                     continue;
-                else if (preset.is_compatible && preset_filament_vendors.count(name) > 0)
+                else if (preset_compatible && preset_filament_vendors.count(name) > 0)
                     uncompatible_presets.erase(name);
                 preset_filament_vendors[name] = preset.config.option<ConfigOptionStrings>("filament_vendor")->values.at(0);
                 if (preset_filament_vendors[name] == "Bambu Lab")
@@ -1201,7 +1265,7 @@ void PlaterPresetComboBox::update()
 
         preset_descriptions.emplace(name, from_u8(preset.description));
 
-        if (!preset.is_compatible) {
+        if (!preset_compatible) {
             if (boost::ends_with(name, " template"))
                 continue;
             uncompatible_presets.emplace(name, bmp);
@@ -1616,7 +1680,10 @@ void TabPresetComboBox::update()
     for (size_t i = presets.front().is_visible ? 0 : m_collection->num_default_presets(); i < presets.size(); ++i)
     {
         const Preset& preset = presets[i];
-        if (!preset.is_visible || (!show_incompatible && !preset.is_compatible && i != idx_selected))
+        const bool preset_compatible = m_type == Preset::TYPE_FILAMENT ?
+            is_filament_compatible_for_slot(*m_collection, *m_preset_bundle, preset, m_filament_idx) :
+            preset.is_compatible;
+        if (!preset.is_visible || (!show_incompatible && !preset_compatible && i != idx_selected))
             continue;
 
         // marker used for disable incompatible printer models for the selected physical printer
@@ -1837,7 +1904,7 @@ void GUI::CalibrateFilamentComboBox::load_tray(DynamicPrintConfig &config)
         auto  iter      = std::find_if(filaments.begin(), filaments.end(), [this](auto &f) {
             if (!f.is_system) // Only match system preset
                 return false;
-            bool is_compatible = m_preset_bundle->calibrate_filaments.find(&f) != m_preset_bundle->calibrate_filaments.end();
+            bool is_compatible = is_calibration_filament_compatible(*m_collection, *m_preset_bundle, f, m_filament_idx);
             return is_compatible && f.filament_id == m_filament_id;
             });
 
@@ -1846,7 +1913,7 @@ void GUI::CalibrateFilamentComboBox::load_tray(DynamicPrintConfig &config)
             iter = std::find_if(filaments.begin(), filaments.end(), [this](auto &f) {
                 if (f.is_system) // Only match system preset
                     return false;
-                bool is_compatible = m_preset_bundle->calibrate_filaments.find(&f) != m_preset_bundle->calibrate_filaments.end();
+                bool is_compatible = is_calibration_filament_compatible(*m_collection, *m_preset_bundle, f, m_filament_idx);
                 return is_compatible && f.filament_id == m_filament_id;
             });
         }
@@ -1890,18 +1957,21 @@ void GUI::CalibrateFilamentComboBox::update()
 
     wxString tooltip;
     const std::deque<Preset>& presets = m_collection->get_presets();
+    const bool use_slot_aware_calibration =
+        m_filament_idx >= 0 &&
+        m_preset_bundle->calibrate_printer != nullptr &&
+        is_method_family_printer(m_preset_bundle->printers.get_preset_with_vendor_profile(*m_preset_bundle->calibrate_printer));
 
     for (size_t i = presets.front().is_visible ? 0 : m_collection->num_default_presets(); i < presets.size(); ++i)
     {
         const Preset& preset = presets[i];
         auto display_name = get_preset_name(preset);
         bool          is_selected   = m_selected_preset == &preset;
-        if (m_preset_bundle->calibrate_filaments.empty()) {
+        if (m_preset_bundle->calibrate_filaments.empty() && !use_slot_aware_calibration) {
             Thaw();
             return;
         }
-        bool          is_compatible = m_preset_bundle->calibrate_filaments.find(&preset) != m_preset_bundle->calibrate_filaments.end();
-        ;
+        bool          is_compatible = is_calibration_filament_compatible(*m_collection, *m_preset_bundle, preset, m_filament_idx);
         if (!preset.is_visible || (!is_compatible && !is_selected))
             continue;
 

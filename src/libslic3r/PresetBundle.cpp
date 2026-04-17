@@ -4491,16 +4491,35 @@ void PresetBundle::update_compatible(PresetSelectCompatibleType select_other_pri
     case ptFFF:
     {
 		assert(printer_preset.config.has("default_print_profile"));
-		assert(printer_preset.config.has("default_filament_profile"));
+        assert(printer_preset.config.has("default_filament_profile"));
         const std::vector<std::string> &prefered_filament_profiles = printer_preset.config.option<ConfigOptionStrings>("default_filament_profile")->values;
         this->prints.update_compatible(printer_preset_with_vendor_profile, nullptr, select_other_print_if_incompatible,
             PreferedPrintProfileMatch(this->prints.get_selected_idx() == size_t(-1) ? nullptr : &this->prints.get_edited_preset(), printer_preset.config.opt_string("default_print_profile")));
         const PresetWithVendorProfile   print_preset_with_vendor_profile = this->prints.get_edited_preset_with_vendor_profile();
+        const bool use_method_slot_aware_compatibility =
+            printer_preset_with_vendor_profile.preset.config.has("printer_notes") &&
+            printer_preset_with_vendor_profile.preset.config.opt_string("printer_notes").find("METHOD_PRINTER_FAMILY:") != std::string::npos;
+        DynamicPrintConfig filament_compat_config;
+        if (use_method_slot_aware_compatibility) {
+            filament_compat_config.set_key_value("printer_preset", new ConfigOptionString(printer_preset_with_vendor_profile.preset.name));
+            if (const ConfigOption *opt = printer_preset_with_vendor_profile.preset.config.option("nozzle_diameter"))
+                filament_compat_config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats *>(opt)->values.size()));
+        }
         // Remember whether the filament profiles were compatible before updating the filament compatibility.
         std::vector<char> 				filament_preset_was_compatible(this->filament_presets.size(), false);
         for (size_t idx = 0; idx < this->filament_presets.size(); ++ idx) {
             Preset *preset = this->filaments.find_preset(this->filament_presets[idx], false);
-            filament_preset_was_compatible[idx] = preset != nullptr && preset->is_compatible;
+            if (preset == nullptr)
+                continue;
+
+            if (use_method_slot_aware_compatibility) {
+                const PresetWithVendorProfile filament_with_vendor_profile = this->filaments.get_preset_with_vendor_profile(*preset);
+                filament_preset_was_compatible[idx] =
+                    is_compatible_with_printer_for_filament_slot(filament_with_vendor_profile, printer_preset_with_vendor_profile, idx, &filament_compat_config) &&
+                    is_compatible_with_print(filament_with_vendor_profile, print_preset_with_vendor_profile, printer_preset_with_vendor_profile);
+            } else {
+                filament_preset_was_compatible[idx] = preset->is_compatible;
+            }
         }
         // First select a first compatible profile for the preset editor.
         BOOST_LOG_TRIVIAL(info) << boost::format("prefered filaments: size %1%, previous selected %2%") %prefered_filament_profiles.size() % this->filaments.get_selected_idx();
@@ -4514,21 +4533,69 @@ void PresetBundle::update_compatible(PresetSelectCompatibleType select_other_pri
         this->filaments.update_compatible(printer_preset_with_vendor_profile, &print_preset_with_vendor_profile, select_other_filament_if_incompatible,
             PreferedFilamentsProfileMatch(this->filaments.get_selected_idx() == size_t(-1) ? nullptr : &this->filaments.get_edited_preset(), prefered_filament_profiles));
         if (select_other_filament_if_incompatible != PresetSelectCompatibleType::Never) {
-            // Verify validity of the current filament presets.
-            const std::string prefered_filament_profile = prefered_filament_profiles.empty() ? std::string() : prefered_filament_profiles.front();
-            if (this->filament_presets.size() == 1) {
-                // The compatible profile should have been already selected for the preset editor. Just use it.
-            	if (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always || filament_preset_was_compatible.front())
-                	this->filament_presets.front() = this->filaments.get_edited_preset().name;
+            if (use_method_slot_aware_compatibility) {
+                auto is_filament_slot_compatible = [this, &printer_preset_with_vendor_profile, &print_preset_with_vendor_profile, &filament_compat_config](const Preset &filament, size_t slot_idx) {
+                    const PresetWithVendorProfile filament_with_vendor_profile = this->filaments.get_preset_with_vendor_profile(filament);
+                    bool compatible = is_compatible_with_printer_for_filament_slot(filament_with_vendor_profile, printer_preset_with_vendor_profile, slot_idx, &filament_compat_config);
+                    if (compatible)
+                        compatible &= is_compatible_with_print(filament_with_vendor_profile, print_preset_with_vendor_profile, printer_preset_with_vendor_profile);
+                    return compatible;
+                };
+                auto find_first_compatible_for_slot = [this, &prefered_filament_profiles, &is_filament_slot_compatible](size_t slot_idx, const Preset *current_preset) -> const Preset * {
+                    const std::string preferred_preset_name = slot_idx < prefered_filament_profiles.size() ?
+                        prefered_filament_profiles[slot_idx] :
+                        (prefered_filament_profiles.empty() ? std::string() : prefered_filament_profiles.front());
+                    PreferedFilamentProfileMatch matcher(current_preset, preferred_preset_name);
+                    const std::deque<Preset> &all_filaments = this->filaments.get_presets();
+                    const Preset *best_preset = nullptr;
+                    int best_match_quality = -1;
+                    for (size_t idx = all_filaments.front().is_visible ? 0 : this->filaments.num_default_presets(); idx < all_filaments.size(); ++idx) {
+                        const Preset &candidate = all_filaments[idx];
+                        if (!candidate.is_visible || !is_filament_slot_compatible(candidate, slot_idx))
+                            continue;
+                        const int match_quality = matcher(candidate);
+                        if (match_quality > best_match_quality) {
+                            best_preset = &candidate;
+                            best_match_quality = match_quality;
+                            if (match_quality == std::numeric_limits<int>::max())
+                                break;
+                        }
+                    }
+                    return best_preset;
+                };
+                if (this->filament_presets.size() == 1) {
+                    if (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always || filament_preset_was_compatible.front()) {
+                        Preset *current_preset = this->filaments.find_preset(this->filament_presets.front(), false);
+                        if (const Preset *replacement = find_first_compatible_for_slot(0, current_preset)) {
+                            this->filament_presets.front() = replacement->name;
+                            this->filaments.select_preset_by_name(replacement->name, true);
+                        }
+                    }
+                } else {
+                    for (size_t idx = 0; idx < this->filament_presets.size(); ++ idx) {
+                        std::string &filament_name = this->filament_presets[idx];
+                        Preset      *preset = this->filaments.find_preset(filament_name, false);
+                        const bool slot_compatible = preset != nullptr && is_filament_slot_compatible(*preset, idx);
+                        if (preset == nullptr || (!slot_compatible && (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always || filament_preset_was_compatible[idx]))) {
+                            if (const Preset *replacement = find_first_compatible_for_slot(idx, preset))
+                                filament_name = replacement->name;
+                        }
+                    }
+                }
             } else {
-                for (size_t idx = 0; idx < this->filament_presets.size(); ++ idx) {
-                    std::string &filament_name = this->filament_presets[idx];
-                    Preset      *preset = this->filaments.find_preset(filament_name, false);
-                    if (preset == nullptr || (! preset->is_compatible && (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always || filament_preset_was_compatible[idx])))
-                        // Pick a compatible profile. If there are prefered_filament_profiles, use them.
-                        filament_name = this->filaments.first_compatible(
-                            PreferedFilamentProfileMatch(preset,
-                                (idx < prefered_filament_profiles.size()) ? prefered_filament_profiles[idx] : prefered_filament_profile)).name;
+                const std::string prefered_filament_profile = prefered_filament_profiles.empty() ? std::string() : prefered_filament_profiles.front();
+                if (this->filament_presets.size() == 1) {
+                    if (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always || filament_preset_was_compatible.front())
+                        this->filament_presets.front() = this->filaments.get_edited_preset().name;
+                } else {
+                    for (size_t idx = 0; idx < this->filament_presets.size(); ++ idx) {
+                        std::string &filament_name = this->filament_presets[idx];
+                        Preset      *preset = this->filaments.find_preset(filament_name, false);
+                        if (preset == nullptr || (! preset->is_compatible && (select_other_filament_if_incompatible == PresetSelectCompatibleType::Always || filament_preset_was_compatible[idx])))
+                            filament_name = this->filaments.first_compatible(
+                                PreferedFilamentProfileMatch(preset,
+                                    (idx < prefered_filament_profiles.size()) ? prefered_filament_profiles[idx] : prefered_filament_profile)).name;
+                    }
                 }
             }
         }

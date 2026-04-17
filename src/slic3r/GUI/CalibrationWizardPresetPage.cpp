@@ -915,6 +915,7 @@ void CalibrationPresetPage::create_filament_list_panel(wxWindow* parent)
         CheckBox* check_box = new CheckBox(m_filament_list_panel);
         check_box->SetBackgroundColour(*wxWHITE);
         FilamentComboBox* fcb = new FilamentComboBox(m_filament_list_panel, i);
+        fcb->GetComboBox()->set_filament_idx(0);
         fcb->SetRadioBox(radio_btn);
         fcb->SetCheckBox(check_box);
         fcb->set_select_mode(CalibrationFilamentMode::CALI_MODEL_SINGLE);
@@ -1058,6 +1059,7 @@ void CalibrationPresetPage::create_multi_extruder_filament_list_panel(wxWindow *
             CheckBox *     check_box               = new CheckBox(m_multi_exutrder_filament_list_panel);
             check_box->SetBackgroundColour(*wxWHITE);
             FilamentComboBox *fcb = new FilamentComboBox(m_multi_exutrder_filament_list_panel, i + 4);
+            fcb->GetComboBox()->set_filament_idx(0);
             fcb->SetRadioBox(radio_btn);
             fcb->SetCheckBox(check_box);
             fcb->set_select_mode(CalibrationFilamentMode::CALI_MODEL_SINGLE);
@@ -1102,6 +1104,7 @@ void CalibrationPresetPage::create_multi_extruder_filament_list_panel(wxWindow *
             CheckBox *     check_box               = new CheckBox(m_multi_exutrder_filament_list_panel);
             check_box->SetBackgroundColour(*wxWHITE);
             FilamentComboBox *fcb = new FilamentComboBox(m_multi_exutrder_filament_list_panel, i);
+            fcb->GetComboBox()->set_filament_idx(1);
             fcb->SetRadioBox(radio_btn);
             fcb->SetCheckBox(check_box);
             fcb->set_select_mode(CalibrationFilamentMode::CALI_MODEL_SINGLE);

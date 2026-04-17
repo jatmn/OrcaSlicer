@@ -897,9 +897,22 @@ bool GuideFrame::apply_config(AppConfig *app_config, PresetBundle *preset_bundle
     bool active_filament_selected = enabled_filaments.empty()
         || enabled_filaments.count(preset_bundle->filament_presets.front()) > 0;
     if (!active_filament_selected) {
+        const PresetWithVendorProfile active_printer = preset_bundle->printers.get_edited_preset_with_vendor_profile();
+        const PresetWithVendorProfile active_print   = preset_bundle->prints.get_edited_preset_with_vendor_profile();
+        DynamicPrintConfig filament_compat_config;
+        filament_compat_config.set_key_value("printer_preset", new ConfigOptionString(active_printer.preset.name));
+        if (const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter"))
+            filament_compat_config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats *>(opt)->values.size()));
         for (const auto& [filament_name, _] : enabled_filaments) {
             const Preset* preset = preset_bundle->filaments.find_preset(filament_name);
-            if (preset && preset->is_visible && preset->is_compatible) {
+            if (preset == nullptr || !preset->is_visible)
+                continue;
+
+            const PresetWithVendorProfile filament_with_vendor_profile = preset_bundle->filaments.get_preset_with_vendor_profile(*preset);
+            bool compatible =
+                is_compatible_with_printer_for_filament_slot(filament_with_vendor_profile, active_printer, 0, &filament_compat_config) &&
+                is_compatible_with_print(filament_with_vendor_profile, active_print, active_printer);
+            if (compatible) {
                 preset_bundle->filaments.select_preset_by_name(filament_name, true);
                 preset_bundle->filament_presets.front() = preset_bundle->filaments.get_selected_preset_name();
                 break;

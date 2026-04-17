@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <optional>
 #include <stdexcept>
 #include <unordered_map>
 #include <boost/format.hpp>
@@ -697,6 +698,85 @@ bool is_compatible_with_parent_printer(const PresetWithVendorProfile& preset, co
                compatible_printers->values.end();
 }
 
+namespace {
+
+bool is_excluded_filament_for_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer)
+{
+    if (preset.vendor == nullptr || preset.preset.type != Preset::TYPE_FILAMENT)
+        return false;
+
+    const auto &excluded_printers = preset.preset.m_excluded_from;
+    return preset.vendor->name == PresetBundle::ORCA_FILAMENT_LIBRARY &&
+           excluded_printers.find(active_printer.preset.name) != excluded_printers.end();
+}
+
+bool is_method_family_printer(const PresetWithVendorProfile &active_printer)
+{
+    if (!active_printer.preset.config.has("printer_notes"))
+        return false;
+
+    const std::string printer_notes = active_printer.preset.config.opt_string("printer_notes");
+    return printer_notes.find("METHOD_PRINTER_FAMILY:") != std::string::npos;
+}
+
+void inject_printer_extruder_variants(
+    const PresetWithVendorProfile &active_printer,
+    DynamicConfig &                extra,
+    const std::optional<size_t>    filament_slot,
+    const bool                     use_method_slot_aware_compatibility)
+{
+    if (auto *ev = active_printer.preset.config.option<ConfigOptionStrings>("printer_extruder_variant")) {
+        if (use_method_slot_aware_compatibility) {
+            for (size_t idx = 0; idx < ev->values.size(); ++idx)
+                extra.set_key_value("printer_extruder_variant_" + std::to_string(idx), new ConfigOptionString(ev->values[idx]));
+
+            if (filament_slot && *filament_slot < ev->values.size()) {
+                const std::string &active_variant = ev->values[*filament_slot];
+                // Method-family compatibility conditions currently use printer_extruder_variant_0.
+                // During a slot-specific evaluation, remap _0 to the active slot so existing
+                // presets keep working without changing non-Method behavior.
+                extra.set_key_value("printer_extruder_variant_0", new ConfigOptionString(active_variant));
+                extra.set_key_value("active_printer_extruder_variant", new ConfigOptionString(active_variant));
+            }
+        } else if (!ev->values.empty()) {
+            extra.set_key_value("printer_extruder_variant_0", new ConfigOptionString(ev->values[0]));
+        }
+    }
+
+    if (use_method_slot_aware_compatibility && filament_slot) {
+        extra.set_key_value("active_filament_slot", new ConfigOptionInt(static_cast<int>(*filament_slot)));
+        extra.set_key_value("active_extruder", new ConfigOptionInt(static_cast<int>(*filament_slot)));
+    }
+}
+
+bool evaluate_compatible_printers_condition(
+    const PresetWithVendorProfile &preset,
+    const PresetWithVendorProfile &active_printer,
+    const DynamicPrintConfig *     extra_config,
+    const std::optional<size_t>    filament_slot,
+    const bool                     use_method_slot_aware_compatibility)
+{
+    try {
+        DynamicConfig extra;
+        if (extra_config)
+            extra = *extra_config;
+        inject_printer_extruder_variants(active_printer, extra, filament_slot, use_method_slot_aware_compatibility);
+        return PlaceholderParser::evaluate_boolean_expression(preset.preset.compatible_printers_condition(), active_printer.preset.config, &extra);
+    } catch (const std::runtime_error &err) {
+        BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": parsing error of compatible_printers_condition %1%: %2%") % active_printer.preset.name % err.what();
+        return true;
+    }
+}
+
+size_t printer_extruder_variant_count(const PresetWithVendorProfile &active_printer)
+{
+    if (auto *ev = active_printer.preset.config.option<ConfigOptionStrings>("printer_extruder_variant"))
+        return ev->values.size();
+    return 0;
+}
+
+} // namespace
+
 bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config)
 {
     // Orca: we allow cross vendor compatibility
@@ -705,31 +785,24 @@ bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const Pre
 	// 	return false;
 
     // Orca: check excluded printers
-    if (preset.vendor != nullptr && preset.preset.type == Preset::TYPE_FILAMENT) {
-        const auto& excluded_printers = preset.preset.m_excluded_from;
-        const auto  excluded         = preset.vendor->name == PresetBundle::ORCA_FILAMENT_LIBRARY &&
-                              excluded_printers.find(active_printer.preset.name) != excluded_printers.end();
-        if (excluded)
-            return false;
-    }
+    if (is_excluded_filament_for_printer(preset, active_printer))
+        return false;
     auto &condition               = preset.preset.compatible_printers_condition();
     auto *compatible_printers     = dynamic_cast<const ConfigOptionStrings*>(preset.preset.config.option("compatible_printers"));
     bool  has_compatible_printers = compatible_printers != nullptr && ! compatible_printers->values.empty();
+    const bool use_method_slot_aware_compatibility = is_method_family_printer(active_printer);
     if (! has_compatible_printers && ! condition.empty()) {
-        try {
-            DynamicConfig extra;
-            if (extra_config)
-                extra = *extra_config;
-            if (auto* ev = active_printer.preset.config.option<ConfigOptionStrings>("printer_extruder_variant")) {
-                if (!ev->values.empty())
-                    extra.set_key_value("printer_extruder_variant_0", new ConfigOptionString(ev->values[0]));
+        if (use_method_slot_aware_compatibility && preset.preset.type == Preset::TYPE_FILAMENT) {
+            const size_t extruder_variant_count = printer_extruder_variant_count(active_printer);
+            for (size_t slot = 0; slot < extruder_variant_count; ++slot) {
+                if (evaluate_compatible_printers_condition(preset, active_printer, extra_config, slot, true))
+                    return true;
             }
-            return PlaceholderParser::evaluate_boolean_expression(condition, active_printer.preset.config, &extra);
-        } catch (const std::runtime_error &err) {
-            //FIXME in case of an error, return "compatible with everything".
-            BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << boost::format(": parsing error of compatible_printers_condition %1%: %2%")%active_printer.preset.name %err.what();
-            return true;
+            if (extruder_variant_count > 0)
+                return false;
         }
+
+        return evaluate_compatible_printers_condition(preset, active_printer, extra_config, std::nullopt, use_method_slot_aware_compatibility);
     }
     return preset.preset.is_default || active_printer.preset.name.empty() || !has_compatible_printers ||
            std::find(compatible_printers->values.begin(), compatible_printers->values.end(), active_printer.preset.name) !=
@@ -745,6 +818,42 @@ bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const Pre
     if (opt)
         config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats*>(opt)->values.size()));
     return is_compatible_with_printer(preset, active_printer, &config);
+}
+
+bool is_compatible_with_printer_for_filament_slot(
+    const PresetWithVendorProfile &preset,
+    const PresetWithVendorProfile &active_printer,
+    size_t                         filament_slot,
+    const DynamicPrintConfig *     extra_config)
+{
+    if (preset.preset.type != Preset::TYPE_FILAMENT)
+        return is_compatible_with_printer(preset, active_printer, extra_config);
+
+    if (is_excluded_filament_for_printer(preset, active_printer))
+        return false;
+
+    if (!is_method_family_printer(active_printer))
+        return is_compatible_with_printer(preset, active_printer, extra_config);
+
+    auto &condition               = preset.preset.compatible_printers_condition();
+    auto *compatible_printers     = dynamic_cast<const ConfigOptionStrings *>(preset.preset.config.option("compatible_printers"));
+    bool  has_compatible_printers = compatible_printers != nullptr && !compatible_printers->values.empty();
+    if (!has_compatible_printers && !condition.empty())
+        return evaluate_compatible_printers_condition(preset, active_printer, extra_config, filament_slot, true);
+
+    return preset.preset.is_default || active_printer.preset.name.empty() || !has_compatible_printers ||
+           std::find(compatible_printers->values.begin(), compatible_printers->values.end(), active_printer.preset.name) != compatible_printers->values.end() ||
+           (!active_printer.preset.is_system && is_compatible_with_parent_printer(preset, active_printer));
+}
+
+bool is_compatible_with_printer_for_filament_slot(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, size_t filament_slot)
+{
+    DynamicPrintConfig config;
+    config.set_key_value("printer_preset", new ConfigOptionString(active_printer.preset.name));
+    const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter");
+    if (opt)
+        config.set_key_value("num_extruders", new ConfigOptionInt((int)static_cast<const ConfigOptionFloats *>(opt)->values.size()));
+    return is_compatible_with_printer_for_filament_slot(preset, active_printer, filament_slot, &config);
 }
 
 void Preset::set_visible_from_appconfig(const AppConfig &app_config)
