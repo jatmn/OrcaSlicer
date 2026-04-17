@@ -2811,19 +2811,20 @@ std::vector<int> PresetBundle::get_used_tpu_filaments(const std::vector<int> &us
 
 void PresetBundle::set_calibrate_printer(std::string name)
 {
+    calibrate_printer = nullptr;
+    calibrate_filaments.clear();
+
     if (name.empty()) {
-        calibrate_filaments.clear();
         return;
     }
-    if (!name.empty())
-        calibrate_printer = printers.find_preset(name);
+
+    calibrate_printer = printers.find_preset(name);
     const Preset &                printer_preset = calibrate_printer ? *calibrate_printer : printers.get_edited_preset();
     const PresetWithVendorProfile active_printer = printers.get_preset_with_vendor_profile(printer_preset);
     DynamicPrintConfig            config;
     config.set_key_value("printer_preset", new ConfigOptionString(active_printer.preset.name));
     const ConfigOption *opt = active_printer.preset.config.option("nozzle_diameter");
     if (opt) config.set_key_value("num_extruders", new ConfigOptionInt((int) static_cast<const ConfigOptionFloats *>(opt)->values.size()));
-    calibrate_filaments.clear();
     for (size_t i = filaments.num_default_presets(); i < filaments.size(); ++i) {
         const Preset &                preset                          = filaments.m_presets[i];
         const PresetWithVendorProfile this_preset_with_vendor_profile = filaments.get_preset_with_vendor_profile(preset);
@@ -4496,9 +4497,7 @@ void PresetBundle::update_compatible(PresetSelectCompatibleType select_other_pri
         this->prints.update_compatible(printer_preset_with_vendor_profile, nullptr, select_other_print_if_incompatible,
             PreferedPrintProfileMatch(this->prints.get_selected_idx() == size_t(-1) ? nullptr : &this->prints.get_edited_preset(), printer_preset.config.opt_string("default_print_profile")));
         const PresetWithVendorProfile   print_preset_with_vendor_profile = this->prints.get_edited_preset_with_vendor_profile();
-        const bool use_method_slot_aware_compatibility =
-            printer_preset_with_vendor_profile.preset.config.has("printer_notes") &&
-            printer_preset_with_vendor_profile.preset.config.opt_string("printer_notes").find("METHOD_PRINTER_FAMILY:") != std::string::npos;
+        const bool use_method_slot_aware_compatibility = is_method_family_printer(printer_preset_with_vendor_profile);
         DynamicPrintConfig filament_compat_config;
         if (use_method_slot_aware_compatibility) {
             filament_compat_config.set_key_value("printer_preset", new ConfigOptionString(printer_preset_with_vendor_profile.preset.name));

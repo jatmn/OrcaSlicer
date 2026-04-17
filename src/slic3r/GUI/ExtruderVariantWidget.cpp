@@ -139,6 +139,36 @@ static std::string method_process_variant_key(const ConfigOptionStrings& variant
     return key;
 }
 
+static bool compatible_condition_has_variant_match(const std::string& condition, const char* key, const std::string& variant)
+{
+    return condition.find(std::string(key) + "==\"" + variant + "\"") != std::string::npos;
+}
+
+static bool print_preset_matches_current_variant(
+    const Preset&             print_preset,
+    VariantWidgetFamily       family,
+    const ConfigOptionStrings& variants)
+{
+    const std::string condition = print_preset.compatible_printers_condition();
+    if (condition.empty() || variants.values.empty())
+        return false;
+
+    if (!compatible_condition_has_variant_match(condition, "printer_extruder_variant_0", variants.values.front()))
+        return false;
+
+    if (!is_method_family(family))
+        return true;
+
+    const bool has_support_variant =
+        variants.values.size() > 1 &&
+        variants.values[1] != variants.values.front() &&
+        is_method_support_variant(variants.values[1]);
+    if (has_support_variant)
+        return compatible_condition_has_variant_match(condition, "printer_extruder_variant_1", variants.values[1]);
+
+    return condition.find("printer_extruder_variant_1==") == std::string::npos;
+}
+
 ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
     : wxPanel(parent, wxID_ANY)
 {
@@ -682,8 +712,8 @@ void ExtruderVariantWidget::update_process_presets(const wxString& core_type)
     // Re-evaluate which process presets are compatible with the new printer_extruder_variant
     preset_bundle->update_compatible(PresetSelectCompatibleType::Always);
     
-    // Explicitly select a process preset whose name matches the current extruder variant
-    // (e.g., "AA+ 0.4") if the current preset is not already a matching one.
+    // Explicitly select a process preset whose compatibility condition matches the
+    // current extruder variant if the current preset is not already a precise match.
     // update_compatible() only switches when the current preset becomes INCOMPATIBLE;
     // it does not proactively upgrade from a generic/default preset to a core-specific one.
     auto* ev = preset_bundle->printers.get_edited_preset().config.option<ConfigOptionStrings>("printer_extruder_variant");
@@ -693,9 +723,9 @@ void ExtruderVariantWidget::update_process_presets(const wxString& core_type)
         const auto& current_print = preset_bundle->prints.get_edited_preset();
         BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets - current_print=" << current_print.name << ", variant=" << variant;
         
-        if (current_print.name.find(variant) == std::string::npos) {
+        if (!print_preset_matches_current_variant(current_print, family, *ev)) {
             for (const auto& preset : preset_bundle->prints) {
-                if (preset.is_visible && preset.is_compatible && preset.name.find(variant) != std::string::npos) {
+                if (preset.is_visible && preset.is_compatible && print_preset_matches_current_variant(preset, family, *ev)) {
                     BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets - selecting better match: " << preset.name;
                     preset_bundle->prints.select_preset_by_name(preset.name, true);
                     break;

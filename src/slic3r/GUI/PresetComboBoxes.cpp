@@ -24,6 +24,7 @@
 
 #include "libslic3r/libslic3r.h"
 #include "libslic3r/PrintConfig.hpp"
+#include "libslic3r/Preset.hpp"
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Color.hpp"
 
@@ -60,12 +61,6 @@ namespace Slic3r {
 namespace GUI {
 
 namespace {
-
-bool is_method_family_printer(const PresetWithVendorProfile &active_printer)
-{
-    return active_printer.preset.config.has("printer_notes") &&
-           active_printer.preset.config.opt_string("printer_notes").find("METHOD_PRINTER_FAMILY:") != std::string::npos;
-}
 
 DynamicPrintConfig build_filament_compat_config(const PresetWithVendorProfile &active_printer)
 {

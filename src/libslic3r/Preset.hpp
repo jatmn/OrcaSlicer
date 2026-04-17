@@ -392,6 +392,8 @@ protected:
 };
 
 bool is_compatible_with_print  (const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_print, const PresetWithVendorProfile &active_printer);
+bool is_method_family_printer  (const Preset &printer_preset);
+bool is_method_family_printer  (const PresetWithVendorProfile &active_printer);
 bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, const DynamicPrintConfig *extra_config);
 bool is_compatible_with_printer(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer);
 bool is_compatible_with_printer_for_filament_slot(const PresetWithVendorProfile &preset, const PresetWithVendorProfile &active_printer, size_t filament_slot, const DynamicPrintConfig *extra_config);
