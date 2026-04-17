@@ -1,6 +1,6 @@
 # OrcaSlicer Agent Guide (jatmn's Fork)
 
-> **Last Updated:** 2026-04-16
+> **Last Updated:** 2026-04-17
 >
 > **Change Tracking:** This file tracks implementation status specific to jatmn's fork. See the [Change Log](#change-log) section at the end for revision history.
 > When older sections conflict with the current-status audit below, the current-status audit wins.
@@ -8,9 +8,10 @@
 ## Table of Contents
 
 - [Project Context](#project-context)
-- [Current Status Audit (2026-04-16)](#current-status-audit-2026-04-16)
+- [Current Status Audit (2026-04-17)](#current-status-audit-2026-04-17)
   - [Public Fork Status (`origin/main`)](#public-fork-status-originmain)
   - [Local-Only Status (`HEAD` not yet on `origin/main`)](#local-only-status-head-not-yet-on-originmain)
+  - [Working Tree Follow-Ups (`git status` only)](#working-tree-follow-ups-git-status-only)
   - [Active Workstreams](#active-workstreams)
   - [Current PR Guidance](#current-pr-guidance)
 - [UltiMaker Integration Status Overview](#ultimaker-integration-status-overview)
@@ -106,7 +107,7 @@ This is **jatmn's fork** of [OrcaSlicer](https://github.com/jatmn/OrcaSlicer), a
   - Gemini 2.5 Flash
   - Gemini 3.0
 
-## Current Status Audit (2026-04-16)
+## Current Status Audit (2026-04-17)
 
 This section is the current high-level truth for the fork and should be used as the starting point when preparing PRs or resuming work.
 
@@ -128,9 +129,16 @@ This section is the current high-level truth for the fork and should be used as 
   - local `HEAD` now includes baked mixed Method X / XL `1XA+2XA`, `1C+2XA`, and `LABS+2XA` machine/process leaves with slot 0 as the build tool and slot 1 as the `2XA` support tool
   - plain Method `2A` plus any broader support-tool exposure are still deferred because the shipped preset/UI workflow is still incomplete
 - Local `HEAD` now has a Method-family slot-aware compatibility path in `src/libslic3r/Preset.cpp` that evaluates filament conditions per slot and remaps `printer_extruder_variant_0` to the active slot during those checks, so the remaining gap is no longer the earlier placeholder-expression limitation by itself.
+- Local `HEAD` now also threads that Method-family slot-aware compatibility through `PresetBundle`, filament combo boxes, calibration list loading, and the WebGuide fallback filament-selection path so per-slot build/support roles affect visible and auto-selected filament choices more consistently than the earlier printer-wide checks.
 - Local `HEAD` now also has a first Method-family Prepare-side variant-selection path in `ExtruderVariantWidget`, scoped to UltiMaker / MakerBot printers through `printer_model` / `printer_notes`, but the current widget follow-up still needs compile/runtime validation in this workspace.
-- The earlier local Method export/profile pass had compile verification for `libslic3r` and `libslic3r_gui`, but the current widget follow-up has not been recompiled here because CMake/MSBuild regeneration is presently blocked by a missing local `wxWidgets` package during `ZERO_CHECK`; full app/runtime validation and real printer acceptance testing are still pending.
+- The earlier local Method export/profile pass had compile verification for `libslic3r` and `libslic3r_gui`, but the current widget/compatibility follow-up has not been recompiled here yet. The current working tree now also carries a small Windows CMake fallback fix that stops module-mode wxWidgets discovery from forcing release-only `mswu`, but a real configure/build retry is still pending; full app/runtime validation and real printer acceptance testing remain pending.
 - Treat the current AGENTS file as the authoritative status record for both the public fork state and the currently known local-only Method work.
+
+### Working Tree Follow-Ups (`git status` only)
+
+- The current working tree has a small Method-family calibration follow-up in `src/slic3r/GUI/PresetComboBoxes.cpp` that preserves `PresetBundle::calibrate_filaments` as the authoritative calibration allowlist before applying slot-aware Method filtering, preventing calibration-only preset visibility drift.
+- The current working tree also has a Windows build follow-up in `src/CMakeLists.txt` that lets module-mode `FindwxWidgets` keep release+debug discovery on multi-config generators and use `mswud` for single-config Debug instead of forcing release-only `mswu`.
+- These working-tree follow-ups are relevant to the current Method-family goals, but neither has been validated by a fresh local configure/build in this workspace yet.
 
 ### Active Workstreams
 
@@ -782,7 +790,17 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 
 ## Change Log
 
+### 2026-04-17
+- **Method Family Review Follow-Up (working tree)**
+  - Preserved `PresetBundle::calibrate_filaments` as the calibration allowlist source of truth in `PresetComboBoxes` before applying slot-aware Method filtering, so calibration visibility stays aligned with bundle-owned compatibility decisions.
+  - Adjusted the Windows wxWidgets module-mode fallback in `src/CMakeLists.txt` so multi-config generators can keep release+debug discovery and single-config Debug uses `mswud` instead of forcing release-only `mswu`.
+  - These changes are currently in the working tree and still need a fresh local configure/build retry for validation.
+
 ### 2026-04-16
+- **MakerBot Method Family Compatibility Edge Cases (local-only)**
+  - Threaded Method-family slot-aware compatibility beyond `Preset.cpp` into `PresetBundle`, filament combo boxes, calibration loading, and the WebGuide fallback filament-selection path.
+  - Filament auto-replacement and combo-box visibility now evaluate Method-family compatibility per slot instead of only reusing printer-wide compatibility decisions.
+  - This tightens per-slot behavior for mixed build/support presets, but runtime/printer acceptance validation is still pending.
 - **MakerBot Method Family Mixed Support Slice + Prepare UI Start (local-only)**
   - Expanded the baked mixed `2XA` support-tool preset slice beyond the first Method X pilot by adding:
     - `MakerBot Method XL 1XA+2XA 0.40`
@@ -800,7 +818,7 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - Added thin concrete `1C` and `LABS` machine leaves for Method / Method X / Method XL under `resources/profiles/UltiMaker/machine/`.
   - Added matching thin `0.20mm Standard` `1C` and `LABS` process leaves under `resources/profiles/UltiMaker/process/`.
   - Extended `resources/profiles/UltiMaker.json` so these new Method-family variant leaves are now part of the shipped local vendor bundle.
-  - Kept this slice intentionally limited to build-tool variants because the current simplified compatibility layer is still printer-level rather than fully slot-aware for `2A` / `2XA` support-tool exposure.
+  - Kept this slice intentionally limited to build-tool variants at this stage; later same-day local work added slot-aware Method-family compatibility evaluation in `Preset.cpp`, but full shipped `2A` / `2XA` support-tool exposure still remains pending.
 - **MakerBot Method Family Filament Library Expansion (local-only)**
   - Added local Method-family filament preset pairs for `Nylon CF`, `Nylon 12 CF`, `RapidRinse`, and `SR-30` under `resources/profiles/OrcaFilamentLibrary/filament/MakerBot/`.
   - Registered those new Method filament pairs in `resources/profiles/OrcaFilamentLibrary.json` so they are reachable through the shared filament library manifest instead of existing only as loose JSON files.
@@ -822,7 +840,7 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - Added local-only `MakerBot Method`, `MakerBot Method X`, and `MakerBot Method XL` machine-model entries plus concrete `0.40` machine presets under `resources/profiles/UltiMaker/machine/`.
   - Added a shared `fdm_makerbot_method_common.json` baseline and first minimal `0.20mm Standard` Method-family process presets under `resources/profiles/UltiMaker/process/`.
   - Extended `resources/profiles/UltiMaker.json` so the Method family is now reachable through the shipped UltiMaker/MakerBot vendor bundle locally instead of existing only as dormant export plumbing.
-  - Deliberately started the local Method-family preset slice with mirrored default extruder variants (`1A` for Method, `1XA` for Method X/XL) before later expanding it with thin `1C` and `LABS` leaves; real Method variant-selection UI and full slot-aware compatibility enforcement are still pending.
+  - Deliberately started the local Method-family preset slice with mirrored default extruder variants (`1A` for Method, `1XA` for Method X/XL) before later expanding it with thin `1C` and `LABS` leaves; later same-day local work also added a first Method variant-selection UI path and slot-aware compatibility enforcement, but broader workflow validation is still pending.
 - **MakerBot Method Family Export Groundwork (local-only)**
   - Added a first native C++ Method-family `.makerbot` export pass in `MakerBotWriter` that now branches between Sketch `print.gcode` archives and Method `print.jsontoolpath` archives.
   - Restored local Method format configs for plain Method, Method X, and Method XL under `resources/formats/makerbot/`.

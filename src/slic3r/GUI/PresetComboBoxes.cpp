@@ -94,6 +94,9 @@ bool is_calibration_filament_compatible(const PresetCollection &collection, cons
 {
     const bool is_compatible =
         preset_bundle.calibrate_filaments.find(&preset) != preset_bundle.calibrate_filaments.end();
+    if (!is_compatible)
+        return false;
+
     if (filament_idx < 0 || preset_bundle.calibrate_printer == nullptr)
         return is_compatible;
 
