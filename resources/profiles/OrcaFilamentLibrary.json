@@ -1529,6 +1529,22 @@
             "sub_path": "filament/MakerBot/MakerBot Method ABS-CF @base.json"
         },
         {
+            "name": "MakerBot Method Nylon CF @base",
+            "sub_path": "filament/MakerBot/MakerBot Method Nylon CF @base.json"
+        },
+        {
+            "name": "MakerBot Method Nylon 12 CF @base",
+            "sub_path": "filament/MakerBot/MakerBot Method Nylon 12 CF @base.json"
+        },
+        {
+            "name": "MakerBot Method RapidRinse @base",
+            "sub_path": "filament/MakerBot/MakerBot Method RapidRinse @base.json"
+        },
+        {
+            "name": "MakerBot Method SR-30 @base",
+            "sub_path": "filament/MakerBot/MakerBot Method SR-30 @base.json"
+        },
+        {
             "name": "MakerBot Sketch PLA @System",
             "sub_path": "filament/MakerBot/MakerBot Sketch PLA @System.json"
         },
@@ -1555,6 +1571,22 @@
         {
             "name": "MakerBot Method ABS-CF @System",
             "sub_path": "filament/MakerBot/MakerBot Method ABS-CF @System.json"
+        },
+        {
+            "name": "MakerBot Method Nylon CF @System",
+            "sub_path": "filament/MakerBot/MakerBot Method Nylon CF @System.json"
+        },
+        {
+            "name": "MakerBot Method Nylon 12 CF @System",
+            "sub_path": "filament/MakerBot/MakerBot Method Nylon 12 CF @System.json"
+        },
+        {
+            "name": "MakerBot Method RapidRinse @System",
+            "sub_path": "filament/MakerBot/MakerBot Method RapidRinse @System.json"
+        },
+        {
+            "name": "MakerBot Method SR-30 @System",
+            "sub_path": "filament/MakerBot/MakerBot Method SR-30 @System.json"
         }
     ],
     "process_list": [],

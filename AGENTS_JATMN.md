@@ -123,7 +123,8 @@ This section is the current high-level truth for the fork and should be used as 
 - `HEAD` now contains a local-only MakerBot Method-family export groundwork pass that is not yet on `origin/main`.
 - The local-only work adds initial native `.makerbot` export support for plain Method, Method X, and Method XL by restoring format configs and teaching `MakerBotWriter` to emit Method-style `print.jsontoolpath`, `meta.json`, and `slicemetadata.json` payloads.
 - The local-only Method pass now also adds a first vendor-bundle profile slice under `resources/profiles/UltiMaker/` so plain Method, Method X, and Method XL have concrete shipped machine/process presets that can reach the native Method export path through `FORMAT_CONFIG_ID:method`, `method_x`, and `method_xl`.
-- The current local profile slice is intentionally conservative: all three Method-family machines are fixed to 0.4 mm presets with mirrored default variants on both extruders (`1A` for Method, `1XA` for Method X/XL) until proper Method variant-selection UI and full compatibility enforcement land.
+- The current local profile slice is still intentionally conservative, but it is no longer limited to the original `1A` / `1XA` placeholders: local `HEAD` now also ships thin `1C` and `LABS` concrete machine/process leaves for Method / Method X / Method XL so the first expanded Method material matrix is actually reachable through the vendor bundle.
+- Support-tool exposure is still intentionally deferred in the shipped local slice: `2A` / `2XA` machine-process coverage and mixed build/support combinations still need a more slot-aware material/core compatibility model before they should be exposed confidently.
 - This local-only pass has compile verification for `libslic3r` and `libslic3r_gui`, but full app/runtime validation and real printer acceptance testing are still pending.
 - Treat the current AGENTS file as the authoritative status record for both the public fork state and the currently known local-only Method work.
 
@@ -136,7 +137,7 @@ This section is the current high-level truth for the fork and should be used as 
 - UltiMaker setup-wizard / vendor-manifest behavior has a newly documented dependency rule: incomplete model removal must be done consistently across all root lists in the vendor manifest or the entire vendor bundle may stop loading correctly.
 - UltiMaker Digital Factory auth now more closely mirrors Cura's behavior, but it still needs live user validation after the token-storage and refresh-path cleanup.
 - UltiMaker LAN browse now behaves more like Cura with persistent discovery while the picker is open, but broader long-session validation is still needed.
-- MakerBot Method-family export now has a first native C++ groundwork pass locally plus a minimal vendor-bundle machine/process wiring pass, but variant-selection UI, material/core compatibility rules, tuned defaults, and printer validation still need follow-through.
+- MakerBot Method-family export now has a first native C++ groundwork pass locally plus an expanding vendor-bundle machine/process wiring pass, but variant-selection UI, slot-aware material/core compatibility rules, tuned defaults, and printer validation still need follow-through.
 - Printer-profile completeness is intentionally uneven right now:
   - some models are real tuned/tunable work in progress
   - some models are only placeholder templates kept in the tree for future work
@@ -224,7 +225,7 @@ To enable container format export for a printer preset, add `FORMAT_CONFIG_ID:<i
 - the generic MakerBot fallback still avoids oversized thumbnails, but local Method configs explicitly request the real Method `thumbnail_960x1460.png` member
 - a first local Method-family vendor-bundle slice now exists with concrete `MakerBot Method 0.40`, `MakerBot Method X 0.40`, and `MakerBot Method XL 0.40` presets plus minimal `0.20mm Standard` process presets
 - Method-family variant selection is still effectively fixed-default today because `ExtruderVariantWidget` remains hardcoded to specific UltiMaker families and does not yet surface Method variants in Prepare
-- first-pass Method-family filament compatibility enforcement now exists locally for the shipped `MakerBot Method Tough PLA`, `ABS-R`, `ABS-CF`, `ASA`, `Nylon CF`, `Nylon 12 CF`, `RapidRinse`, and `SR-30` system presets, but broader Method material coverage and finished UI-driven variant selection are still pending
+  - first-pass Method-family filament compatibility enforcement now exists locally for the shipped `MakerBot Method Tough PLA`, `ABS-R`, `ABS-CF`, `ASA`, `Nylon CF`, `Nylon 12 CF`, `RapidRinse`, and `SR-30` system presets, and local `HEAD` now also ships thin `1C` / `LABS` concrete machine-process leaves so the current build-material subset is reachable; broader Method material coverage plus finished UI-driven and slot-aware variant selection are still pending
 - full Method-family printer acceptance testing has not been completed yet, and finished UI/matrix/preset tuning work is still pending
 
 **Dual Extrusion on S/F Series (UltiMaker S3/S5/S6/S7/S8, Factor 4):**
@@ -433,7 +434,8 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 - `MakerBot Method RapidRinse @System`: Method X and Method XL on `2XA`
 - `MakerBot Method SR-30 @System`: Method X and Method XL on `2XA`
 - This matrix is still narrower than Cura's full Method-family support, but it now covers the currently shipped Method presets in Orca.
-- The current local limitation is no longer just missing material presets; it is also missing shipped machine/process coverage for `1C`, `LABS`, and `2XA`, so some of these staged materials are not yet fully reachable from the default shipped UX.
+- The current local limitation is no longer missing `1C` / `LABS` reachability; local `HEAD` now ships concrete `1C` and `LABS` machine/process leaves plus the shared filament-manifest registrations needed for those materials to load.
+- The remaining reachability gap is primarily support-tool oriented: `2A` / `2XA` exposure still needs more slot-aware compatibility handling before it should be treated as a finished shipped workflow.
 - Cura evidence still shows broader Method-family support outside Orca's current shipped inventory, including `PLA`, `PETG`, `Nylon`, `PVA`, `ABS`, `PC-ABS`, `PC-ABS FR`, and selected LABS-only materials.
 - Because `ExtruderVariantWidget` still does not surface Method-family variants in Prepare, this compatibility work is currently more important as a guardrail for defaults, manual preset edits, and future UI work than as a complete end-user variant workflow today.
 
@@ -476,11 +478,9 @@ All UltiMaker and MakerBot printer profiles have been created but have known iss
 
 **3. MakerBot Method Family Profiles (local-only):**
 - Plain Method, Method X, and Method XL now have initial bundle entries locally, but they should still be treated as baseline reachability presets rather than final tuned defaults
-- The current Method-family presets intentionally lock to one default 0.4 mm variant family per machine:
-  - Method: `1A`
-  - Method X / XL: `1XA`
-- This is temporary and exists because `ExtruderVariantWidget` still hides Method-family variants entirely
-- Method-family material-to-extruder compatibility is now partially enforced for the shipped Tough PLA / ABS-R / ABS-CF / ASA / Nylon CF / Nylon 12 CF / RapidRinse / SR-30 system presets, but the full Cura matrix is still not represented and the shipped machine/process matrix still does not cover `1C`, `LABS`, `2A`, or `2XA`
+- The current Method-family presets now ship thin `1A` / `1C` / `LABS` leaves for Method and `1XA` / `1C` / `LABS` leaves for Method X / XL, but these are still conservative bundle presets rather than finished tuned defaults.
+- This is still temporary because `ExtruderVariantWidget` continues to hide Method-family variants entirely in Prepare.
+- Method-family material-to-extruder compatibility is now partially enforced for the shipped Tough PLA / ABS-R / ABS-CF / ASA / Nylon CF / Nylon 12 CF / RapidRinse / SR-30 system presets, but the full Cura matrix is still not represented and the shipped machine/process matrix still does not cover `2A` or `2XA`
 - Variant-driven process remapping and finished Method-family UI support are still missing, so the current defaults remain a conservative first slice rather than finished shipping behavior
 
 **4. UltiMaker Brand Materials:**
@@ -773,13 +773,19 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
 ## Change Log
 
 ### 2026-04-16
+- **MakerBot Method Family Variant Reachability Expansion (local-only)**
+  - Added thin concrete `1C` and `LABS` machine leaves for Method / Method X / Method XL under `resources/profiles/UltiMaker/machine/`.
+  - Added matching thin `0.20mm Standard` `1C` and `LABS` process leaves under `resources/profiles/UltiMaker/process/`.
+  - Extended `resources/profiles/UltiMaker.json` so these new Method-family variant leaves are now part of the shipped local vendor bundle.
+  - Kept this slice intentionally limited to build-tool variants because the current simplified compatibility layer is still printer-level rather than fully slot-aware for `2A` / `2XA` support-tool exposure.
 - **MakerBot Method Family Filament Library Expansion (local-only)**
   - Added local Method-family filament preset pairs for `Nylon CF`, `Nylon 12 CF`, `RapidRinse`, and `SR-30` under `resources/profiles/OrcaFilamentLibrary/filament/MakerBot/`.
+  - Registered those new Method filament pairs in `resources/profiles/OrcaFilamentLibrary.json` so they are reachable through the shared filament library manifest instead of existing only as loose JSON files.
   - Extended the Method / Method X / Method XL machine-model `default_materials` lists so these new presets are part of the staged Method-family material inventory locally.
   - Kept the compatibility rules aligned with the Cura matrix:
     - `Nylon CF` / `Nylon 12 CF` on `1C` and `LABS`
     - `RapidRinse` / `SR-30` on `2XA`
-  - Confirmed that these presets are still partly future-facing because the shipped Method-family machine/process presets remain fixed to `1A` and `1XA` today, with no concrete shipped `1C`, `LABS`, `2A`, or `2XA` machine/process coverage yet.
+  - Confirmed that these presets are now only partly future-facing because local `HEAD` now ships concrete `1C` and `LABS` machine/process coverage, while `2A` / `2XA` support-tool exposure still remains pending.
 - **MakerBot Method Family Filament Compatibility (local-only)**
   - Added first-pass `compatible_printers_condition` rules to the shipped `MakerBot Method Tough PLA`, `ABS-R`, `ABS-CF`, and `ASA` `@System` presets.
   - The new conditions match Method-family printers by `METHOD_PRINTER_FAMILY:<id>` notes plus `printer_extruder_variant_0`, mirroring how the new Method process presets already gate by family/variant.
@@ -793,7 +799,7 @@ if ($sourceCount -ne $destCount) { throw "File count mismatch!" }
   - Added local-only `MakerBot Method`, `MakerBot Method X`, and `MakerBot Method XL` machine-model entries plus concrete `0.40` machine presets under `resources/profiles/UltiMaker/machine/`.
   - Added a shared `fdm_makerbot_method_common.json` baseline and first minimal `0.20mm Standard` Method-family process presets under `resources/profiles/UltiMaker/process/`.
   - Extended `resources/profiles/UltiMaker.json` so the Method family is now reachable through the shipped UltiMaker/MakerBot vendor bundle locally instead of existing only as dormant export plumbing.
-  - Deliberately kept the first local Method-family preset slice fixed to mirrored default extruder variants (`1A` for Method, `1XA` for Method X/XL) until real Method variant-selection UI and compatibility enforcement are implemented.
+  - Deliberately started the local Method-family preset slice with mirrored default extruder variants (`1A` for Method, `1XA` for Method X/XL) before later expanding it with thin `1C` and `LABS` leaves; real Method variant-selection UI and full slot-aware compatibility enforcement are still pending.
 - **MakerBot Method Family Export Groundwork (local-only)**
   - Added a first native C++ Method-family `.makerbot` export pass in `MakerBotWriter` that now branches between Sketch `print.gcode` archives and Method `print.jsontoolpath` archives.
   - Restored local Method format configs for plain Method, Method X, and Method XL under `resources/formats/makerbot/`.

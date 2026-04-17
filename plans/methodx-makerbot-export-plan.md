@@ -514,6 +514,7 @@ That means the real deliverable is:
   - concrete `0.40` machine presets for Method / Method X / Method XL
   - one minimal `0.20mm Standard` process preset per family
   - exact-family matching in process compatibility conditions
+- Local `HEAD` now also ships thin concrete `1C` and `LABS` machine/process leaves for Method / Method X / Method XL so the first expanded Method material matrix is no longer limited to the original `1A` / `1XA` placeholders.
 - The local Method filament library now includes shipped preset pairs for:
   - Tough PLA
   - ABS-R
@@ -523,6 +524,7 @@ That means the real deliverable is:
   - Nylon 12 CF
   - RapidRinse
   - SR-30
+- The shared Orca filament manifest now also registers the added Method filament pairs so they are actually loadable through `resources/profiles/OrcaFilamentLibrary.json`, not just present on disk.
 - First-pass `compatible_printers_condition` rules are now encoded for the shipped Method-family filament presets:
   - Tough PLA: `method` / `method_x` / `method_xl` on `1A`, `1C`, `LABS`
   - ABS-R: `method_x` / `method_xl` on `1XA`, `1C`, `LABS`
@@ -534,9 +536,9 @@ That means the real deliverable is:
 ### Still outstanding
 
 - The shipped machine/process coverage is still much narrower than the shipped filament matrix:
-  - current concrete machine presets are still fixed to `1A` for Method and `1XA` for Method X / XL
-  - no shipped Method-family machine/process presets yet exist for `1C`, `LABS`, `2A`, or `2XA`
-  - as a result, several newly added materials are staged in the library but not yet fully reachable from the current shipped default UX
+  - current concrete machine presets now cover `1A`, `1C`, and `LABS` for Method plus `1XA`, `1C`, and `LABS` for Method X / XL
+  - no shipped Method-family machine/process presets yet exist for `2A` or `2XA`
+  - support-tool reachability is still pending because the current simplified compatibility layer is printer-level rather than fully slot-aware
 - Method-family variant selection is still not surfaced in Orca's Prepare UI
 - Variant-driven process remapping is still missing for Method-family presets
 - Broader Cura-supported Method material coverage is still missing from Orca, including:
@@ -581,7 +583,8 @@ That means the real deliverable is:
 - [x] Restore the full Method thumbnail set, including `thumbnail_960x1460.png`, for Method-family exports
 - [x] Expand Method metadata handling enough to emit native printer / tool / material ids and per-extruder arrays
 - [x] Add a first shipped Method-family filament library and encode the first-pass material/variant compatibility matrix
-- [ ] Add shipped machine/process coverage for `1C`, `LABS`, `2A`, and `2XA` where Cura supports them
+- [x] Add shipped machine/process coverage for `1C` and `LABS` across Method / Method X / Method XL
+- [ ] Decide how to stage `2A` / `2XA` support-tool exposure without introducing incorrect slot-agnostic material compatibility
 - [ ] Decide scope for the next preset-expansion pass across remaining Cura-supported Method materials:
   - PLA
   - PETG
@@ -655,9 +658,8 @@ flowchart TD
 
 ## Immediate next step
 
-The immediate next implementation slice should focus on making the expanded Method material library actually reachable:
+The immediate next implementation slice should focus on finishing the remaining support-tool and material matrix gaps:
 
-1. add shipped machine/process coverage for `1C`, `LABS`, and `2XA`
-2. decide whether `2A` / `PVA` belongs in the same follow-up slice or a separate one
-3. backport the most important Cura quality / intent differences into a first real Method-family process matrix
-4. only after that, wire Method-family variant selection into the Prepare UI and do broader runtime/printer validation
+1. decide whether `2A` / `PVA` and `2XA` / `RapidRinse` / `SR-30` should wait for slot-aware material compatibility or get a temporary staged preset approach
+2. backport the most important Cura quality / intent differences into a first real Method-family process matrix
+3. only after that, wire Method-family variant selection into the Prepare UI and do broader runtime/printer validation
