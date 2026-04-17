@@ -1,0 +1,33 @@
+{
+    "type": "machine",
+    "setting_id": "GM020",
+    "name": "MakerBot Method XL 1XA+2XA 0.40",
+    "from": "system",
+    "instantiation": "true",
+    "printer_model": "MakerBot Method XL",
+    "printer_variant": "0.4",
+    "default_print_profile": "0.20mm Standard @MakerBot Method XL 1XA+2XA 0.40",
+    "printable_area": [
+        "-205x-160",
+        "205x-160",
+        "205x160",
+        "-205x160"
+    ],
+    "printable_height": "319.9",
+    "printer_extruder_variant": [
+        "1XA",
+        "2XA"
+    ],
+    "extruder_variant_list": [
+        "1XA",
+        "2XA"
+    ],
+    "default_filament_profile": [
+        "MakerBot Method ABS-R @System",
+        "MakerBot Method RapidRinse @System"
+    ],
+    "machine_heated_bed": "1",
+    "printer_notes": "MakerBot Method XL with 0.40mm 1XA build extruder and 0.40mm 2XA support extruder\nFORMAT_CONFIG_ID:method_xl\nMETHOD_PRINTER_FAMILY:method_xl",
+    "inherits": "fdm_makerbot_method_common",
+    "default_materials": "MakerBot Method ABS-R @System;MakerBot Method ASA @System;MakerBot Method RapidRinse @System;MakerBot Method SR-30 @System"
+}

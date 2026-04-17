@@ -472,7 +472,7 @@ Important interpretation rule:
   - material identity
 - support-material routing matters too:
   - `2A` and `2XA` should not be treated as generic second nozzles
-  - Orca's current filament compatibility path only injects `printer_extruder_variant_0` during condition evaluation in `src/libslic3r/Preset.cpp`, which means mixed support-tool presets are not yet safely expressible through today's JSON-only matrix
+  - Orca's current Method-family filament compatibility path now does slot-aware evaluation in `src/libslic3r/Preset.cpp`, remapping `printer_extruder_variant_0` to the active slot during Method checks; the remaining support-tool gap is now mainly shipped preset/UI reachability rather than the older placeholder-expression limitation
 
 ## Updated design assumption
 
@@ -516,6 +516,18 @@ That means the real deliverable is:
   - one minimal `0.20mm Standard` process preset per family
   - exact-family matching in process compatibility conditions
 - Local `HEAD` now also ships thin concrete `1C` and `LABS` machine/process leaves for Method / Method X / Method XL so the first expanded Method material matrix is no longer limited to the original `1A` / `1XA` placeholders.
+- Local `HEAD` now also ships a first broader mixed support-tool slice for Method X / XL:
+  - concrete `1XA+2XA`, `1C+2XA`, and `LABS+2XA` machine leaves for Method X
+  - matching `1XA+2XA`, `1C+2XA`, and `LABS+2XA` machine leaves for Method XL
+  - matching `0.20mm Standard` process leaves for those baked mixed presets
+  - slot 0 remains the controlling build tool so the current process-selection path stays keyed to the print extruder
+  - slot 1 is wired to `2XA` with support material routed to extruder 2
+- `ExtruderVariantWidget` now has a first Method-family UI path locally:
+  - scoped only to UltiMaker / MakerBot families through `printer_model` / `printer_notes`
+  - labels Method-family rows as `Extruder` instead of `Print Core`
+  - exposes baked Method-family build/support selections in Prepare
+  - remaps print processes using combined Method keys such as `1XA+2XA` and `1C+2XA`
+  - mixed `+2XA` process presets now key compatibility on both slot 0 and slot 1 so stale support processes drop out when slot 1 is no longer `2XA`
 - The local Method filament library now includes shipped preset pairs for:
   - Tough PLA
   - ABS-R
@@ -537,12 +549,16 @@ That means the real deliverable is:
 ### Still outstanding
 
 - The shipped machine/process coverage is still much narrower than the shipped filament matrix:
-  - current concrete machine presets now cover `1A`, `1C`, and `LABS` for Method plus `1XA`, `1C`, and `LABS` for Method X / XL
-  - no shipped Method-family machine/process presets yet exist for `2A` or `2XA`
-- support-tool reachability is still pending because the current simplified compatibility layer is printer-level rather than fully slot-aware
-  - the current code-side blocker is explicit now: `is_compatible_with_printer()` only injects `printer_extruder_variant_0` for expression evaluation, so `2A` / `2XA` support exposure needs code work rather than just more preset leaves
-- Method-family variant selection is still not surfaced in Orca's Prepare UI
-- Variant-driven process remapping is still missing for Method-family presets
+  - current concrete machine presets now cover `1A`, `1C`, and `LABS` for Method
+  - Method X now ships mixed `1XA+2XA`, `1C+2XA`, and `LABS+2XA` support-tool leaves alongside `1XA`, `1C`, and `LABS`
+  - Method XL now ships mixed `1XA+2XA`, `1C+2XA`, and `LABS+2XA` support-tool leaves alongside `1XA`, `1C`, and `LABS`
+  - no shipped Method-family machine/process presets yet exist for `2A`
+- support-tool reachability is still pending, but the blocker is no longer missing slot-aware compatibility evaluation in code
+  - local `HEAD` now has a Method-family slot-aware compatibility path in `Preset.cpp`
+  - local `HEAD` now also has a first Method-family Prepare-side variant UI and combined-key process remap path for the current baked X / XL mixed presets
+  - the remaining gaps are plain Method `2A`, broader workflow validation, and deciding whether additional support-tool combinations should remain baked-only or become fully user-selectable
+- Method-family variant selection is now partially surfaced in Orca's Prepare UI, but it still needs compile/runtime validation and end-to-end workflow testing
+- Variant-driven process remapping now exists for the current baked Method-family combinations, but it still needs runtime validation against real preset switching behavior
 - Broader Cura-supported Method material coverage is still missing from Orca, including:
   - PLA
   - PETG
@@ -586,7 +602,12 @@ That means the real deliverable is:
 - [x] Expand Method metadata handling enough to emit native printer / tool / material ids and per-extruder arrays
 - [x] Add a first shipped Method-family filament library and encode the first-pass material/variant compatibility matrix
 - [x] Add shipped machine/process coverage for `1C` and `LABS` across Method / Method X / Method XL
-- [ ] Decide how to stage `2A` / `2XA` support-tool exposure without introducing incorrect slot-agnostic material compatibility
+- [x] Add a first Method X mixed support-tool pilot (`1XA+2XA`) without changing non-UltiMaker / non-MakerBot printer workflows
+- [x] Expand the baked `2XA` support-tool slice beyond the first Method X pilot:
+  - Method XL `1XA+2XA`
+  - Method X / XL `1C+2XA`
+  - Method X / XL `LABS+2XA`
+- [ ] Stage plain Method `2A` only after real PVA material wiring exists
 - [ ] Decide scope for the next preset-expansion pass across remaining Cura-supported Method materials:
   - PLA
   - PETG
@@ -597,7 +618,7 @@ That means the real deliverable is:
   - PC-ABS FR
   - selected LABS-only materials
 - [ ] Backport Cura quality / intent tuning into a real Method-family process matrix instead of relying on today's minimal placeholder process presets
-- [ ] Reuse Orca's existing variant/process-selection pattern to add Method-family extruder selection in Prepare
+- [ ] Finish validating and polishing the new Method-family Prepare-side extruder selection path
 - [ ] Add tests or fixtures for:
   - config selection
   - Method / Method X / Method XL payload structure
@@ -662,6 +683,7 @@ flowchart TD
 
 The immediate next implementation slice should focus on finishing the remaining support-tool and material matrix gaps:
 
-1. decide whether `2A` / `PVA` and `2XA` / `RapidRinse` / `SR-30` should wait for slot-aware material compatibility or get a temporary staged preset approach
-2. backport the most important Cura quality / intent differences into a first real Method-family process matrix
-3. only after that, wire Method-family variant selection into the Prepare UI and do broader runtime/printer validation
+1. validate the new baked Method X / XL mixed `2XA` presets and the new Method-family Prepare-side extruder UI against real preset switching behavior
+2. stage plain Method `2A` only after adding a real Method-family `PVA` material path instead of forcing a placeholder material
+3. backport the most important Cura quality / intent differences into a first real Method-family process matrix
+4. broaden runtime / printer acceptance validation once the local build environment can compile the current widget follow-up again

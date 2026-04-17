@@ -6,6 +6,7 @@
 #include "libslic3r/PresetBundle.hpp"
 #include "libslic3r/Preset.hpp"
 #include "libslic3r/Config.hpp"
+#include <algorithm>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <sstream>
@@ -35,6 +36,109 @@ static std::string make_variant(const std::string& core_type, const std::string&
     return core_type + " " + nozzle;
 }
 
+enum class VariantWidgetFamily {
+    None,
+    UltiMakerS357,
+    UltiMakerS68,
+    Factor4,
+    Method,
+    MethodX,
+    MethodXL
+};
+
+static std::string preset_string_option(const Preset& printer_preset, const char* key)
+{
+    if (auto* option = printer_preset.config.option<ConfigOptionString>(key))
+        return option->value;
+    return {};
+}
+
+static VariantWidgetFamily detect_variant_widget_family(const Preset& printer_preset)
+{
+    const std::string printer_notes = preset_string_option(printer_preset, "printer_notes");
+    const std::string printer_model = preset_string_option(printer_preset, "printer_model");
+
+    if (printer_notes.find("METHOD_PRINTER_FAMILY:method_xl") != std::string::npos || printer_model == "MakerBot Method XL")
+        return VariantWidgetFamily::MethodXL;
+    if (printer_notes.find("METHOD_PRINTER_FAMILY:method_x") != std::string::npos || printer_model == "MakerBot Method X")
+        return VariantWidgetFamily::MethodX;
+    if (printer_notes.find("METHOD_PRINTER_FAMILY:method") != std::string::npos || printer_model == "MakerBot Method")
+        return VariantWidgetFamily::Method;
+
+    if (printer_notes.find("FORMAT_CONFIG_ID:ultimaker_s3") != std::string::npos ||
+        printer_notes.find("FORMAT_CONFIG_ID:ultimaker_s5") != std::string::npos ||
+        printer_notes.find("FORMAT_CONFIG_ID:ultimaker_s7") != std::string::npos ||
+        printer_model == "UltiMaker S3" ||
+        printer_model == "UltiMaker S5" ||
+        printer_model == "UltiMaker S7")
+        return VariantWidgetFamily::UltiMakerS357;
+
+    if (printer_notes.find("FORMAT_CONFIG_ID:ultimaker_s6") != std::string::npos ||
+        printer_notes.find("FORMAT_CONFIG_ID:ultimaker_s8") != std::string::npos ||
+        printer_model == "UltiMaker S6" ||
+        printer_model == "UltiMaker S8")
+        return VariantWidgetFamily::UltiMakerS68;
+
+    if (printer_notes.find("FORMAT_CONFIG_ID:ultimaker_factor4") != std::string::npos ||
+        printer_model == "UltiMaker Factor 4")
+        return VariantWidgetFamily::Factor4;
+
+    return VariantWidgetFamily::None;
+}
+
+static bool is_method_family(VariantWidgetFamily family)
+{
+    return family == VariantWidgetFamily::Method ||
+           family == VariantWidgetFamily::MethodX ||
+           family == VariantWidgetFamily::MethodXL;
+}
+
+static bool is_method_support_variant(const std::string& variant)
+{
+    return variant == "2A" || variant == "2XA";
+}
+
+static std::vector<std::string> method_build_variants(VariantWidgetFamily family)
+{
+    switch (family) {
+    case VariantWidgetFamily::Method:
+        return {"1A", "1C", "LABS"};
+    case VariantWidgetFamily::MethodX:
+    case VariantWidgetFamily::MethodXL:
+        return {"1XA", "1C", "LABS"};
+    default:
+        return {};
+    }
+}
+
+static std::vector<std::string> method_support_variants(VariantWidgetFamily family)
+{
+    switch (family) {
+    case VariantWidgetFamily::MethodX:
+    case VariantWidgetFamily::MethodXL:
+        return {"2XA"};
+    case VariantWidgetFamily::Method:
+    default:
+        return {};
+    }
+}
+
+static bool vector_contains(const std::vector<std::string>& values, const std::string& needle)
+{
+    return std::find(values.begin(), values.end(), needle) != values.end();
+}
+
+static std::string method_process_variant_key(const ConfigOptionStrings& variants)
+{
+    if (variants.values.empty())
+        return {};
+
+    std::string key = variants.values.front();
+    if (variants.values.size() > 1 && variants.values[1] != variants.values.front() && is_method_support_variant(variants.values[1]))
+        key += "+" + variants.values[1];
+    return key;
+}
+
 ExtruderVariantWidget::ExtruderVariantWidget(wxWindow* parent)
     : wxPanel(parent, wxID_ANY)
 {
@@ -62,24 +166,10 @@ void ExtruderVariantWidget::update_from_config()
     
     auto* preset_bundle = wxGetApp().preset_bundle;
     auto& printer_preset = preset_bundle->printers.get_edited_preset();
-    std::string preset_name = printer_preset.name;
-    
-    // Determine which variant list to use based on printer model
-    std::vector<std::string> full_variant_list;
-    if (preset_name.find("UltiMaker S3") != std::string::npos ||
-        preset_name.find("UltiMaker S5") != std::string::npos ||
-        preset_name.find("UltiMaker S7") != std::string::npos) {
-        // S3/S5/S7 - basic cores only (AA, BB, CC)
-        full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6"};
-    } else if (preset_name.find("UltiMaker S6") != std::string::npos ||
-               preset_name.find("UltiMaker S8") != std::string::npos) {
-        // S6/S8 - all cores including HT and (+) variants
-        full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "AA+ 0.4", "BB 0.4", "BB 0.8", 
-                        "CC 0.4", "CC 0.6", "CC+ 0.4", "CC+ 0.6", "CC Red 0.6", "HT 0.6"};
-    } else if (preset_name.find("UltiMaker Factor 4") != std::string::npos) {
-        // Factor 4 - basic cores plus HT, but no (+) variants
-        full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6", "HT 0.6"};
-    } else {
+    const VariantWidgetFamily family = detect_variant_widget_family(printer_preset);
+    const bool method_family = is_method_family(family);
+
+    if (family == VariantWidgetFamily::None) {
         Hide();
         return;
     }
@@ -100,21 +190,6 @@ void ExtruderVariantWidget::update_from_config()
             }
         }
     }
-    std::vector<std::string> variant_list;
-    for (const auto& variant : full_variant_list) {
-        if (active_nozzle.empty() || variant.size() >= active_nozzle.size() + 1) {
-            // Variant ends with " <nozzle>" (e.g., " 0.4")
-            if (variant.substr(variant.size() - active_nozzle.size()) == active_nozzle &&
-                variant[variant.size() - active_nozzle.size() - 1] == ' ') {
-                variant_list.push_back(variant);
-            }
-        }
-    }
-    if (variant_list.empty()) {
-        // Fallback: if filtering fails, show all variants
-        variant_list = full_variant_list;
-    }
-    
     // Clear existing rows and old sizers safely.
     // Using Clear(true) is critical: it destroys windows BEFORE deleting sizer items,
     // avoiding use-after-free when wxSizerItem destructor calls SetContainingSizer().
@@ -124,7 +199,10 @@ void ExtruderVariantWidget::update_from_config()
     m_extruder_variants.clear();
     
     // Recreate static title and separator (also destroyed by Clear(true))
-    auto* title = new Label(this, Label::Head_14, _L("Print Core Configuration"));
+    const wxString title_text = method_family ? _L("Extruder Configuration") : _L("Print Core Configuration");
+    const wxString label_prefix = method_family ? _L("Extruder") : _L("Print Core");
+
+    auto* title = new Label(this, Label::Head_14, title_text);
     sizer->Add(title, 0, wxALIGN_CENTER_HORIZONTAL | wxBOTTOM, 5);
     auto* line = new wxStaticLine(this, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(200), 1));
     sizer->Add(line, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(5));
@@ -146,6 +224,61 @@ void ExtruderVariantWidget::update_from_config()
     }
     
     size_t num_extruders = nozzle_diameters->values.size();
+
+    std::vector<std::vector<std::string>> variant_lists(num_extruders);
+    if (method_family) {
+        std::vector<std::string> build_variants = method_build_variants(family);
+        if (build_variants.empty()) {
+            Hide();
+            return;
+        }
+
+        std::string current_build_variant = build_variants.front();
+        if (current_variants && !current_variants->values.empty() && vector_contains(build_variants, current_variants->values[0]))
+            current_build_variant = current_variants->values[0];
+
+        variant_lists[0] = build_variants;
+
+        const std::vector<std::string> support_variants = method_support_variants(family);
+        for (size_t i = 1; i < num_extruders; ++i) {
+            variant_lists[i].push_back(current_build_variant);
+            for (const std::string& support_variant : support_variants) {
+                if (!vector_contains(variant_lists[i], support_variant))
+                    variant_lists[i].push_back(support_variant);
+            }
+        }
+    } else {
+        std::vector<std::string> full_variant_list;
+        switch (family) {
+        case VariantWidgetFamily::UltiMakerS357:
+            full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6"};
+            break;
+        case VariantWidgetFamily::UltiMakerS68:
+            full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "AA+ 0.4", "BB 0.4", "BB 0.8",
+                                 "CC 0.4", "CC 0.6", "CC+ 0.4", "CC+ 0.6", "CC Red 0.6", "HT 0.6"};
+            break;
+        case VariantWidgetFamily::Factor4:
+            full_variant_list = {"AA 0.25", "AA 0.4", "AA 0.8", "BB 0.4", "BB 0.8", "CC 0.4", "CC 0.6", "HT 0.6"};
+            break;
+        default:
+            break;
+        }
+
+        std::vector<std::string> variant_list;
+        for (const auto& variant : full_variant_list) {
+            if (active_nozzle.empty() || variant.size() >= active_nozzle.size() + 1) {
+                if (variant.substr(variant.size() - active_nozzle.size()) == active_nozzle &&
+                    variant[variant.size() - active_nozzle.size() - 1] == ' ') {
+                    variant_list.push_back(variant);
+                }
+            }
+        }
+        if (variant_list.empty())
+            variant_list = full_variant_list;
+
+        for (size_t i = 0; i < num_extruders; ++i)
+            variant_lists[i] = variant_list;
+    }
     
     // Ensure filament count matches extruder count BEFORE creating UI
     // This fixes the timing issue where filament dropdowns don't show
@@ -161,7 +294,7 @@ void ExtruderVariantWidget::update_from_config()
     // Create dropdown for each extruder
     for (size_t i = 0; i < num_extruders; i++) {
         // Print Core label - use Label class with Body_13 to match option label styling
-        wxString label_text = wxString::Format(_L("Print Core %d"), (int)(i + 1));
+        wxString label_text = wxString::Format("%s %d", label_prefix, (int)(i + 1));
         auto* label = new Label(this, Label::Body_13, label_text);
         row_sizer->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 3);
         
@@ -169,7 +302,7 @@ void ExtruderVariantWidget::update_from_config()
         auto* variant_choice = new wxChoice(this, wxID_ANY);
         
         // Add variants to dropdown
-        for (const auto& variant : variant_list) {
+        for (const auto& variant : variant_lists[i]) {
             variant_choice->Append(wxString::FromUTF8(variant));
         }
         
@@ -177,8 +310,9 @@ void ExtruderVariantWidget::update_from_config()
         std::string expected_variant;
         if (current_variants && i < current_variants->values.size()) {
             std::string stored_variant = current_variants->values[i];
-            // If already in combined format (contains space), use directly
-            if (stored_variant.find(' ') != std::string::npos) {
+            if (method_family) {
+                expected_variant = stored_variant;
+            } else if (stored_variant.find(' ') != std::string::npos) {
                 expected_variant = stored_variant;
             } else {
                 // Legacy format - build combined string from core type and nozzle diameter
@@ -248,6 +382,8 @@ void ExtruderVariantWidget::on_variant_changed(int extruder_idx, const wxString&
     
     auto* preset_bundle = wxGetApp().preset_bundle;
     auto& printer_preset = preset_bundle->printers.get_edited_preset();
+    const VariantWidgetFamily family = detect_variant_widget_family(printer_preset);
+    const bool method_family = is_method_family(family);
     
     // Parse combined variant string (e.g., "AA 0.4" -> core_type="AA", nozzle="0.4")
     auto [core_type, nozzle] = parse_variant(variant.ToStdString());
@@ -255,11 +391,27 @@ void ExtruderVariantWidget::on_variant_changed(int extruder_idx, const wxString&
     // Update printer_extruder_variant with combined format (e.g., "AA 0.4")
     auto variant_opt = printer_preset.config.option<ConfigOptionStrings>("printer_extruder_variant");
     if (variant_opt && extruder_idx < (int)variant_opt->values.size()) {
-        variant_opt->values[extruder_idx] = variant.ToStdString();  // Store combined format
+        variant_opt->values[extruder_idx] = variant.ToStdString();
+
+        if (method_family) {
+            if (extruder_idx == 0) {
+                const bool keep_support_variant = variant_opt->values.size() > 1 && is_method_support_variant(variant_opt->values[1]);
+                if (variant_opt->values.size() > 1 && !keep_support_variant)
+                    variant_opt->values[1] = variant.ToStdString();
+            } else if (family == VariantWidgetFamily::Method && variant_opt->values.size() > 1) {
+                variant_opt->values[1] = variant_opt->values[0];
+            }
+
+            if (auto* variant_list_opt = printer_preset.config.option<ConfigOptionStrings>("extruder_variant_list")) {
+                variant_list_opt->values = variant_opt->values;
+            } else {
+                printer_preset.config.set_key_value("extruder_variant_list", new ConfigOptionStrings(variant_opt->values));
+            }
+        }
     }
     
     // Update nozzle_diameter if nozzle size was specified
-    if (!nozzle.empty()) {
+    if (!method_family && !nozzle.empty()) {
         auto nozzle_opt = printer_preset.config.option<ConfigOptionFloats>("nozzle_diameter");
         if (nozzle_opt && extruder_idx < (int)nozzle_opt->values.size()) {
             double nozzle_value;
@@ -275,7 +427,7 @@ void ExtruderVariantWidget::on_variant_changed(int extruder_idx, const wxString&
     // Check for core size mismatch between extruders
     // Skip check if we're already handling a mismatch dialog (recursion prevention)
     wxString size1, size2;
-    if (!m_in_mismatch_dialog && has_size_mismatch(size1, size2)) {
+    if (!method_family && !m_in_mismatch_dialog && has_size_mismatch(size1, size2)) {
         // Show mismatch dialog - user may choose to change other core
         show_mismatch_dialog(size1, size2);
     }
@@ -297,30 +449,21 @@ void ExtruderVariantWidget::on_variant_changed(int extruder_idx, const wxString&
     
     // Update printer thumbnail to reflect changes
     wxGetApp().plater()->sidebar().update_printer_thumbnail();
+
+    // Method-family row options depend on the active build/support relationship,
+    // so rebuild the widget after changes to keep the second dropdown in sync.
+    if (method_family)
+        CallAfter([this]() { update_from_config(); });
 }
 
 bool ExtruderVariantWidget::printer_has_variants()
 {
-    // Check if current printer is UltiMaker S-series or Factor 4
     if (!wxGetApp().preset_bundle) {
         return false;
     }
     
     auto& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
-    std::string preset_name = printer_preset.name;
-    
-    // Check if it's an UltiMaker printer with swappable cores
-    // S3, S5, S6, S7, S8, Factor 4 have swappable cores
-    if (preset_name.find("UltiMaker S3") != std::string::npos ||
-        preset_name.find("UltiMaker S5") != std::string::npos ||
-        preset_name.find("UltiMaker S6") != std::string::npos ||
-        preset_name.find("UltiMaker S7") != std::string::npos ||
-        preset_name.find("UltiMaker S8") != std::string::npos ||
-        preset_name.find("UltiMaker Factor 4") != std::string::npos) {
-        return true;
-    }
-    
-    return false;
+    return detect_variant_widget_family(printer_preset) != VariantWidgetFamily::None;
 }
 
 // Extract nozzle size from core string (e.g., "AA 0.4" -> "0.4")
@@ -500,19 +643,14 @@ int ExtruderVariantWidget::get_controlling_core_index()
 {
     // Get current printer preset
     const Preset& printer_preset = wxGetApp().preset_bundle->printers.get_edited_preset();
-    const std::string& printer_name = printer_preset.name;
+    const VariantWidgetFamily family = detect_variant_widget_family(printer_preset);
     
     // Factor 4 uses Print Core 2 for process selection
-    if (printer_name.find("Factor 4") != std::string::npos) {
+    if (family == VariantWidgetFamily::Factor4) {
         return 1;  // Print Core 2
     }
     
-    // S Series (S3, S5, S6, S7, S8) use Print Core 1 for process selection
-    if (printer_name.find("S3") != std::string::npos ||
-        printer_name.find("S5") != std::string::npos ||
-        printer_name.find("S6") != std::string::npos ||
-        printer_name.find("S7") != std::string::npos ||
-        printer_name.find("S8") != std::string::npos) {
+    if (family != VariantWidgetFamily::None) {
         return 0;  // Print Core 1
     }
     
@@ -550,7 +688,8 @@ void ExtruderVariantWidget::update_process_presets(const wxString& core_type)
     // it does not proactively upgrade from a generic/default preset to a core-specific one.
     auto* ev = preset_bundle->printers.get_edited_preset().config.option<ConfigOptionStrings>("printer_extruder_variant");
     if (ev && !ev->values.empty()) {
-        const std::string& variant = ev->values[0];
+        const VariantWidgetFamily family = detect_variant_widget_family(preset_bundle->printers.get_edited_preset());
+        const std::string variant = is_method_family(family) ? method_process_variant_key(*ev) : ev->values[0];
         const auto& current_print = preset_bundle->prints.get_edited_preset();
         BOOST_LOG_TRIVIAL(warning) << "[ExtruderVariantWidget] update_process_presets - current_print=" << current_print.name << ", variant=" << variant;
         

@@ -240,6 +240,18 @@
             "sub_path": "process/0.20mm Standard @MakerBot Method X LABS 0.40.json"
         },
         {
+            "name": "0.20mm Standard @MakerBot Method X 1XA+2XA 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method X 1XA+2XA 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Method X 1C+2XA 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method X 1C+2XA 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Method X LABS+2XA 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method X LABS+2XA 0.40.json"
+        },
+        {
             "name": "0.20mm Standard @MakerBot Method XL 0.40",
             "sub_path": "process/0.20mm Standard @MakerBot Method XL 0.40.json"
         },
@@ -250,6 +262,18 @@
         {
             "name": "0.20mm Standard @MakerBot Method XL LABS 0.40",
             "sub_path": "process/0.20mm Standard @MakerBot Method XL LABS 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Method XL 1XA+2XA 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method XL 1XA+2XA 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Method XL 1C+2XA 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method XL 1C+2XA 0.40.json"
+        },
+        {
+            "name": "0.20mm Standard @MakerBot Method XL LABS+2XA 0.40",
+            "sub_path": "process/0.20mm Standard @MakerBot Method XL LABS+2XA 0.40.json"
         },
         {
             "name": "0.20mm Standard @UltiMaker Factor 4 AA 0.4",
@@ -451,6 +475,18 @@
             "sub_path": "machine/MakerBot Method X LABS 0.40.json"
         },
         {
+            "name": "MakerBot Method X 1XA+2XA 0.40",
+            "sub_path": "machine/MakerBot Method X 1XA+2XA 0.40.json"
+        },
+        {
+            "name": "MakerBot Method X 1C+2XA 0.40",
+            "sub_path": "machine/MakerBot Method X 1C+2XA 0.40.json"
+        },
+        {
+            "name": "MakerBot Method X LABS+2XA 0.40",
+            "sub_path": "machine/MakerBot Method X LABS+2XA 0.40.json"
+        },
+        {
             "name": "MakerBot Method XL 0.40",
             "sub_path": "machine/MakerBot Method XL 0.40.json"
         },
@@ -461,6 +497,18 @@
         {
             "name": "MakerBot Method XL LABS 0.40",
             "sub_path": "machine/MakerBot Method XL LABS 0.40.json"
+        },
+        {
+            "name": "MakerBot Method XL 1XA+2XA 0.40",
+            "sub_path": "machine/MakerBot Method XL 1XA+2XA 0.40.json"
+        },
+        {
+            "name": "MakerBot Method XL 1C+2XA 0.40",
+            "sub_path": "machine/MakerBot Method XL 1C+2XA 0.40.json"
+        },
+        {
+            "name": "MakerBot Method XL LABS+2XA 0.40",
+            "sub_path": "machine/MakerBot Method XL LABS+2XA 0.40.json"
         }
     ]
 }
