@@ -492,8 +492,8 @@ struct Sidebar::priv
     ImageDPIFrame *big_bed_image_popup = nullptr;
     // Printer - sync
     //Button *btn_sync_printer;
-    std::shared_ptr<int> counter_sync_printer = std::make_shared<int>();
-    wxTimer *            timer_sync_printer = new wxTimer();
+    std::shared_ptr<int>      counter_sync_printer = std::make_shared<int>();
+    std::unique_ptr<wxTimer>  timer_sync_printer   = std::make_unique<wxTimer>();
     // Printer - ams
     ExtruderGroup *left_extruder = nullptr;
     ExtruderGroup *right_extruder = nullptr;

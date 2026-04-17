@@ -539,6 +539,11 @@ That means the real deliverable is:
   - mixed `+2XA` process presets key compatibility on both slot 0 and slot 1 so stale support processes drop out when slot 1 is no longer `2XA`
 - Local compile validation has now been rerun after the matrix/tag refactor:
   - `cmake --build build --target OrcaSlicer --config Release --parallel 4` completed successfully in this workspace
+- A separate local UltiMaker tuning follow-up has now also backported one concrete S-series default baseline:
+  - `UltiMaker S6 0.4 nozzle` machine defaults and the shared `fdm_process_ultimaker_s68_aa+04_common` process baseline were refreshed from the roaming S6 tuning pass
+- A fork-specific UI ownership review has now also been run over the recent shared GUI changes:
+  - one real leak was found in the `Plater.cpp` sidebar printer-sync timer and fixed locally by moving that timer under `std::unique_ptr`
+  - no second obvious leak regression was identified in the reviewed fork-only UltiMaker / Method / host-dialog UI paths
 - Local `HEAD` now also threads Method-family slot-aware compatibility through `PresetBundle` filament replacement, filament combo-box visibility, calibration loading, and the WebGuide fallback default-filament selection path so per-slot build/support roles affect visible and auto-selected filament choices more consistently.
 - The current local follow-up now also adds explicit two-entry `nozzle_diameter` arrays to the shipped Method machine presets so the local dual-extruder instances advertise both `0.4` nozzles consistently.
 - Method's oversized `thumbnail_960x1460.png` requirement is now kept only in the Method MakerBot format configs; the shared Method printer preset `thumbnails` field stays below the Orca config-loader limit so the UltiMaker vendor bundle does not fail to load.

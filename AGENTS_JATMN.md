@@ -10,7 +10,7 @@
 - [Project Context](#project-context)
 - [Current Status Audit (2026-04-17)](#current-status-audit-2026-04-17)
   - [Public Fork Status (`origin/main`)](#public-fork-status-originmain)
-  - [Local-Only Status (`HEAD` now has one local follow-up commit)](#local-only-status-head-now-has-one-local-follow-up-commit)
+- [Local-Only Status (`HEAD` now has local follow-up commits)](#local-only-status-head-now-has-local-follow-up-commits)
   - [Working Tree Follow-Ups (`git status` only)](#working-tree-follow-ups-git-status-only)
   - [Active Workstreams](#active-workstreams)
   - [Current PR Guidance](#current-pr-guidance)
@@ -119,24 +119,29 @@ This section is the current high-level truth for the fork and should be used as 
 - Public fork now also includes the `95bc9c4257` macOS / `arm64` compatibility pass: the bundled `miniz` snapshot was reconciled with its header signature, `Http::allow_tls_flexible()` was made linkable cross-platform, `UltiMakerLAN` now guards Windows-only SSL revoke behavior correctly, and the `ExtruderVariantWidget` / `PrintHostDialogs` compile blockers were cleaned up for current Apple toolchains.
 - The follow-up `cd0a2d7428` cleanup commit removed the temporary macOS build-plan scratch file after the build fixes landed.
 
-### Local-Only Status (`HEAD` now has one local follow-up commit)
+### Local-Only Status (`HEAD` now has local follow-up commits)
 
-- `HEAD` now carries one local-only Method follow-up commit that is not yet on `origin/main`.
+- `HEAD` now carries three local-only follow-up commits that are not yet on `origin/main`.
 - The public fork already contains the main Method-family export groundwork, vendor-bundle profile slice, Method-family compatibility flow, and first Prepare-side Method variant-selection path.
-- The current local-only commit is a profile/resource/documentation follow-up rather than a new exporter/codepath series.
-- The local-only commit:
+- The local-only follow-up stack currently includes:
   - adds explicit two-entry `nozzle_diameter` arrays across the shipped Method machine presets so the dual-extruder instances advertise both `0.4` nozzles consistently
   - keeps the real Method `thumbnail_960x1460.png` requirement in `resources/formats/makerbot/method*.json` instead of the shared printer preset `thumbnails` field, avoiding Orca's `>= 1000` preset-thumbnail validation failure
   - adds missing setup-wizard cover art for Method / Method X / Method XL under `resources/profiles/UltiMaker/`
   - refreshes the status/plan documents so they reflect the current public-vs-local split
-- The current working tree also carries an uncommitted matrix/UI follow-up on top of that local commit:
+  - refines shared UltiMaker / Method process-matrix handling in `ExtruderVariantWidget` and active machine presets
+  - backports tuned UltiMaker S6 defaults from roaming `- Copy` presets into source-controlled machine/process profiles
+- The committed matrix follow-up includes:
   - `ExtruderVariantWidget` now distinguishes only `UltiMaker` and `Method` matrix modes, preferring explicit `PROCESS_MATRIX_TYPE:*` tags in `printer_notes`
   - active UltiMaker S3 / S5 / S6 / S7 / S8 and Factor 4 nozzle presets now carry `PROCESS_MATRIX_TYPE:ultimaker` plus `PROCESS_MATRIX_CONTROL_SLOT:*`
   - active Method / Method X / Method XL machine-instance presets now carry `PROCESS_MATRIX_TYPE:method` plus `PROCESS_MATRIX_CONTROL_SLOT:1`
   - the widget now derives available core / extruder choices from visible process preset `compatible_printers_condition` rules instead of hard-coded printer-model lists
   - process visibility/remapping is now constrained by the active printer + matrix + selected variant combination for these tagged UltiMaker / Method presets
   - non-UltiMaker / non-MakerBot printers stay on the existing non-matrix path and are not intended to be affected by this refactor
-- Local compile validation has been rerun after this matrix/tag refactor:
+- The committed S6-default backport currently covers:
+  - `resources/profiles/UltiMaker/machine/UltiMaker S6 0.4 nozzle.json`
+  - `resources/profiles/UltiMaker/process/fdm_process_ultimaker_s68_aa+04_common.json`
+  - tuned start/end G-code, motion/retraction defaults, and the shared S6/S8 `AA+ 0.4` process baseline sourced from the roaming S6 tuning pass
+- Local compile validation has been rerun after the matrix/tag refactor, S6 default backport, and latest UI leak fix:
   - `cmake --build build --target OrcaSlicer --config Release --parallel 4` succeeded in this workspace
 - The current shipped Method slice remains intentionally conservative:
   - Method ships `1A`, `1C`, and `LABS`
@@ -148,11 +153,9 @@ This section is the current high-level truth for the fork and should be used as 
 
 ### Working Tree Follow-Ups (`git status` only)
 
-- The workspace currently has uncommitted matrix-follow-up edits in:
-  - `src/slic3r/GUI/ExtruderVariantWidget.cpp`
-  - active UltiMaker S3 / S5 / S6 / S7 / S8 and Factor 4 nozzle machine presets
-  - active Method / Method X / Method XL machine-instance presets
-- These working-tree changes are the preset-tag and process-matrix cleanup described above; treat them as the current local truth until they are committed.
+- The workspace currently has one uncommitted UI leak-fix follow-up in:
+  - `src/slic3r/GUI/Plater.cpp`
+- That working-tree change converts `Sidebar::priv::timer_sync_printer` from an unmanaged heap allocation to `std::unique_ptr<wxTimer>` after a review of fork-specific UI ownership paths found that this timer was never freed.
 - If local-only tool files remain outside this commit, treat them as non-repo workspace state unless they are explicitly needed for Method-family work.
 
 ### Active Workstreams
@@ -160,11 +163,13 @@ This section is the current high-level truth for the fork and should be used as 
 - Cheetah support is now beyond proof-of-concept and into tuning / validation.
 - UltiMaker default machine, process, and material values are still being actively tuned.
 - Roaming-profile `- Copy` presets are currently the working area for tuned defaults before backporting them into source-controlled profiles.
+- A first tuned S-series backport has now landed locally for `UltiMaker S6 0.4 nozzle`; broader S6 nozzle/process coverage plus S8 follow-on tuning are still pending.
 - Dual-extrusion validation on UltiMaker S/F series is still incomplete even though the profile and container groundwork exists.
 - UltiMaker setup-wizard / vendor-manifest behavior has a newly documented dependency rule: incomplete model removal must be done consistently across all root lists in the vendor manifest or the entire vendor bundle may stop loading correctly.
 - UltiMaker Digital Factory auth now more closely mirrors Cura's behavior, but it still needs live user validation after the token-storage and refresh-path cleanup.
 - UltiMaker LAN browse now behaves more like Cura with persistent discovery while the picker is open, but broader long-session validation is still needed.
 - MakerBot Method-family export now has a first native C++ groundwork pass locally plus an expanding vendor-bundle machine/process wiring pass and a new data-driven Prepare-side matrix path; tuned defaults and printer validation still need follow-through.
+- A fork-specific UI ownership review has now been run against the recent UltiMaker / Method / host-dialog work; one real timer leak was found in `Plater.cpp` and is now fixed locally, while no other obvious leak regressions were identified in the reviewed fork-only UI paths.
 - Printer-profile completeness is intentionally uneven right now:
   - some models are real tuned/tunable work in progress
   - some models are only placeholder templates kept in the tree for future work
@@ -565,13 +570,14 @@ The active UltiMaker and MakerBot profile surface is partially wired and still h
 | Area | Status | Notes |
 |------|--------|-------|
 | Setup Wizard | ✅ Passed | Can add UltiMaker S6 printer successfully |
-| Build / Compile | ✅ Passed | `cmake --build build --target OrcaSlicer --config Release --parallel 4` succeeded after the current matrix/tag refactor |
+| Build / Compile | ✅ Passed | Full `cmake --build build --target OrcaSlicer --config Release --parallel 4` succeeded after the matrix/tag refactor, S6 default backport, and latest `Plater.cpp` timer-ownership fix |
 | Process Selection | ⚠️ Needs Validation | The new preset-driven UltiMaker / Method matrix filtering compiles, but Prepare-side runtime validation is still pending |
 | Filament Selection | ✅ Passed | GUID-based filament matching works |
 | Export | ✅ Passed | `.ufp` container export works with `FORMAT_CONFIG_ID` |
 | Upload | ✅ Passed | Digital Factory upload with container conversion works for both `.ufp` and `.makerbot` |
 | LAN Printing | ✅ Passed | UltiMaker LAN upload and print works |
-| Core / Extruder Matrix | ⚠️ Needs Validation | `PROCESS_MATRIX_TYPE` / `PROCESS_MATRIX_CONTROL_SLOT` rollout is in the working tree for active UltiMaker / Method presets; manual switching validation is still pending |
+| Core / Extruder Matrix | ⚠️ Needs Validation | `PROCESS_MATRIX_TYPE` / `PROCESS_MATRIX_CONTROL_SLOT` rollout is now in local-only committed presets for the active UltiMaker / Method families; manual switching validation is still pending |
+| UI Leak Review | ✅ Passed with One Fix | Reviewed fork-specific GUI ownership paths; fixed the leaked sidebar printer-sync timer in `src/slic3r/GUI/Plater.cpp`; no second obvious leak regression was identified in the reviewed fork-only UI changes |
 | UltiMaker Digital Factory Auth | ⚠️ Needs Validation | Refreshed implementation is compiled and pushed, but still needs broader live validation after the storage/refresh cleanup |
 | UltiMaker LAN Browse | ⚠️ Needs Validation | Persistent picker behavior and IP-only selection are compiled and pushed, but still need broader validation on real LAN environments |
 
@@ -583,7 +589,7 @@ The active UltiMaker and MakerBot profile surface is partially wired and still h
 | MakerBot Sketch Large | Placeholder template only | Needs real profile creation, tuning, and validation |
 | UltiMaker S3 | Placeholder template only | Needs real profile creation, tuning, and validation; also uses Griffin/UFP path that still needs writer support updates |
 | UltiMaker S5 | Placeholder template only | Needs real profile creation, tuning, and validation; also uses Griffin/UFP path that still needs writer support updates |
-| UltiMaker S6 | Active primary tuning target | Profile tuning and validation still needed |
+| UltiMaker S6 | First tuned `0.4` baseline backported locally | Broader nozzle/process tuning and validation still needed |
 | UltiMaker S7 | Placeholder template only | Needs real profile creation, tuning, and validation; also uses Griffin/UFP path that still needs writer support updates |
 | UltiMaker S8 | Dependency follow-on to S6 | Will be done after S6 due to the current dependency chain |
 | UltiMaker 2+ Connect | Placeholder template only and currently not in active bundle | Needs real profile creation, tuning, and validation; likely uses Griffin/UFP path that still needs writer support updates; also does not use print cores and needs proper non-core configuration handling |
