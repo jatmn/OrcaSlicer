@@ -127,8 +127,9 @@ There is also a routing distinction to keep explicit:
 - Orca's Prepare-tab UltiMaker work also already links UI variant choice to process selection:
   - [`ExtruderVariantWidget` is the dedicated Prepare widget for swappable cores](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L38)
   - it shows the user-facing ["Print Core Configuration" panel](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L44)
-  - it contains [hard-coded UltiMaker core matrices for S3/S5/S7, S6/S8, and Factor 4](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L73)
-  - it [determines a controlling core for process selection and then re-selects a better matching process preset when the active core changes](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L499)
+  - it now uses only [`UltiMaker` and `Method` matrix modes detected from `printer_notes` tags such as `PROCESS_MATRIX_TYPE:*`](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L50)
+  - it now derives available core / extruder options from visible process preset [`compatible_printers_condition`](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L241) rules instead of hard-coded printer-model lists
+  - it now reads the process-driving slot from preset data via [`PROCESS_MATRIX_CONTROL_SLOT:*`](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L106) and then [re-selects a better matching process preset when the active matrix selection changes](../src/slic3r/GUI/ExtruderVariantWidget.cpp#L499)
   - the widget is integrated into Prepare via the sidebar in [`Plater.cpp`](../src/slic3r/GUI/Plater.cpp#L2232)
 
 ## UltiMaker cross-reference implications for Method
@@ -527,12 +528,17 @@ That means the real deliverable is:
   - matching `0.20mm Standard` process leaves for those baked mixed presets
   - slot 0 remains the controlling build tool so the current process-selection path stays keyed to the print extruder
   - slot 1 is wired to `2XA` with support material routed to extruder 2
-- `ExtruderVariantWidget` now has a first Method-family UI path locally:
-  - scoped only to UltiMaker / MakerBot families through `printer_model` / `printer_notes`
-  - labels Method-family rows as `Extruder` instead of `Print Core`
-  - exposes baked Method-family build/support selections in Prepare
-  - remaps print processes using combined Method keys such as `1XA+2XA` and `1C+2XA`
-  - mixed `+2XA` process presets now key compatibility on both slot 0 and slot 1 so stale support processes drop out when slot 1 is no longer `2XA`
+- `ExtruderVariantWidget` now has a data-driven UltiMaker / Method process-matrix path locally:
+  - still scoped only to UltiMaker / MakerBot families; non-UltiMaker / non-MakerBot printers stay on the existing non-matrix behavior
+  - active UltiMaker S3 / S5 / S6 / S7 / S8 and Factor 4 nozzle presets now carry explicit `PROCESS_MATRIX_TYPE:ultimaker` tags
+  - active Method / Method X / Method XL machine-instance presets now carry explicit `PROCESS_MATRIX_TYPE:method` tags
+  - active machine presets also now carry `PROCESS_MATRIX_CONTROL_SLOT:*` so S-series and Method-family presets drive process selection from slot 1 while Factor 4 drives it from slot 2 without hard-coded printer lists in the widget
+  - the widget derives available core / extruder options from visible process preset compatibility conditions instead of maintaining family-specific core tables
+  - Method-family rows are labeled as `Extruder` instead of `Print Core`
+  - Method-family process remapping now understands combined keys such as `1XA+2XA` and `1C+2XA`
+  - mixed `+2XA` process presets key compatibility on both slot 0 and slot 1 so stale support processes drop out when slot 1 is no longer `2XA`
+- Local compile validation has now been rerun after the matrix/tag refactor:
+  - `cmake --build build --target OrcaSlicer --config Release --parallel 4` completed successfully in this workspace
 - Local `HEAD` now also threads Method-family slot-aware compatibility through `PresetBundle` filament replacement, filament combo-box visibility, calibration loading, and the WebGuide fallback default-filament selection path so per-slot build/support roles affect visible and auto-selected filament choices more consistently.
 - The current local follow-up now also adds explicit two-entry `nozzle_diameter` arrays to the shipped Method machine presets so the local dual-extruder instances advertise both `0.4` nozzles consistently.
 - Method's oversized `thumbnail_960x1460.png` requirement is now kept only in the Method MakerBot format configs; the shared Method printer preset `thumbnails` field stays below the Orca config-loader limit so the UltiMaker vendor bundle does not fail to load.
@@ -566,9 +572,9 @@ That means the real deliverable is:
   - local `HEAD` now has a Method-family slot-aware compatibility path in `Preset.cpp`
   - local `HEAD` now also has a first Method-family Prepare-side variant UI and combined-key process remap path for the current baked X / XL mixed presets
   - the remaining gaps are plain Method `2A`, broader workflow validation, and deciding whether additional support-tool combinations should remain baked-only or become fully user-selectable
-- Method-family variant selection is now partially surfaced in Orca's Prepare UI, but it still needs compile/runtime validation and end-to-end workflow testing
+- Method-family variant selection is now partially surfaced in Orca's Prepare UI, but it still needs runtime validation and end-to-end workflow testing
 - Variant-driven process remapping now exists for the current baked Method-family combinations, but it still needs runtime validation against real preset switching behavior
-- No fresh local configure/build retry has been run in this workspace after the current profile-only follow-ups, so runtime validation for the latest Method preset changes is still pending
+- Compile validation is no longer the open risk for the latest matrix/tag refactor; the remaining open risk is runtime validation for real preset switching behavior and printer acceptance
 - Broader Cura-supported Method material coverage is still missing from Orca, including:
   - PLA
   - PETG
@@ -628,7 +634,7 @@ That means the real deliverable is:
   - PC-ABS FR
   - selected LABS-only materials
 - [ ] Backport Cura quality / intent tuning into a real Method-family process matrix instead of relying on today's minimal placeholder process presets
-- [ ] Finish validating and polishing the new Method-family Prepare-side extruder selection path
+- [ ] Finish runtime validation and polish for the new Method-family Prepare-side extruder selection path and the shared UltiMaker / Method matrix filtering behavior
 - [ ] Add tests or fixtures for:
   - config selection
   - Method / Method X / Method XL payload structure
@@ -697,4 +703,4 @@ The immediate next implementation slice should focus on the remaining support-to
 2. stage plain Method `2A` only after adding a real Method-family `PVA` material path instead of forcing a placeholder material
 3. backport the most important Cura quality / intent differences into a first real Method-family process matrix
 4. keep the oversized Method `thumbnail_960x1460.png` request in the MakerBot format configs only, and avoid reintroducing it through printer preset `thumbnails`
-5. retry a local configure/build and then broaden runtime / printer acceptance validation once that path is confirmed
+5. broaden runtime / printer acceptance validation now that the local build already passes after the matrix/tag refactor

@@ -30,7 +30,7 @@
         "MakerBot Method Tough PLA @System",
         "MakerBot Method Tough PLA @System"
     ],
-    "printer_notes": "MakerBot Method with dual 0.40mm LABS extruders\nFORMAT_CONFIG_ID:method\nMETHOD_PRINTER_FAMILY:method",
+    "printer_notes": "MakerBot Method with dual 0.40mm LABS extruders\nFORMAT_CONFIG_ID:method\nMETHOD_PRINTER_FAMILY:method\nPROCESS_MATRIX_TYPE:method\nPROCESS_MATRIX_CONTROL_SLOT:1",
     "inherits": "fdm_makerbot_method_common",
     "default_materials": "MakerBot Method Tough PLA @System"
 }

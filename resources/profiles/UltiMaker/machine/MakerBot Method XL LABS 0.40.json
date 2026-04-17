@@ -31,7 +31,7 @@
         "MakerBot Method ABS-R @System"
     ],
     "machine_heated_bed": "1",
-    "printer_notes": "MakerBot Method XL with dual 0.40mm LABS extruders\nFORMAT_CONFIG_ID:method_xl\nMETHOD_PRINTER_FAMILY:method_xl",
+    "printer_notes": "MakerBot Method XL with dual 0.40mm LABS extruders\nFORMAT_CONFIG_ID:method_xl\nMETHOD_PRINTER_FAMILY:method_xl\nPROCESS_MATRIX_TYPE:method\nPROCESS_MATRIX_CONTROL_SLOT:1",
     "inherits": "fdm_makerbot_method_common",
     "default_materials": "MakerBot Method ABS-R @System"
 }

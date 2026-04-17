@@ -27,5 +27,5 @@
         "UltiMaker Tough PLA @System",
         "UltiMaker Tough PLA @System"
     ],
-    "printer_notes": "FORMAT_CONFIG_ID:ultimaker_factor4"
+    "printer_notes": "FORMAT_CONFIG_ID:ultimaker_factor4\nPROCESS_MATRIX_TYPE:ultimaker\nPROCESS_MATRIX_CONTROL_SLOT:2"
 }

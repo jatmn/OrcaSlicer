@@ -31,7 +31,7 @@
         "MakerBot Method RapidRinse @System"
     ],
     "machine_heated_bed": "1",
-    "printer_notes": "MakerBot Method XL with 0.40mm LABS build extruder and 0.40mm 2XA support extruder\nFORMAT_CONFIG_ID:method_xl\nMETHOD_PRINTER_FAMILY:method_xl",
+    "printer_notes": "MakerBot Method XL with 0.40mm LABS build extruder and 0.40mm 2XA support extruder\nFORMAT_CONFIG_ID:method_xl\nMETHOD_PRINTER_FAMILY:method_xl\nPROCESS_MATRIX_TYPE:method\nPROCESS_MATRIX_CONTROL_SLOT:1",
     "inherits": "fdm_makerbot_method_common",
     "default_materials": "MakerBot Method ABS-R @System;MakerBot Method ABS-CF @System;MakerBot Method ASA @System;MakerBot Method Tough PLA @System;MakerBot Method Nylon CF @System;MakerBot Method Nylon 12 CF @System;MakerBot Method RapidRinse @System;MakerBot Method SR-30 @System"
 }
