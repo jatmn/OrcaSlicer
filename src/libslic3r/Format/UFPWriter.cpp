@@ -7,6 +7,8 @@
 #include <boost/log/trivial.hpp>
 #include <boost/filesystem.hpp>
 #include <nlohmann/json.hpp>
+#include <algorithm>
+#include <cctype>
 #include <sstream>
 #include <iomanip>
 #include <ctime>
@@ -14,6 +16,92 @@
 #include <cmath>
 
 namespace Slic3r {
+
+namespace {
+
+bool extruder_is_used(const ExtruderData& data)
+{
+    return data.filament_mm > 0.0 || data.filament_g > 0.0;
+}
+
+std::string to_lower_copy(std::string value)
+{
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+std::string sanitize_material_filename_component(std::string value)
+{
+    value = to_lower_copy(std::move(value));
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return (std::isalnum(c) || c == '_' || c == '-') ? static_cast<char>(c) : '_';
+    });
+
+    std::string sanitized;
+    sanitized.reserve(value.size());
+    bool last_was_separator = false;
+    for (char c : value) {
+        if (c == '_') {
+            if (!last_was_separator) {
+                sanitized.push_back(c);
+            }
+            last_was_separator = true;
+        } else {
+            sanitized.push_back(c);
+            last_was_separator = false;
+        }
+    }
+
+    while (!sanitized.empty() && sanitized.front() == '_')
+        sanitized.erase(sanitized.begin());
+    while (!sanitized.empty() && sanitized.back() == '_')
+        sanitized.pop_back();
+
+    return sanitized.empty() ? "material" : sanitized;
+}
+
+struct MaterialAsset {
+    std::string key;
+    std::string filename;
+    ExtruderData extruder;
+};
+
+ExtruderData resolve_extruder_data(size_t idx, const std::array<ExtruderData, 2>& extruders, const GCodeMetadata& meta)
+{
+    ExtruderData resolved = extruders[idx];
+    if (!extruder_is_used(resolved))
+        return resolved;
+
+    if (resolved.extruder_temp <= 0) {
+        if (idx > 0 && extruder_is_used(extruders[0]) && extruders[0].extruder_temp > 0)
+            resolved.extruder_temp = extruders[0].extruder_temp;
+        else
+            resolved.extruder_temp = meta.extruder_temp;
+    }
+
+    if (resolved.material_guid.empty()) {
+        if (idx > 0 && extruder_is_used(extruders[0]) && !extruders[0].material_guid.empty())
+            resolved.material_guid = extruders[0].material_guid;
+        else
+            resolved.material_guid = meta.material_guid;
+    }
+
+    if (resolved.material_name.empty()) {
+        if (idx > 0 && extruder_is_used(extruders[0]) && !extruders[0].material_name.empty())
+            resolved.material_name = extruders[0].material_name;
+        else if (!meta.material_type.empty())
+            resolved.material_name = meta.material_type;
+        else
+            resolved.material_name = meta.material_name;
+    }
+
+    if (resolved.brand.empty() && idx > 0 && extruder_is_used(extruders[0]) && !extruders[0].brand.empty())
+        resolved.brand = extruders[0].brand;
+
+    return resolved;
+}
+
+} // namespace
 
 bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gcode_content, const std::string& output_path) {
     // Check if output file already exists and can be written
@@ -96,12 +184,74 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         }
     }
     
-    // Prepare material filename (needed for UFP_Global, material, and gcode.rels)
-    std::string material_type_lower = meta.material_type;
-    std::transform(material_type_lower.begin(), material_type_lower.end(), material_type_lower.begin(), ::tolower);
-    // Replace spaces with underscores for filename compatibility
-    std::replace(material_type_lower.begin(), material_type_lower.end(), ' ', '_');
-    std::string material_filename = "ultimaker_" + material_type_lower + ".xml.fdm_material";
+    const auto& raw_extruders = m_context.get_extruder_data();
+    const std::array<ExtruderData, 2> resolved_extruders = {
+        resolve_extruder_data(0, raw_extruders, meta),
+        resolve_extruder_data(1, raw_extruders, meta)
+    };
+    const bool has_per_extruder_usage = extruder_is_used(raw_extruders[0]) || extruder_is_used(raw_extruders[1]);
+    std::vector<MaterialAsset> material_assets;
+    material_assets.reserve(2);
+
+    auto material_name_for_asset = [&](const ExtruderData& extruder) {
+        if (!extruder.material_name.empty())
+            return extruder.material_name;
+        if (!meta.material_type.empty())
+            return meta.material_type;
+        if (!meta.material_name.empty())
+            return meta.material_name;
+        return std::string("material");
+    };
+    auto material_guid_for_asset = [&](const ExtruderData& extruder) {
+        if (!extruder.material_guid.empty())
+            return extruder.material_guid;
+        return meta.material_guid;
+    };
+    auto append_material_asset = [&](const ExtruderData& extruder) {
+        const std::string material_name = material_name_for_asset(extruder);
+        const std::string material_guid = material_guid_for_asset(extruder);
+        const std::string material_key = !material_guid.empty()
+            ? "guid:" + to_lower_copy(material_guid)
+            : "name:" + to_lower_copy(extruder.brand) + "|" + to_lower_copy(material_name);
+
+        auto existing = std::find_if(material_assets.begin(), material_assets.end(), [&](const MaterialAsset& asset) {
+            return asset.key == material_key;
+        });
+        if (existing != material_assets.end()) {
+            if (existing->extruder.brand.empty() && !extruder.brand.empty())
+                existing->extruder.brand = extruder.brand;
+            if (existing->extruder.material_guid.empty() && !material_guid.empty())
+                existing->extruder.material_guid = material_guid;
+            if (existing->extruder.material_name.empty())
+                existing->extruder.material_name = material_name;
+            return;
+        }
+
+        std::string base_name = sanitize_material_filename_component(material_name);
+        std::string filename = "ultimaker_" + base_name + ".xml.fdm_material";
+        int suffix = 1;
+        while (std::any_of(material_assets.begin(), material_assets.end(), [&](const MaterialAsset& asset) {
+            return asset.filename == filename;
+        })) {
+            filename = "ultimaker_" + base_name + "_" + std::to_string(suffix++) + ".xml.fdm_material";
+        }
+
+        ExtruderData material_extruder = extruder;
+        if (material_extruder.material_name.empty())
+            material_extruder.material_name = material_name;
+        if (material_extruder.material_guid.empty())
+            material_extruder.material_guid = material_guid;
+        material_assets.push_back({material_key, filename, material_extruder});
+    };
+
+    if (has_per_extruder_usage) {
+        if (extruder_is_used(raw_extruders[0]))
+            append_material_asset(resolved_extruders[0]);
+        if (extruder_is_used(raw_extruders[1]))
+            append_material_asset(resolved_extruders[1]);
+    } else {
+        append_material_asset(resolved_extruders[0]);
+    }
 
     // 4. /Metadata/UFP_Global.json - with leading slash
     std::string ufp_global = generate_ufp_global_json(meta);
@@ -113,14 +263,19 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
         return false;
     }
     
-    // 5. /Materials/ultimaker_{material_type}.xml.fdm_material - Cura-style filename format
-    std::string material_xml = generate_material_xml(meta);
-    if (!mz_zip_writer_add_mem_ex(&archive, ("/Materials/" + material_filename).c_str(),
-                              material_xml.c_str(), material_xml.length(),
-                              nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
-        BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add " << material_filename;
-        cleanup();
-        return false;
+    // 5. /Materials/ultimaker_{material_type}.xml.fdm_material - one entry per used material
+    std::vector<std::string> material_filenames;
+    material_filenames.reserve(material_assets.size());
+    for (const MaterialAsset& material_asset : material_assets) {
+        std::string material_xml = generate_material_xml(material_asset.extruder, meta);
+        if (!mz_zip_writer_add_mem_ex(&archive, ("/Materials/" + material_asset.filename).c_str(),
+                                  material_xml.c_str(), material_xml.length(),
+                                  nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
+            BOOST_LOG_TRIVIAL(error) << "UFPWriter::write_container: Failed to add " << material_asset.filename;
+            cleanup();
+            return false;
+        }
+        material_filenames.push_back(material_asset.filename);
     }
     
     // 6. /_rels/.rels - with leading slash
@@ -144,7 +299,7 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
     }
 
     // 8. /3D/_rels/model.gcode.rels - LAST entry, matching Cura order
-    std::string gcode_rels = generate_gcode_rels_xml(has_thumbnail, material_filename);
+    std::string gcode_rels = generate_gcode_rels_xml(has_thumbnail, material_filenames);
     if (!mz_zip_writer_add_mem_ex(&archive, "/3D/_rels/model.gcode.rels",
                               gcode_rels.c_str(), gcode_rels.length(),
                               nullptr, 0, MZ_NO_COMPRESSION, 0, 0)) {
@@ -165,9 +320,6 @@ bool UFPWriter::write_container(const GCodeMetadata& meta, const std::string& gc
 }
 
 void UFPWriter::override_metadata(GCodeMetadata& meta) {
-    // Propagate extruder 0 data to extruder 1 if needed (for dual-extruder with same material)
-    m_context.propagate_extruder_data_if_needed();
-
     // Override parsed metadata with injected values ONLY if they are non-zero
     // (zero means stats weren't captured; keep the parsed values from G-code comments)
     if (m_context.has_print_stats()) {
@@ -183,20 +335,21 @@ void UFPWriter::override_metadata(GCodeMetadata& meta) {
     // The extruder data comes from filament presets which should have the correct GUID
     // Metadata GUID is a default from G-code parsing (often wrong for specialized materials)
     const auto& extruders = m_context.get_extruder_data();
+    const ExtruderData extruder0 = resolve_extruder_data(0, extruders, meta);
     
     // First handle extruder 0: always use extruder GUID if available
-    if (!extruders[0].material_guid.empty()) {
+    if (!extruder0.material_guid.empty()) {
         // Extruder has GUID, use it to override metadata
-        if (meta.material_guid != extruders[0].material_guid) {
-            meta.material_guid = extruders[0].material_guid;
+        if (meta.material_guid != extruder0.material_guid) {
+            meta.material_guid = extruder0.material_guid;
         }
     }
     
     // Also update material type from extruder data if available
     // This ensures "PLA Tough" is correctly identified instead of default "PLA"
-    if (!extruders[0].material_name.empty()) {
-        if (meta.material_type != extruders[0].material_name) {
-            meta.material_type = extruders[0].material_name;
+    if (!extruder0.material_name.empty()) {
+        if (meta.material_type != extruder0.material_name) {
+            meta.material_type = extruder0.material_name;
         }
     }
     
@@ -337,28 +490,40 @@ std::string UFPWriter::generate_header(const GCodeMetadata& meta) {
     values["print_groups"] = "1";
     values["slice_uuid"] = meta.slice_uuid;
     
-    // Generate extruder block based on active extruders only (nozzle info)
-    std::string extruder_block;
     const auto& extruder_variants = m_context.get_extruder_variants();
     const auto& extruders = m_context.get_extruder_data();
-    if (!extruder_variants.empty()) {
-        for (size_t i = 0; i < extruder_variants.size() && i < 2; ++i) {
-            // Only include nozzle info if extruder was actually used
-            if (extruders[i].filament_mm > 0.0) {
-                const std::string& variant = extruder_variants[i];
-                auto nozzle_info = get_nozzle_info(variant);
-                extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
-                extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second + "\n";
-            }
+    const std::array<ExtruderData, 2> resolved_extruders = {
+        resolve_extruder_data(0, extruders, meta),
+        resolve_extruder_data(1, extruders, meta)
+    };
+
+    // Generate nozzle metadata for the extruders that actually consumed filament.
+    std::string extruder_block;
+    bool has_nozzle_metadata = false;
+    for (size_t i = 0; i < resolved_extruders.size(); ++i) {
+        if (!extruder_is_used(resolved_extruders[i])) {
+            continue;
         }
-    } else {
-        // Fallback for backward compatibility - use default values
-        extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:0.4\n;EXTRUDER_TRAIN.0.NOZZLE.NAME:AA 0.4\n";
+
+        std::string variant = (i < extruder_variants.size() && !extruder_variants[i].empty()) ? extruder_variants[i] : "AA 0.4";
+        auto nozzle_info = get_nozzle_info(variant);
+        extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
+        extruder_block += ";EXTRUDER_TRAIN." + std::to_string(i) + ".NOZZLE.NAME:" + nozzle_info.second + "\n";
+        has_nozzle_metadata = true;
+    }
+
+    if (!has_nozzle_metadata) {
+        std::string fallback_variant = (!extruder_variants.empty() && !extruder_variants[0].empty()) ? extruder_variants[0] : "AA 0.4";
+        auto nozzle_info = get_nozzle_info(fallback_variant);
+        extruder_block = ";EXTRUDER_TRAIN.0.NOZZLE.DIAMETER:" + nozzle_info.first + "\n";
+        extruder_block += ";EXTRUDER_TRAIN.0.NOZZLE.NAME:" + nozzle_info.second + "\n";
     }
     values["extruder_block"] = extruder_block;
-    
-    // Generate per-extruder metadata blocks (temperature, material GUID, volume) - only for active extruders
-    values["extruder0_block"] = generate_extruder_block(0, extruders[0]);
+
+    // Generate per-extruder metadata blocks (temperature, material GUID, volume)
+    // only for the extruders that actually consumed filament.
+    values["extruder0_block"] = generate_extruder_block(0, resolved_extruders[0]);
+    values["extruder1_block"] = generate_extruder_block(1, resolved_extruders[1]);
     
     return substitute_template(m_config.header_template_content, values);
 }
@@ -395,14 +560,80 @@ std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
     try {
         // Parse template
         json root = json::parse(template_content);
+        const auto& raw_extruders = m_context.get_extruder_data();
+        const std::array<ExtruderData, 2> extruders = {
+            resolve_extruder_data(0, raw_extruders, meta),
+            resolve_extruder_data(1, raw_extruders, meta)
+        };
+        const bool has_per_extruder_usage = extruder_is_used(raw_extruders[0]) || extruder_is_used(raw_extruders[1]);
+        auto ensure_array_size = [](json& array, size_t size) {
+            if (!array.is_array()) {
+                array = json::array();
+            }
+            while (array.size() < size) {
+                array.push_back(0.0);
+            }
+        };
+        auto filament_length_for_index = [&](size_t idx) {
+            if (raw_extruders[idx].filament_mm > 0.0) {
+                return raw_extruders[idx].filament_mm;
+            }
+            return (idx == 0 && !has_per_extruder_usage) ? meta.filament_mm : 0.0;
+        };
+        auto filament_weight_for_index = [&](size_t idx) {
+            if (raw_extruders[idx].filament_g > 0.0) {
+                return raw_extruders[idx].filament_g;
+            }
+            return (idx == 0 && !has_per_extruder_usage) ? meta.filament_g : 0.0;
+        };
+        auto material_guid_for_index = [&](size_t idx) -> std::string {
+            if (!extruders[idx].material_guid.empty()) {
+                return extruders[idx].material_guid;
+            }
+            return idx == 0 ? meta.material_guid : std::string();
+        };
+        auto material_type_for_index = [&](size_t idx) -> std::string {
+            if (!extruders[idx].material_name.empty()) {
+                return extruders[idx].material_name;
+            }
+            return idx == 0 ? meta.material_type : std::string();
+        };
+        auto extruder_temp_for_index = [&](size_t idx) {
+            if (extruders[idx].extruder_temp > 0) {
+                return extruders[idx].extruder_temp;
+            }
+            return idx == 0 ? meta.extruder_temp : 0;
+        };
+        auto ensure_settings_object = [&](const char* section_name) -> json& {
+            if (!root.contains(section_name) || !root[section_name].is_object()) {
+                root[section_name] = json::object();
+            }
+            if (!root[section_name].contains("changes") || !root[section_name]["changes"].is_object()) {
+                root[section_name]["changes"] = json::object();
+            }
+            if (!root[section_name].contains("all_settings") || !root[section_name]["all_settings"].is_object()) {
+                if (root.contains("extruder_0") && root["extruder_0"].contains("all_settings") && root["extruder_0"]["all_settings"].is_object()) {
+                    root[section_name]["all_settings"] = root["extruder_0"]["all_settings"];
+                } else {
+                    root[section_name]["all_settings"] = json::object();
+                }
+            }
+            return root[section_name]["all_settings"];
+        };
         
         // Patch material with proper types (numbers, not strings)
         if (root.contains("material")) {
-            if (root["material"].contains("length") && root["material"]["length"].is_array() && root["material"]["length"].size() > 0) {
-                root["material"]["length"][0] = meta.filament_mm;
+            if (root["material"].contains("length")) {
+                auto& lengths = root["material"]["length"];
+                ensure_array_size(lengths, 2);
+                lengths[0] = filament_length_for_index(0);
+                lengths[1] = filament_length_for_index(1);
             }
-            if (root["material"].contains("weight") && root["material"]["weight"].is_array() && root["material"]["weight"].size() > 0) {
-                root["material"]["weight"][0] = meta.filament_g;
+            if (root["material"].contains("weight")) {
+                auto& weights = root["material"]["weight"];
+                ensure_array_size(weights, 2);
+                weights[0] = filament_weight_for_index(0);
+                weights[1] = filament_weight_for_index(1);
             }
         }
         
@@ -414,30 +645,32 @@ std::string UFPWriter::generate_slicemetadata_json(const GCodeMetadata& meta) {
         // Patch global settings with proper types
         if (root.contains("global") && root["global"].contains("all_settings")) {
             auto& settings = root["global"]["all_settings"];
-            settings["material_guid"] = meta.material_guid;
-            settings["material_type"] = meta.material_type;
+            settings["material_guid"] = material_guid_for_index(0);
+            settings["material_type"] = material_type_for_index(0);
             settings["layer_height"] = meta.layer_height;
             settings["infill_sparse_density"] = meta.infill_percent;
             settings["material_bed_temperature"] = meta.bed_temp;
             settings["material_bed_temperature_layer_0"] = meta.bed_temp;
-            settings["material_print_temperature"] = meta.extruder_temp;
-            settings["material_print_temperature_layer_0"] = meta.extruder_temp;
+            settings["material_print_temperature"] = extruder_temp_for_index(0);
+            settings["material_print_temperature_layer_0"] = extruder_temp_for_index(0);
             settings["machine_name"] = m_config.target_machine;
         }
         
-        // Patch extruder_0 settings with proper types
-        if (root.contains("extruder_0") && root["extruder_0"].contains("all_settings")) {
-            auto& settings = root["extruder_0"]["all_settings"];
-            settings["material_guid"] = meta.material_guid;
-            settings["material_type"] = meta.material_type;
+        auto patch_extruder_settings = [&](size_t idx, const char* section_name) {
+            auto& settings = ensure_settings_object(section_name);
+            settings["material_guid"] = material_guid_for_index(idx);
+            settings["material_type"] = material_type_for_index(idx);
             settings["layer_height"] = meta.layer_height;
             settings["infill_sparse_density"] = meta.infill_percent;
             settings["material_bed_temperature"] = meta.bed_temp;
             settings["material_bed_temperature_layer_0"] = meta.bed_temp;
-            settings["material_print_temperature"] = meta.extruder_temp;
-            settings["material_print_temperature_layer_0"] = meta.extruder_temp;
+            settings["material_print_temperature"] = extruder_temp_for_index(idx);
+            settings["material_print_temperature_layer_0"] = extruder_temp_for_index(idx);
             settings["machine_name"] = m_config.target_machine;
-        }
+        };
+
+        patch_extruder_settings(0, "extruder_0");
+        patch_extruder_settings(1, "extruder_1");
         
         // Serialize back to JSON (compact format)
         return root.dump();
@@ -453,32 +686,28 @@ std::string UFPWriter::generate_ufp_global_json(const GCodeMetadata& meta) {
     return "{\"version\": 1}";
 }
 
-std::string UFPWriter::generate_material_xml(const GCodeMetadata& meta) {
+std::string UFPWriter::generate_material_xml(const ExtruderData& extruder, const GCodeMetadata& meta) {
     std::ostringstream xml;
     xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
     xml << "<fdmmaterial version=\"1.3\" xmlns=\"http://www.ultimaker.com/material\">\n";
     xml << "  <metadata>\n";
     xml << "    <name>\n";
     
-    // Use brand from extruder data if available, otherwise default to "Generic"
-    const auto& extruders = m_context.get_extruder_data();
     std::string brand = "Generic";
-    if (!extruders[0].brand.empty()) {
-        brand = extruders[0].brand;
-    }
+    if (!extruder.brand.empty())
+        brand = extruder.brand;
     xml << "      <brand>" << brand << "</brand>\n";
     
-    // Use material_type from extruder data if available, otherwise from metadata
-    std::string material_type = meta.material_type;
-    if (!extruders[0].material_name.empty()) {
-        material_type = extruders[0].material_name;
-    }
+    std::string material_type = extruder.material_name;
+    if (material_type.empty())
+        material_type = !meta.material_type.empty() ? meta.material_type : meta.material_name;
     xml << "      <material>" << material_type << "</material>\n";
     
     // Color is not available in extruder data, use "Generic" as default
     xml << "      <color>Generic</color>\n";
     xml << "    </name>\n";
-    xml << "    <GUID>" << meta.material_guid << "</GUID>\n";
+    const std::string material_guid = !extruder.material_guid.empty() ? extruder.material_guid : meta.material_guid;
+    xml << "    <GUID>" << material_guid << "</GUID>\n";
     xml << "    <version>1</version>\n";
     xml << "  </metadata>\n";
     xml << "</fdmmaterial>";
@@ -505,7 +734,7 @@ std::string UFPWriter::generate_rels_xml() {
 </Relationships>)";
 }
 
-std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail, const std::string& material_filename) {
+std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail, const std::vector<std::string>& material_filenames) {
     // Match native Cura format: Target first, then Type, UTF-8 encoding
     std::string rels = R"(<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">)";
@@ -516,8 +745,10 @@ std::string UFPWriter::generate_gcode_rels_xml(bool has_thumbnail, const std::st
         rel_id++;
     }
     
-    // Add material relationship(s) - match valid Cura format: ultimaker_{material}.xml.fdm_material
-    rels += "\n  <Relationship Target=\"/Materials/" + material_filename + "\" Type=\"http://schemas.ultimaker.org/package/2018/relationships/material\" Id=\"rel" + std::to_string(rel_id) + "\" />";
+    for (const std::string& material_filename : material_filenames) {
+        rels += "\n  <Relationship Target=\"/Materials/" + material_filename + "\" Type=\"http://schemas.ultimaker.org/package/2018/relationships/material\" Id=\"rel" + std::to_string(rel_id) + "\" />";
+        rel_id++;
+    }
     
     rels += "\n</Relationships>";
     return rels;

@@ -274,6 +274,23 @@ void UltiMaker::save_oauth_credential(const GUI::OAuthResult& cred) const
     }
 }
 
+void UltiMaker::clear_oauth_credential() const
+{
+    m_cred.clear();
+
+    if (SecureStorage::is_available()) {
+        if (SecureStorage::remove(KEYRING_ACCOUNT)) {
+            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refresh token removed from OS keyring";
+        } else {
+            BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Failed to remove refresh token from keyring";
+        }
+    }
+
+    if (boost::filesystem::exists(m_oauth_cred_file)) {
+        boost::nowide::remove(m_oauth_cred_file.c_str());
+    }
+}
+
 bool UltiMaker::refresh_token() const
 {
     if (m_cred.find("refresh_token") == m_cred.end()) {
@@ -326,18 +343,7 @@ bool UltiMaker::refresh_token() const
                 if (r.error_message.find("invalid_grant") != std::string::npos ||
                     r.error_message.find("invalid_request") != std::string::npos) {
                     BOOST_LOG_TRIVIAL(error) << "UltiMaker: Refresh token appears to be revoked, clearing credentials";
-
-                    // Clear in-memory credentials
-                    this->m_cred.clear();
-
-                    // Delete from secure storage
-                    if (SecureStorage::is_available()) {
-                        SecureStorage::remove(KEYRING_ACCOUNT);
-                    }
-                    // Delete credential file
-                    if (boost::filesystem::exists(this->m_oauth_cred_file)) {
-                        boost::filesystem::remove(this->m_oauth_cred_file);
-                    }
+                    this->clear_oauth_credential();
                 }
             }
         })
@@ -366,17 +372,7 @@ wxString UltiMaker::get_test_failed_msg(wxString& msg) const
 
 void UltiMaker::log_out() const
 {
-    // Clear refresh token from secure keyring
-    if (SecureStorage::is_available()) {
-        if (SecureStorage::remove(KEYRING_ACCOUNT)) {
-            BOOST_LOG_TRIVIAL(info) << "UltiMaker: Refresh token removed from OS keyring";
-        } else {
-            BOOST_LOG_TRIVIAL(warning) << "UltiMaker: Failed to remove refresh token from keyring";
-        }
-    }
-    
-    // Remove JSON credential file (access token and metadata)
-    boost::nowide::remove(m_oauth_cred_file.c_str());
+    clear_oauth_credential();
     BOOST_LOG_TRIVIAL(info) << "UltiMaker: OAuth credentials removed, user logged out";
 }
 
@@ -640,56 +636,52 @@ bool UltiMaker::upload(PrintHostUpload upload_data, ProgressFn prorgess_fn, Erro
     std::string request_body_str = request_body.dump();
 
     UploadResponse upload_response;
-    bool step1_success = false;
-    
-    // Make synchronous PUT request to /jobs/upload
-    {
-        auto http = Http::put(LIBRARY_API_BASE + "/jobs/upload");
-        http.header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .set_put_body_raw(request_body_str);
-
-        set_auth(http, m_cred.at("access_token"));
-        http.header("User-Agent", "UltiMaker OrcaSlicer Plugin")
-            .header("Cache-Control", "no-cache, no-store, must-revalidate");
-        
-        http.on_complete([&](std::string body, unsigned http_status) {
+    const bool step1_success = do_api_call(
+        [&request_body_str](bool is_retry) {
+            auto http = Http::put(LIBRARY_API_BASE + "/jobs/upload");
+            http.header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .set_put_body_raw(request_body_str);
+            return http;
+        },
+        [&](std::string body, unsigned http_status) {
             BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 1 response status=" << http_status;
             BOOST_LOG_TRIVIAL(info) << "UltiMaker::upload: STEP 1 response body=" << body;
-            
-            if (http_status >= 200 && http_status < 300) {
-                try {
-                    auto response_json = nlohmann::json::parse(body);
-                    if (response_json.contains("data")) {
-                        auto& data = response_json["data"];
-                        upload_response.upload_url = data.value("upload_url", "");
-                        upload_response.content_type = data.value("content_type", mime_type);
-                        upload_response.job_id = data.value("job_id", "");
-                        upload_response.success = !upload_response.upload_url.empty();
-                        if (!upload_response.success) {
-                            upload_response.error_message = "Missing upload_url in response";
-                        }
-                    } else {
-                        upload_response.error_message = "Missing 'data' in response";
-                    }
-                } catch (const std::exception& e) {
-                    upload_response.error_message = std::string("JSON parse error: ") + e.what();
-                    BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: JSON parse error: " << e.what();
-                }
-            } else {
+
+            if (http_status < 200 || http_status >= 300) {
                 upload_response.error_message = format_error(body, "", http_status).utf8_string();
+                return false;
             }
-            step1_success = upload_response.success;
-        });
-        
-        http.on_error([&](std::string body, std::string error, unsigned http_status) {
+
+            try {
+                const auto response_json = nlohmann::json::parse(body);
+                if (!response_json.contains("data")) {
+                    upload_response.error_message = "Missing 'data' in response";
+                    return false;
+                }
+
+                const auto& data = response_json["data"];
+                upload_response.upload_url = data.value("upload_url", "");
+                upload_response.content_type = data.value("content_type", mime_type);
+                upload_response.job_id = data.value("job_id", "");
+                upload_response.success = !upload_response.upload_url.empty();
+
+                if (!upload_response.success) {
+                    upload_response.error_message = "Missing upload_url in response";
+                }
+            } catch (const std::exception& e) {
+                upload_response.error_message = std::string("JSON parse error: ") + e.what();
+                BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: JSON parse error: " << e.what();
+                return false;
+            }
+
+            return upload_response.success;
+        },
+        [&](std::string body, std::string error, unsigned http_status) {
             BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: STEP 1 error: " << error << ", HTTP " << http_status;
             upload_response.error_message = format_error(body, error, http_status).utf8_string();
-            step1_success = false;
+            return false;
         });
-        
-        http.perform_sync();
-    }
     
     if (!step1_success || !upload_response.success) {
         BOOST_LOG_TRIVIAL(error) << "UltiMaker::upload: STEP 1 FAILED: " << upload_response.error_message;

@@ -18,6 +18,7 @@ class UltiMaker : public PrintHost
     // Keyring account name for secure storage of refresh token
     static constexpr const char* KEYRING_ACCOUNT = "UltiMaker_RefreshToken";
 
+    void clear_oauth_credential() const;
     void load_oauth_credential();
     bool refresh_token() const;
 

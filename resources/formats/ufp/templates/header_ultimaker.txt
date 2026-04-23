@@ -6,6 +6,7 @@
 ;GENERATOR.BUILD_DATE:{{build_date}}
 ;TARGET_MACHINE.NAME:{{target_machine}}
 {{extruder0_block}}
+{{extruder1_block}}
 {{extruder_block}}
 ;BUILD_PLATE.INITIAL_TEMPERATURE:{{bed_temp}}
 ;BUILD_VOLUME.TEMPERATURE:{{build_volume_temp}}
